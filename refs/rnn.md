@@ -36,11 +36,11 @@ $$
     i_t &= \sigma(W_ih_{t-1} + U_i x_{t-1} + b_i) \\
     o_t &= \sigma(W_oh_{t-1} + U_o x_{t-1} + b_o) \\
     f_t &= \sigma(W_fh_{t-1} + U_f x_{t-1} + b_f) \\
-\\
+    \\
     \tilde{c_t} &= \phi(W_ch_{t-1} + U_cx_t + b_c) \\
     c_t &= f_t \odot c_t + i_t \odot \tilde{c_t} \\
-\\
-    h_t &= o_t \odot \phi(c_t)
+    \\
+    h_t &= o_t \odot \phi(c_t)\\
 \end{align}
 $$
 
@@ -80,6 +80,54 @@ There's few more useful looking functions, have a look [here](https://www.tensor
 In [seq2seq](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/seq2seq.py) there's useful looking stuff,  sequence_loss_by_example and potentially useful function.
 
 # Sweet sweet code!!!
+
+```python
+#!/usr/bin/evn python3
+
+import tensorflow as tf
+import numpy as np
+
+num_steps = 32
+batch_size = 32
+num_units = 100
+num_layers = 3
+
+X = tf.placeholder(tf.float32, [None, num_steps])
+Y = tf.placeholder(tf.float32, [None, num_steps])
+
+cell = tf.nn.rnn_cell.GRUCell(num_units)
+cell = tf.nn.rnn_cell.MultiRNNCell([cell] * num_layers)
+
+
+init_state = cell.zero_state(batch_size, tf.float32)
+rnn_outputs, final_state = tf.nn.dynamic_rnn(cell, X, initial_state=init_state)
+
+with tf.variable_scope('softmax'):
+    W = tf.get_variable('W', [num_units, num_classes])
+    b = tf.get_variable('b', [num_classes], initializer=tf.constant_initializer(0.0))
+
+# A bit of reshaping magic
+rnn_outputs = tf.reshape(rnn_outputs, [-1, state_size])
+y_reshaped = tf.reshape(y, [-1])
+
+logits = tf.matmul(rnn_outputs, W) + b
+
+predictions = tf.nn.softmax(logits)
+
+total_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits, y_reshaped))
+train_step = tf.train.AdamOptimizer(learning_rate).minimize(total_loss)
+```
+
+During traning, lets assume we have long sequences x, y, and we already subdivided them in smaller parts with size [batch_size, num_steps]. Then we train as:
+
+```python
+training_state = None
+for x,y in zip(X, Y):
+    feed_dict={g['x']: X, g['y']: Y}
+    if training_state is not None:
+        feed_dict[g['init_state']] = training_state
+    _, sess.run([train_step, final_state], feed_dict)
+```
 
 # Other resources
 
