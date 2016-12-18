@@ -13,11 +13,11 @@ length = 50  # Fixed due to dynamic_rnn
 
 # TODO, once I have data pipeline in place
 
-batch_size = 16
+batch_size = 1
 
 X = tf.placeholder(tf.float32, shape=[batch_size, 5000, 3], name="X")
 X_len = tf.placeholder(tf.int32, shape=[batch_size], name="X_len")
-Y = tf.sparse_placeholder(tf.int32, shape=[batch_size, length], name="Y") # Won't cut for now
+Y = tf.sparse_placeholder(tf.int32, name="Y")   # Won't cut for now
 Y_len = tf.placeholder(tf.int32, shape=[batch_size], name="Y_len")
 
 net = X
@@ -30,7 +30,7 @@ with tf.control_dependencies([
 
 net = tf.slice(X, [0, left, 0], [-1, right - left, -1])
 net.set_shape([None, None, 3])
-for i, no_channel in zip([2, 4, 8, 16], [8, 16, 16, 16]):
+for i, no_channel in zip([1], [8, 16, 16, 16]):
     with tf.variable_scope("atrous_conv1d_%d" % i):
         print(net.get_shape())
         filter = tf.get_variable("W", shape=(3, net.get_shape()[-1], no_channel))
@@ -53,11 +53,14 @@ with tf.variable_scope("Output"):
     logits = tf.reshape(outputs, [batch_size, length, out_classes])
 
 # yy = tf.slice(Y, [0, begin], [-1, length])  ##Damn sparse vs dense matrix.
-yy_len = tf.maximum(0, Y_len - begin)
+yy_len = tf.clip_by_value(Y_len - begin, 0, length)
 
-print(logits.get_shape())
+print("logits: ", logits.get_shape())
 
-loss = tf.nn.ctc_loss(logits, Y, yy_len, preprocess_collapse_repeated=False, ctc_merge_repeated=False)
+logits = tf.Print(logits, [tf.shape(Y)])
+
+
+loss = tf.nn.ctc_loss(inputs=logits, labels=Y, sequence_length=yy_len, preprocess_collapse_repeated=False, ctc_merge_repeated=False, time_major=False)
 
 predicted, predicted_logprob = tf.nn.ctc_beam_search_decoder(tf.transpose(logits, [1, 0, 2]), yy_len, merge_repeated=False)
 
@@ -81,19 +84,23 @@ if __name__ == "__main__":
     # preprocess_x = StandardScaler()
     # x_train = preprocess_x.fit_transform(x_train.reshape(-1, 5000 * 3)).reshape(-1, 5000, 3)
 
-    x_train = np.random.uniform(shape=[100, 5000, 3])
-    y_train = np.random.randint(5, shape=[100, 5000])
+    x_train = np.random.uniform(size=[100, 5000, 3])
+    y_train = np.random.randint(5, size=[100, 5000])
 
+    indices = np.array([[0, 0]], dtype=np.int64)
+    values = np.array([1.0], dtype=np.float32)
+    shape = np.array([1, 50], dtype=np.int64)
 
     # Testing stuff
     sess = tf.Session()
     sess.run(tf.global_variables_initializer())
-    gg = sess.run(logits, feed_dict=
+    gg = sess.run(Y, feed_dict=
                   {
-                  X: x_train[:32],
-                  begin: 0,
-                  X_len: x_train_len[:32],
-                  Y: y_train[:32],
-                  Y_len:y_train_len[:32]
+                      X: x_train[:batch_size],
+                      begin: 0,
+                      X_len: x_train_len[:batch_size],
+                      Y: (indices, values, shape),
+                      Y_len: y_train_len[:batch_size]
                   })
+
     print(gg, gg.shape)
