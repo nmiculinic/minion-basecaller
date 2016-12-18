@@ -1,15 +1,16 @@
 import tensorflow as tf
 import numpy as np
-from util import atrous_conv1d
+from util import *
 from sklearn.preprocessing import LabelEncoder, StandardScaler
+from scipy import sparse
 
 max_reach = 32  # How many extra elements I have to fetch for convolutions
 state_size = 50  # For RNN
-out_classes = 5  # A,G,T,C plus LAST state for blank. Last due to CTC implementation
+out_classes = 4 + 4 + 1  # A,G,T,C plus LAST state for blank. Last due to CTC implementation
 
 # For slicing input (due to data locality it's more efficient to keep as much data as possible on GPU, thus slicing):
 begin = tf.placeholder(dtype=tf.int32, shape=[], name="begin")
-length = 50  # Fixed due to dynamic_rnn
+length = 15  # Fixed due to dynamic_rnn
 
 # TODO, once I have data pipeline in place
 
@@ -57,50 +58,55 @@ yy_len = tf.clip_by_value(Y_len - begin, 0, length)
 
 print("logits: ", logits.get_shape())
 
-logits = tf.Print(logits, [tf.shape(Y)])
+loss = tf.nn.ctc_loss(inputs=logits, labels=Y, sequence_length=yy_len, preprocess_collapse_repeated=False, ctc_merge_repeated=True, time_major=False)
 
+loss = tf.reduce_mean(loss)
 
-loss = tf.nn.ctc_loss(inputs=logits, labels=Y, sequence_length=yy_len, preprocess_collapse_repeated=False, ctc_merge_repeated=False, time_major=False)
+predicted, predicted_logprob = tf.nn.ctc_beam_search_decoder(tf.transpose(logits, [1, 0, 2]), yy_len, merge_repeated=True)
 
-predicted, predicted_logprob = tf.nn.ctc_beam_search_decoder(tf.transpose(logits, [1, 0, 2]), yy_len, merge_repeated=False)
-
-pred = tf.cast(predicted[0], tf.int32)
+pred = tf.sparse_tensor_to_dense(tf.cast(predicted[0], tf.int32))
 
 optimizer = tf.train.AdamOptimizer()
 train_op = optimizer.minimize(loss)
 grads = optimizer.compute_gradients(loss)
 
 if __name__ == "__main__":
-    # ds = np.load('/home/lpp/Desktop/dataset.npz')
-    # x_train, y_train = ds['X'], ds['Y']
-    x_train_len = np.repeat(5000, 100)
-    y_train_len = np.repeat(5000, 100)
+    ds = np.load('/home/lpp/Desktop/dataset.npz')
+    x_train, y_train = ds['X'], ds['Y']
+    x_train_len = np.repeat(20, 100)
+    y_train_len = np.repeat(5, 100)
 
-    # label_encoder = LabelEncoder()
-    # label_encoder.classes_ = np.array(['A', 'G', 'T', 'C', 'N'])
+    y_out, poss = encode(y_train)
 
-    # y_train = label_encoder.transform(y_train.reshape(-1)).reshape(-1, 5000)
-
-    # preprocess_x = StandardScaler()
-    # x_train = preprocess_x.fit_transform(x_train.reshape(-1, 5000 * 3)).reshape(-1, 5000, 3)
-
-    x_train = np.random.uniform(size=[100, 5000, 3])
-    y_train = np.random.randint(5, size=[100, 5000])
-
-    indices = np.array([[0, 0]], dtype=np.int64)
-    values = np.array([1.0], dtype=np.float32)
-    shape = np.array([1, 50], dtype=np.int64)
+    preprocess_x = StandardScaler()
+    x_train = preprocess_x.fit_transform(x_train.reshape(-1, 5000 * 3)).reshape(-1, 5000, 3)
 
     # Testing stuff
     sess = tf.Session()
     sess.run(tf.global_variables_initializer())
-    gg = sess.run(Y, feed_dict=
-                  {
-                      X: x_train[:batch_size],
-                      begin: 0,
-                      X_len: x_train_len[:batch_size],
-                      Y: (indices, values, shape),
-                      Y_len: y_train_len[:batch_size]
-                  })
 
-    print(gg, gg.shape)
+    print(y_out[:batch_size, :length])
+    print(decode(y_out[:batch_size, :length]))
+
+    feed = {
+        X: x_train[:batch_size],
+        begin: 0,
+        X_len: x_train_len[:batch_size],
+        Y: sparse_tuple_from(y_out[:batch_size, :5]),
+        Y_len: y_train_len[:batch_size]
+    }
+
+    print("Target: ", decode(y_out[:batch_size, :length]))
+
+    for i in range(1001):
+        loss_val, _ = sess.run([loss, train_op], feed_dict=feed)
+        # print("Loss", i, loss_val)
+        if (i % 20 == 0):
+            gg = sess.run(pred, feed_dict=feed)
+            gg = decode(gg)
+            print("%4d %.3f" % (i, loss_val), "decoded:", gg)
+            if loss_val < 0.1:
+                break
+
+    print("Target: ", decode(y_out[:batch_size, :length]))
+    print("Target: ", y_out[:batch_size, :length])
