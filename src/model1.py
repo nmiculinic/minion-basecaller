@@ -17,7 +17,7 @@ out_classes = 4 + 4 + 1  # A,G,T,C plus LAST state for blank. Last due to CTC im
 with tf.variable_scope("input"):
     block_size = 25   # Training block size
     num_blocks = 2
-    batch_size = 1
+    batch_size = 2
     num_examples = 10
 
     input_vars = [
@@ -47,15 +47,15 @@ with tf.control_dependencies([
 ]):
     left = tf.maximum(0, begin - max_reach)
     right = tf.minimum(tf.shape(X)[1], begin + block_size + max_reach)
-    X_len = tf.squeeze(tf.slice(input_var_dict['X_len'], [start_batch_idx, block_idx], [batch_size, 1]), [0])
+    X_len = tf.squeeze(tf.slice(input_var_dict['X_len'], [start_batch_idx, block_idx], [batch_size, 1]), [1])
 
-    Y_len = tf.squeeze(tf.slice(input_var_dict['Y_len'], [start_batch_idx, block_idx], [batch_size, 1]), [0])
+    Y_len = tf.squeeze(tf.slice(input_var_dict['Y_len'], [start_batch_idx, block_idx], [batch_size, 1]), [1])
     Y = dense2d_to_sparse(tf.slice(input_var_dict['Y'], [start_batch_idx, begin], [batch_size, block_size]), Y_len, dtype=tf.int32)
 
 
 net = tf.slice(X, [start_batch_idx, left, 0], [batch_size, right - left, -1])
 net.set_shape([batch_size, None, 3])
-for i, no_channel in zip([1], [8, 16, 16, 16]):
+for i, no_channel in zip([1, 2], [8, 16, 16, 16]):
     with tf.variable_scope("atrous_conv1d_%d" % i):
         print(net.get_shape())
         filter = tf.get_variable("W", shape=(3, net.get_shape()[-1], no_channel))
@@ -79,11 +79,11 @@ with tf.variable_scope("Output"):
 print("logits: ", logits.get_shape())
 logits_time_major = tf.transpose(logits, [1, 0, 2])
 
-loss = tf.nn.ctc_loss(inputs=logits_time_major, labels=Y, sequence_length=Y_len, time_major=True)
+loss = tf.nn.ctc_loss(inputs=logits_time_major, labels=Y, sequence_length=X_len, time_major=True)
 
 loss = tf.reduce_mean(loss)
 
-predicted, prdicted_logprob = tf.nn.ctc_beam_search_decoder(logits_time_major, Y_len, merge_repeated=True)
+predicted, prdicted_logprob = tf.nn.ctc_beam_search_decoder(logits_time_major, X_len, merge_repeated=True, top_paths=1)
 
 pred = tf.sparse_tensor_to_dense(tf.cast(predicted[0], tf.int32))
 
@@ -99,24 +99,26 @@ if __name__ == "__main__":
     sess = tf.Session()
     sess.run(tf.global_variables_initializer())
 
-    perm = np.random.permutation(num_examples)
-    feed = {
-        input_var_dict[x + "_feed"]: ds[x][perm] for x in keys
-    }
-
-    sess.run([input_var_dict[x + "_assign"] for x in keys], feed_dict=feed)
-
-    print("Target: ", decode_example(ds['Y'][perm][0], ds['Y_len'][perm][0], num_blocks, block_size))
-
     for i in range(1001):
         loss_val = 0
-        state = sess.run(init_state)
-        for blk in range(num_blocks):
-            loss_val, _, state = sess.run([loss, train_op, final_state], feed_dict={
-                block_idx: blk,
-                start_batch_idx: 0,
-                init_state: state
-            })
+
+        perm = np.random.permutation(num_examples)
+        feed = {
+            input_var_dict[x + "_feed"]: ds[x][perm] for x in keys
+        }
+        sess.run([input_var_dict[x + "_assign"] for x in keys], feed_dict=feed)
+
+        def print_d(idx):
+            print("%13sTarget:" % "", decode_example(ds['Y'][perm][idx], ds['Y_len'][perm][idx], num_blocks, block_size))
+
+        for batch_idx in range(0, num_examples, batch_size):
+            state = sess.run(init_state)
+            for blk in range(num_blocks):
+                loss_val, _, state = sess.run([loss, train_op, final_state], feed_dict={
+                    block_idx: blk,
+                    start_batch_idx: batch_idx,
+                    init_state: state
+                })
         if (i % 20 == 0):
             state = sess.run(init_state)
             gg = []
@@ -126,10 +128,10 @@ if __name__ == "__main__":
                     start_batch_idx: 0,
                     init_state: state
                 })
-                gg.append("".join([str(x) for x in decode(ff.ravel())]))
+                gg.append("".join([str(x) for x in decode(ff[0].ravel())]))
 
-            print("%4d %.3f" % (i, np.sum(loss_val)), "decoded:", gg)
-            print("Target: ", decode_example(ds['Y'][perm][0], ds['Y_len'][perm][0], num_blocks, block_size))
+            print("%4d %6.3f" % (i, np.sum(loss_val)), "decoded:", gg)
+            print_d(0)
 
-            if np.sum(loss_val) < 0.1:
-                break
+            # if np.sum(loss_val) < 0.1:
+                # break
