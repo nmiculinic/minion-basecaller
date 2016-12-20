@@ -161,6 +161,31 @@ def gen_dummy_ds(size=100):
             Y.append(y)
     np.savez_compressed(os.path.expanduser('~/dataset.npz'), X=X, Y=Y)
 
+def decode_example(Y, Y_len, num_blocks, block_size):
+    gg = []
+    for blk in range(num_blocks):
+        gg.append("".join([str(x) for x in decode(Y[blk*block_size:blk*block_size + Y_len[blk]].ravel())]))
+    return gg
+
+def dense2d_to_sparse(dense_input, length, name=None, dtype=None):
+    with tf.name_scope(name, "dense2d_to_sparse"):
+        num_batches = dense_input.get_shape()[0]
+        print(dense_input.get_shape())
+        print(length.get_shape())
+
+        indices = [tf.pack([tf.fill([length[x]], x), tf.range(length[x])], axis=1) for x in range(num_batches)]
+        indices = tf.concat(0, indices)
+        indices = tf.to_int64(indices)
+
+        values = [tf.squeeze(tf.slice(dense_input, [x, 0], [1, length[x]]), squeeze_dims=[0]) for x in range(num_batches)]
+        values = tf.concat(0, values)
+
+        if dtype is not None:
+            values = tf.cast(values, dtype)
+
+        return tf.SparseTensor(indices, values, tf.to_int64(tf.shape(dense_input)))
+
+
 if __name__ == "__main__":
     X = tf.constant(np.array([1, 2, 3, 4, 5, 6, 7]).reshape(1, 7, 1), dtype=tf.float32)
     kernel = tf.constant(np.array([100, 10, 1]).reshape(3, 1, 1), dtype=tf.float32)
