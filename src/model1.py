@@ -7,6 +7,10 @@ import sys
 import os
 from tensorflow.python.client import timeline
 import time
+import multiprocessing
+from threading import Thread
+import input_readers
+
 
 max_reach = 32  # How many extra elements I have to fetch for convolutions
 state_size = 50  # For RNN
@@ -27,24 +31,21 @@ with tf.variable_scope("input"):
         tf.get_variable("Y", initializer=tf.zeros_initializer([batch_size, block_size * num_blocks], tf.uint8), trainable=False),
         tf.get_variable("Y_len", initializer=tf.zeros_initializer([batch_size, num_blocks], tf.int32), trainable=False),
     ]
-    order = [x.name[6:-2] for x in input_vars]
+    names = [x.name[6:-2] for x in input_vars]
     shapes = [x.get_shape()[1:] for x in input_vars]
     types = [x.dtype.base_dtype for x in input_vars]
     queue = tf.RandomShuffleQueue(5 * batch_size, 2 * batch_size, types, shapes=shapes)
 
     input_var_dict = {}
-    for x, qx in zip(input_vars, queue.dequeue_many(batch_size)):
-        name = x.name[6:-2]
+    dequeue_op = queue.dequeue_many(batch_size)
+    for name, x, qx in zip(names, input_vars, dequeue_op):
         input_var_dict[name] = x
         feed = tf.placeholder_with_default(qx, shape=x.get_shape(), name=name + "_feed")
         input_var_dict[name + "_feed"] = feed
         input_var_dict[name + "_assign"] = tf.assign(x, feed, name=name + "_assign")
-        print(x.dtype)
         input_var_dict[name + "_enqueue_val"] = tf.placeholder(x.dtype.base_dtype, x.get_shape(), name=name + "_enqueue_val")
 
-    enqueue_op = queue.enqueue_many([input_var_dict[name + "_enqueue_val"] for name in order])
-
-    print(*[v for k, v in input_var_dict.items() if '_assign' in k])
+    enqueue_op = queue.enqueue_many([input_var_dict[name + "_enqueue_val"] for name in names])
     input_var_dict['load_queue'] = tf.group(*[v for k, v in input_var_dict.items() if '_assign' in k])
 
     block_idx = tf.placeholder(dtype=tf.int32, shape=[], name="block_idx")
@@ -99,6 +100,29 @@ with tf.name_scope("model"):
     train_op = optimizer.minimize(loss)
     grads = optimizer.compute_gradients(loss)
 
+
+def queue_feeder_proc(sess, coord, fun, args, proc=False):
+    """ Proc = True is GIL workaround """
+    def thread_fn():
+        if proc:
+            q = multiprocessing.Queue()
+            p = multiprocessing.Process(target=input_readers.proc_wrapper, args=(q, fun, *args))
+            p.start()
+            gen_next = lambda: q.get()
+        else:
+            gen_fn = fun(*args)
+            gen_next = lambda: next(gen_fn)
+        while not coord.should_stop():
+            feed = gen_next()
+            feed = {input_var_dict[k]: v for k, v in feed.items()}
+            sess.run(enqueue_op, feed_dict=feed)
+
+        if proc:
+            p.terminate()
+
+    return Thread(target=thread_fn, daemon=True)
+
+
 if __name__ == "__main__":
 
     ds = np.load(os.path.expanduser('~/dataset.npz'))
@@ -109,26 +133,15 @@ if __name__ == "__main__":
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
+    feed_threads = [queue_feeder_proc(sess, coord, input_readers.get_feed_yield, [keys, batch_size], proc=True) for _ in range(3)]
+    for feed_thread in feed_threads:
+        feed_thread.start()
+
     try:
         batch_time = 0
         for i in range(10001):
             if i == 0:
-                for _ in range(3):
-                    feed = {
-                            input_var_dict[name + "_enqueue_val"]: ds[name] for name in keys
-                    }
-                    feed[input_var_dict['X_len_enqueue_val']] = np.array([500] * batch_size)
-                    sess.run(enqueue_op, feed_dict=feed)
-
                 sess.run(input_var_dict['load_queue'])
-
-                perm = np.arange(batch_size)
-                # perm = np.random.permutation(batch_size)
-                # feed = {
-                #     input_var_dict[x + "_feed"]: ds[x][:batch_size][perm] for x in keys
-                # }
-                # feed[input_var_dict["X_len_feed"]] = np.array([500] * batch_size)
-                # sess.run([input_var_dict[x + "_assign"] for x in keys], feed_dict=feed)
 
             def print_d(idx):
                 yy, yy_len = sess.run([input_vars[2], input_vars[3]])
@@ -170,19 +183,13 @@ if __name__ == "__main__":
 
                 print("%4d %6.3f" % (i, np.sum(loss_val)), "decoded:", gg)
                 print_d(0)
-
-                # Refresh queue a bit
-                feed = {
-                        input_var_dict[name + "_enqueue_val"]: ds[name] for name in keys
-                }
-                feed[input_var_dict['X_len_enqueue_val']] = np.array([500] * batch_size)
-                sess.run(enqueue_op, feed_dict=feed)
+                t0 = time.clock()
                 sess.run(input_var_dict['load_queue'])
-
-                # if np.sum(loss_val) < 0.1:
-                    # break
+                print("loading_time %.3f" % (time.clock() - t0))
 
     finally:
         coord.request_stop()
+        for feed_thread in feed_threads:
+                feed_thread.join()
     coord.join(threads)
     sess.close()
