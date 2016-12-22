@@ -5,6 +5,7 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler
 from scipy import sparse
 import sys
 import os
+from tensorflow.python.client import timeline
 
 
 max_reach = 32  # How many extra elements I have to fetch for convolutions
@@ -102,11 +103,12 @@ if __name__ == "__main__":
     for i in range(1001):
         loss_val = 0
 
-        perm = np.random.permutation(num_examples)
-        feed = {
-            input_var_dict[x + "_feed"]: ds[x][perm] for x in keys
-        }
-        sess.run([input_var_dict[x + "_assign"] for x in keys], feed_dict=feed)
+        if i == 0:
+            perm = np.random.permutation(num_examples)
+            feed = {
+                input_var_dict[x + "_feed"]: ds[x][perm] for x in keys
+            }
+            sess.run([input_var_dict[x + "_assign"] for x in keys], feed_dict=feed)
 
         def print_d(idx):
             print("%13sTarget:" % "", decode_example(ds['Y'][perm][idx], ds['Y_len'][perm][idx], num_blocks, block_size))
@@ -114,21 +116,34 @@ if __name__ == "__main__":
         for batch_idx in range(0, num_examples, batch_size):
             state = sess.run(init_state)
             for blk in range(num_blocks):
+                run_metadata = tf.RunMetadata()
                 loss_val, _, state = sess.run([loss, train_op, final_state], feed_dict={
                     block_idx: blk,
                     start_batch_idx: batch_idx,
                     init_state: state
-                })
+                }, options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
+                run_metadata=run_metadata)
+
+                trace = timeline.Timeline(step_stats=run_metadata.step_stats)
+                trace_file = open('timeline.ctf_loss.json', 'w')
+                trace_file.write(trace.generate_chrome_trace_format())
         if (i % 20 == 0):
             state = sess.run(init_state)
             gg = []
             for blk in range(num_blocks):
+                run_metadata = tf.RunMetadata()
+
                 ff, state = sess.run([pred, final_state], feed_dict={
                     block_idx: blk,
                     start_batch_idx: 0,
                     init_state: state
-                })
+                }, options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
+                run_metadata=run_metadata)
                 gg.append("".join([str(x) for x in decode(ff[0].ravel())]))
+
+                trace = timeline.Timeline(step_stats=run_metadata.step_stats)
+                trace_file = open('timeline.ctf_decode.json', 'w')
+                trace_file.write(trace.generate_chrome_trace_format())
 
             print("%4d %6.3f" % (i, np.sum(loss_val)), "decoded:", gg)
             print_d(0)
