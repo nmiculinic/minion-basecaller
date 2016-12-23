@@ -1,23 +1,13 @@
 import numpy as np
-import os
 import util
-import sys
 import socket
 import tensorflow as tf
-from util import dense2d_to_sparse, decode_example
+from util import dense2d_to_sparse, decode_example, decode
 import input_readers
 import multiprocessing
 from threading import Thread
 import time
 from tensorflow.python.client import timeline
-
-
-# block_size = 50   # Training block size
-# num_blocks = 2
-# batch_size = 16
-# max_reach = 32
-
-
 
 
 class Model():
@@ -66,17 +56,17 @@ class Model():
                     X_len = tf.clip_by_value(ops['X_len'] - block_idx * block_size, 0, block_size)
 
                 net = tf.slice(X, [0, left, 0], [-1, right - left, -1])
-                net = tf.Print(net, [left, right], message="LR")
-                net = tf.Print(net, [block_idx, tf.shape(net)], message="before padding")
+                # net = tf.Print(net, [left, right], message="LR")
+                # net = tf.Print(net, [block_idx, tf.shape(net)], message="before padding")
                 padding = [
                     [0, 0],
                     [tf.maximum(0, max_reach - begin), tf.maximum(0, begin + block_size + max_reach - max_len)],
                     [0, 0]
                 ]
                 padding = tf.convert_to_tensor(padding)
-                net = tf.Print(net, [padding], message="padding")
+                # net = tf.Print(net, [padding], message="padding")
                 net = tf.pad(net, padding)
-                net = tf.Print(net, [tf.shape(net)], message="after padding")
+                # net = tf.Print(net, [tf.shape(net)], message="after padding")
                 net.set_shape([batch_size, 2 * max_reach + block_size, 3])
 
             data = model_fn(
@@ -144,8 +134,8 @@ class Model():
         if 'sess' not in self.__dict__:
             raise ValueError("session not initialized")
 
-        tt = time.clock()
         self.sess.run(self.load_queue)
+        tt = time.clock()
         state = self.sess.run(self.init_state)
         for blk in range(self.num_blocks):
             run_metadata = tf.RunMetadata()
@@ -160,7 +150,33 @@ class Model():
                 trace_file = open('timeline.ctf_loss.json', 'w')
                 trace_file.write(trace.generate_chrome_trace_format())
         self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
-        print("batch time ", self.batch_time)
+
+    def summarize(self, iter_step):
+        print("avg time per batch %.3f" % self.batch_time)
+        state = self.sess.run(self.init_state)
+        gg = []
+        loss = 0
+        for blk in range(self.num_blocks):
+            run_metadata = tf.RunMetadata()
+
+            loss_val, ff, state = self.sess.run([self.loss, self.pred, self.final_state], feed_dict={
+                self.block_idx: blk,
+                self.init_state: state
+            }, options=tf.RunOptions(trace_level=self.trace_level),
+            run_metadata=run_metadata)
+            gg.append("".join([str(x) for x in decode(ff[0].ravel())]))
+            loss += loss_val
+
+            if self.trace_level > tf.RunOptions.NO_TRACE:
+                trace = timeline.Timeline(step_stats=run_metadata.step_stats)
+                trace_file = open('timeline.ctf_decode.json', 'w')
+                trace_file.write(trace.generate_chrome_trace_format())
+
+        print("%4d %6.3f" % (iter_step, np.sum(loss_val)), "decoded:", gg)
+        self.print_d(0)
+        t0 = time.clock()
+        self.sess.run(self.load_queue)
+        print("loading_time %.3f" % (time.clock() - t0))
 
     def init_session(self):
         self.sess = tf.Session()
@@ -172,6 +188,9 @@ class Model():
         for feed_thread in self.feed_threads:
             feed_thread.start()
 
+    def print_d(self, idx):
+        yy, yy_len = self.sess.run([self.Y, self.Y_len])
+        print("%13sTarget:" % "", decode_example(yy[idx], yy_len[idx], self.num_blocks, self.block_size))
 
     def close_session(self):
         self.coord.request_stop()
