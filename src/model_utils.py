@@ -27,7 +27,10 @@ class Model():
             log_dir = os.path.join(repo_root, 'log', socket.gethostname())
         if run_id is None:
             run_id = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(5))
-        self.log_dir = os.path.join(log_dir, run_id)
+
+        self.run_id = run_id
+        self.log_dir = os.path.join(log_dir, self.run_id)
+
         if os.path.exists(self.log_dir) and not overwrite:
             raise ValueError("path " + self.log_dir + " exists")
         os.makedirs(self.log_dir, mode=0o744, exist_ok=overwrite)
@@ -51,7 +54,7 @@ class Model():
                 shapes = [x.get_shape()[1:] for x in input_vars]
                 types = [x.dtype.base_dtype for x in input_vars]
 
-                queue_cap = 500 * batch_size
+                queue_cap = 5 * batch_size
                 queue = tf.FIFOQueue(queue_cap, types, shapes=shapes)
                 self.queue_size = tf.summary.scalar("queue_filled", tf.to_float(queue.size()) / queue_cap)
 
@@ -84,17 +87,13 @@ class Model():
                     X_len = tf.clip_by_value(ops['X_len'] - block_idx * block_size, 0, block_size)
 
                 net = tf.slice(X, [0, left, 0], [-1, right - left, -1])
-                # net = tf.Print(net, [left, right], message="LR")
-                # net = tf.Print(net, [block_idx, tf.shape(net)], message="before padding")
                 padding = [
                     [0, 0],
                     [tf.maximum(0, max_reach - begin), tf.maximum(0, begin + block_size + max_reach - max_len)],
                     [0, 0]
                 ]
                 padding = tf.convert_to_tensor(padding)
-                # net = tf.Print(net, [padding], message="padding")
                 net = tf.pad(net, padding)
-                # net = tf.Print(net, [tf.shape(net)], message="after padding")
                 net.set_shape([batch_size, 2 * max_reach + block_size, 3])
 
             data = model_fn(
@@ -209,7 +208,7 @@ class Model():
                 trace_file = open(os.path.join(self.log_dir, 'timeline.ctf_decode.json'), 'w')
                 trace_file.write(trace.generate_chrome_trace_format())
 
-        print("%4d %6.3f (output -> up, target -> down)" % (iter_step, np.sum(loss_val)))
+        print("[%s] %4d %6.3f (output -> up, target -> down)" % (self.run_id, iter_step, np.sum(loss_val)))
         target = self.decode_target(0, pad=self.block_size)
         for a, b in zip(out_net, target):
             print(a)
@@ -245,7 +244,8 @@ class Model():
         self.g.finalize()
         self.train_writer = tf.train.SummaryWriter(os.path.join(self.log_dir, 'train'), graph=self.g)
 
-        self.feed_threads = [self.queue_feeder_proc(input_readers.get_feed_yield2, [self.block_size, self.num_blocks, 10], proc=True) for _ in range(8)]
+        # TODO: More efficiantly solve this problem, and halting following:
+        self.feed_threads = [self.queue_feeder_proc(input_readers.get_feed_yield2, [self.block_size, self.num_blocks, 10], proc=True) for _ in range(2)]
         for feed_thread in self.feed_threads:
             feed_thread.start()
 

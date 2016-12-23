@@ -18,7 +18,7 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, reuse=F
 
     print("model in", net.get_shape())
     with tf.name_scope("model"):
-        for i, no_channel in zip([1,], [32, 64, 128, 256, 512]):
+        for i, no_channel in zip([1, ], [32, 64, 128, 256, 512]):
             with tf.variable_scope("atrous_conv1d_%d" % i):
                 filter = tf.get_variable("W", shape=(3, net.get_shape()[-1], no_channel))
                 bias = tf.get_variable("b", shape=(no_channel,))
@@ -48,7 +48,7 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, reuse=F
 if __name__ == "__main__":
     model = model_utils.Model(
         tf.get_default_graph(),
-        block_size=100,
+        block_size=50,
         num_blocks=2,
         batch_size=16,
         max_reach=1,
@@ -60,6 +60,8 @@ if __name__ == "__main__":
         model.train_minibatch()
         if i % 10 == 0:
             model.summarize(i)
+        if i % 100 == 0:
+            model.save(i)
 
     print("closing session")
     model.close_session()
