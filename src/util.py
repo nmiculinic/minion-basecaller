@@ -35,66 +35,6 @@ def atrous_conv1d(value, filters, rate, padding="SAME", name=None):
         return value
 
 
-def sparse_tuple_from(sequences, dtype=np.int32):
-    """Create a sparse representention of x.
-    Args:
-        sequences: a list of lists of type dtype where each element is a sequence
-    Returns:
-        A tuple with (indices, values, shape)
-    """
-    indices = []
-    values = []
-
-    for n, seq in enumerate(sequences):
-        indices.extend(zip([n] * len(seq), range(len(seq))))
-        values.extend(seq)
-
-    indices = np.asarray(indices, dtype=np.int64)
-    values = np.asarray(values, dtype=dtype)
-    shape = np.asarray([len(sequences), np.asarray(indices).max(0)[1] + 1], dtype=np.int64)
-
-    return indices, values, shape
-
-
-def encode(arr):
-    """Create a sparse representention of x.
-        Adjacent repetative symbols are encoded with difference 4 (e.g. AAA -> 0,4,0). Blanks are removed (N)
-    Args:
-        arr: 2D unicode matrix with AGTC or N charaters
-    Returns:
-        y_out: label encoded matrix.
-        poss: label string length
-    """
-    y_out = np.zeros_like(arr, dtype=np.int32)
-    poss = np.zeros(arr.shape[0], dtype=np.int32)
-    dicg = {'A': 0, 'G': 1, 'T': 2, 'C': 3}
-    for i in range(arr.shape[0]):
-        prev = "N"
-        for j in range(arr.shape[1]):
-            if arr[i, j] in "AGTC":
-                if prev != arr[i, j]:
-                    y_out[i, poss[i]] = dicg[arr[i, j]]
-                    prev = arr[i, j]
-                else:
-                    y_out[i, poss[i]] = 4 + dicg[arr[i, j]]
-                    prev = "N"
-
-                poss[i] += 1
-            elif arr[i, j] == 'N':
-                pass
-            else:
-                raise ValueError("wtf")
-    return y_out, poss
-
-
-def decode(arr):
-    arr = arr.astype(np.int32)
-    y_out = np.zeros_like(arr, dtype=np.unicode)
-    for i, a in enumerate("AGTCAGTCN"):
-        y_out[arr == i] = a
-    return y_out
-
-
 def read_fast5(filename, block_size, num_blocks):
     def next_num(prev, symbol):
         val = {
@@ -169,25 +109,20 @@ def read_fast5(filename, block_size, num_blocks):
     return x, x_len, y, y_len
 
 
-def gen_dummy_ds(size=100):
-    files = list(map(lambda x:x[:-6], os.listdir('./pass')))
-    random.shuffle(files)
-    X, Y = [], []
-    for file in files:
-        if len(X) == size:
-            break
-        sol = read_fast5(file)
-        if sol is not None:
-            x, y = sol
-            X.append(x)
-            Y.append(y)
-    np.savez_compressed(os.path.expanduser('~/dataset.npz'), X=X, Y=Y)
+def decode(arr):
+    arr = arr.astype(np.int32)
+    y_out = np.zeros_like(arr, dtype=np.unicode)
+    for i, a in enumerate("AGTCAGTCN"):
+        y_out[arr == i] = a
+    return y_out
+
 
 def decode_example(Y, Y_len, num_blocks, block_size):
     gg = []
     for blk in range(num_blocks):
         gg.append("".join([str(x) for x in decode(Y[blk*block_size:blk*block_size + Y_len[blk]].ravel())]))
     return gg
+
 
 def dense2d_to_sparse(dense_input, length, name=None, dtype=None):
     with tf.name_scope(name, "dense2d_to_sparse"):
