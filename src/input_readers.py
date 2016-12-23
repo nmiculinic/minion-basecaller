@@ -3,6 +3,7 @@ import os
 import util
 from random import shuffle
 import sys
+import socket
 
 def get_feed_yield(keys, batch_size):
     ds = np.load(os.path.expanduser('~/dataset.npz'))
@@ -17,8 +18,14 @@ def get_feed_yield(keys, batch_size):
 dataset_2_cache = {}
 
 
-def get_feed_yield2(block_size, num_blocks, batch_size=10):
-    root_dir = '/hgst8TB/fjurisic/ecoli/pass'
+def get_feed_yield2(block_size, num_blocks, batch_size=10, root_dir=None):
+    if root_dir is None:
+        if socket.gethostname() == "karla":
+            root_dir = '/hgst8TB/fjurisic/ecoli/pass'
+        elif socket.gethostname() == "protagonist":
+            root_dir = '/home/lpp/Downloads/minion/pass'
+        else:
+            raise ValueError("Root dir cannot be infered")
     items = list(os.listdir(root_dir))
     names = ["X", "X_len", "Y", "Y_len"]
     while True:
