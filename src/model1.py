@@ -48,16 +48,16 @@ if __name__ == "__main__":
     model = model_utils.Model(
         tf.get_default_graph(),
         block_size=50,
-        num_blocks=2,
-        batch_size=16,
+        num_blocks=3,
+        batch_size=4,
         max_reach=3,
         model_fn=model_fn
     )
     model.init_session()
-    for i in range(1001):
-        model.train_minibatch()
-        if i % 20 == 0:
-            model.summarize(i)
+    # for i in range(21):
+    model.train_minibatch()
+        # if i % 20 == 0:
+    model.summarize(0)
 
     print("closing session")
     model.close_session()

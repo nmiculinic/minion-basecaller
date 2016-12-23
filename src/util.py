@@ -117,11 +117,32 @@ def decode(arr):
     return y_out
 
 
-def decode_example(Y, Y_len, num_blocks, block_size):
+def decode_sparse(arr, pad=None):
+    indices = arr.indices
+    if pad is None:
+        pad = np.max(indices[:, 1]) + 1
+    values = decode(arr.values)
+    shape = arr.shape
+
+    tmp = np.array([[' '] * pad] * shape[0])
+    for ind, val in zip(indices, values):
+        r, c = ind
+        tmp[r, c] = val
+    sol = np.array([' ' * pad] * shape[0])
+    for row in range(shape[0]):
+        sol[row] = "".join([c for c in tmp[row]])
+    return sol
+
+
+def decode_example(Y, Y_len, num_blocks, block_size, pad=None):
     gg = []
     for blk in range(num_blocks):
         gg.append("".join([str(x) for x in decode(Y[blk*block_size:blk*block_size + Y_len[blk]].ravel())]))
-    return gg
+
+    if pad is None:
+        pad = np.max(list(map(len, gg)))
+
+    return list(map(lambda x: x.ljust(pad, ' '), gg))
 
 
 def dense2d_to_sparse(dense_input, length, name=None, dtype=None):

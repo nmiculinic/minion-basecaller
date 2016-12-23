@@ -2,7 +2,7 @@ import numpy as np
 import util
 import socket
 import tensorflow as tf
-from util import dense2d_to_sparse, decode_example, decode
+from util import dense2d_to_sparse, decode_example, decode, decode_sparse
 import input_readers
 import multiprocessing
 from threading import Thread
@@ -12,6 +12,11 @@ from tensorflow.python.client import timeline
 
 class Model():
     def __init__(self, g, block_size, num_blocks, batch_size, max_reach, model_fn):
+        """
+            Args:
+                max_reach: int, size of contextual window for convolutions etc.
+                model_fn: function accepting (batch_size, 2*max_reach + block_size, 3) -> (block_size, batch_size, out_classes). Notice shift to time major as well as reduction in time dimension.
+        """
         self.block_size = block_size
         self.num_blocks = num_blocks
         with g.as_default():
@@ -94,6 +99,7 @@ class Model():
 
             predicted, prdicted_logprob = tf.nn.ctc_beam_search_decoder(logits, X_len, merge_repeated=True, top_paths=1)
             pred = tf.sparse_tensor_to_dense(tf.cast(predicted[0], tf.int32))
+            pred = predicted[0]
 
             optimizer = tf.train.AdamOptimizer()
             train_op = optimizer.minimize(loss)
@@ -154,7 +160,7 @@ class Model():
     def summarize(self, iter_step):
         print("avg time per batch %.3f" % self.batch_time)
         state = self.sess.run(self.init_state)
-        gg = []
+        out_net = []
         loss = 0
         for blk in range(self.num_blocks):
             run_metadata = tf.RunMetadata()
@@ -164,7 +170,7 @@ class Model():
                 self.init_state: state
             }, options=tf.RunOptions(trace_level=self.trace_level),
             run_metadata=run_metadata)
-            gg.append("".join([str(x) for x in decode(ff[0].ravel())]))
+            out_net.append(decode_sparse(ff, pad=self.block_size)[0])
             loss += loss_val
 
             if self.trace_level > tf.RunOptions.NO_TRACE:
@@ -172,8 +178,13 @@ class Model():
                 trace_file = open('timeline.ctf_decode.json', 'w')
                 trace_file.write(trace.generate_chrome_trace_format())
 
-        print("%4d %6.3f" % (iter_step, np.sum(loss_val)), "decoded:", gg)
-        self.print_d(0)
+        print("%4d %6.3f (output -> up, target -> down)" % (iter_step, np.sum(loss_val)))
+        target = self.decode_target(0, pad=self.block_size)
+        for a, b in zip(out_net, target):
+            print(a)
+            print(b)
+            print('----')
+
         t0 = time.clock()
         self.sess.run(self.load_queue)
         print("loading_time %.3f" % (time.clock() - t0))
@@ -188,9 +199,9 @@ class Model():
         for feed_thread in self.feed_threads:
             feed_thread.start()
 
-    def print_d(self, idx):
+    def decode_target(self, idx, pad=None):
         yy, yy_len = self.sess.run([self.Y, self.Y_len])
-        print("%13sTarget:" % "", decode_example(yy[idx], yy_len[idx], self.num_blocks, self.block_size))
+        return decode_example(yy[idx], yy_len[idx], self.num_blocks, self.block_size, pad=pad)
 
     def close_session(self):
         self.coord.request_stop()
