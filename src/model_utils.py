@@ -141,6 +141,9 @@ class Model():
         self.batch_time = 0
         self.dequeue_time = 0
         self.merged = tf.summary.merge_all()
+        self.saver = tf.train.Saver(
+            keep_checkpoint_every_n_hours=1,
+        )
 
     def queue_feeder_proc(self, fun, args, proc=False):
         """ Proc = True is GIL workaround """
@@ -220,13 +223,22 @@ class Model():
             tf.Summary.Value(tag="input/dequeue_time", simple_value=self.dequeue_time),
         ]), global_step=iter_step)
 
+    def save(self, iter_step):
+        self.saver.save(
+            self.sess,
+            os.path.join(self.log_dir, 'model.ckpt'),
+            global_step=iter_step
+        )
 
-    def init_session(self):
+    def init_session(self, restore=None):
         self.sess = tf.Session(
             graph=self.g,
             config=tf.ConfigProto(log_device_placement=False)
         )
-        self.sess.run(tf.global_variables_initializer())
+        if restore is not None:
+            self.saver.restore(self.sess, os.path.join(self.log_dir, 'model.ckpt'))
+        else:
+            self.sess.run(tf.global_variables_initializer())
         self.coord = tf.train.Coordinator()
         self.threads = tf.train.start_queue_runners(sess=self.sess, coord=self.coord)
 
