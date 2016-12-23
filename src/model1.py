@@ -4,6 +4,7 @@ from util import atrous_conv1d
 import sys
 import os
 import model_utils
+import time
 
 
 def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, reuse=False, **kwargs):
@@ -17,7 +18,7 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, reuse=F
 
     print("model in", net.get_shape())
     with tf.name_scope("model"):
-        for i, no_channel in zip([1, 2], [32, 64, 128, 256, 512]):
+        for i, no_channel in zip([1,], [32, 64, 128, 256, 512]):
             with tf.variable_scope("atrous_conv1d_%d" % i):
                 filter = tf.get_variable("W", shape=(3, net.get_shape()[-1], no_channel))
                 bias = tf.get_variable("b", shape=(no_channel,))
@@ -47,19 +48,21 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, reuse=F
 if __name__ == "__main__":
     model = model_utils.Model(
         tf.get_default_graph(),
-        block_size=50,
-        num_blocks=3,
-        batch_size=4,
-        max_reach=3,
-        model_fn=model_fn
+        block_size=100,
+        num_blocks=2,
+        batch_size=16,
+        max_reach=1,
+        model_fn=model_fn,
     )
     model.init_session()
-    # for i in range(21):
-    model.train_minibatch()
-        # if i % 20 == 0:
-    model.summarize(0)
+
+    for i in range(1001):
+        model.train_minibatch()
+        if i % 10 == 0:
+            model.summarize(i)
 
     print("closing session")
     model.close_session()
     print("finishing")
+    time.sleep(10)
     sys.exit(0)

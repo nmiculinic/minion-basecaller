@@ -2,21 +2,41 @@ import numpy as np
 import util
 import socket
 import tensorflow as tf
-from util import dense2d_to_sparse, decode_example, decode, decode_sparse
+from util import dense2d_to_sparse, decode_example, decode_sparse
 import input_readers
 import multiprocessing
 from threading import Thread
 import time
 from tensorflow.python.client import timeline
+import os
+import string
+import random
+import shutil
 
+repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 
 class Model():
-    def __init__(self, g, block_size, num_blocks, batch_size, max_reach, model_fn):
+    def __init__(self, g, block_size, num_blocks, batch_size, max_reach, model_fn, log_dir=None, run_id=None, overwrite=False):
         """
             Args:
                 max_reach: int, size of contextual window for convolutions etc.
                 model_fn: function accepting (batch_size, 2*max_reach + block_size, 3) -> (block_size, batch_size, out_classes). Notice shift to time major as well as reduction in time dimension.
         """
+
+        if log_dir is None:
+            log_dir = os.path.join(repo_root, 'log', socket.gethostname())
+        if run_id is None:
+            run_id = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(5))
+        self.log_dir = os.path.join(log_dir, run_id)
+        if os.path.exists(self.log_dir) and not overwrite:
+            raise ValueError("path " + self.log_dir + " exists")
+        os.makedirs(self.log_dir, mode=0o744, exist_ok=overwrite)
+        if overwrite:
+            shutil.rmtree(self.log_dir)
+            os.makedirs(self.log_dir, mode=0o744, exist_ok=overwrite)
+
+        print("Logdir = ", self.log_dir)
+
         self.block_size = block_size
         self.num_blocks = num_blocks
         with g.as_default():
@@ -30,7 +50,10 @@ class Model():
                 names = [x.name[6:-2] for x in input_vars]
                 shapes = [x.get_shape()[1:] for x in input_vars]
                 types = [x.dtype.base_dtype for x in input_vars]
-                queue = tf.RandomShuffleQueue(5 * batch_size, 2 * batch_size, types, shapes=shapes)
+
+                queue_cap = 500 * batch_size
+                queue = tf.FIFOQueue(queue_cap, types, shapes=shapes)
+                self.queue_size = tf.summary.scalar("queue_filled", tf.to_float(queue.size()) / queue_cap)
 
                 ops = {}
                 self.dequeue_op = queue.dequeue_many(batch_size)
@@ -116,6 +139,8 @@ class Model():
         self.g = g
         self.trace_level = tf.RunOptions.NO_TRACE
         self.batch_time = 0
+        self.dequeue_time = 0
+        self.merged = tf.summary.merge_all()
 
     def queue_feeder_proc(self, fun, args, proc=False):
         """ Proc = True is GIL workaround """
@@ -140,7 +165,10 @@ class Model():
         if 'sess' not in self.__dict__:
             raise ValueError("session not initialized")
 
+        tt = time.clock()
         self.sess.run(self.load_queue)
+        self.dequeue_time = 0.9 * self.dequeue_time + 0.1 * (time.clock() - tt)
+
         tt = time.clock()
         state = self.sess.run(self.init_state)
         for blk in range(self.num_blocks):
@@ -153,13 +181,13 @@ class Model():
 
             if self.trace_level > tf.RunOptions.NO_TRACE:
                 trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-                trace_file = open('timeline.ctf_loss.json', 'w')
+                trace_file = open(os.path.join(self.log_dir, 'timeline.ctf_loss.json'), 'w')
                 trace_file.write(trace.generate_chrome_trace_format())
         self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
 
     def summarize(self, iter_step):
         print("avg time per batch %.3f" % self.batch_time)
-        state = self.sess.run(self.init_state)
+        state, queue_size_sum = self.sess.run([self.init_state, self.queue_size])
         out_net = []
         loss = 0
         for blk in range(self.num_blocks):
@@ -175,7 +203,7 @@ class Model():
 
             if self.trace_level > tf.RunOptions.NO_TRACE:
                 trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-                trace_file = open('timeline.ctf_decode.json', 'w')
+                trace_file = open(os.path.join(self.log_dir, 'timeline.ctf_decode.json'), 'w')
                 trace_file.write(trace.generate_chrome_trace_format())
 
         print("%4d %6.3f (output -> up, target -> down)" % (iter_step, np.sum(loss_val)))
@@ -185,17 +213,27 @@ class Model():
             print(b)
             print('----')
 
-        t0 = time.clock()
-        self.sess.run(self.load_queue)
-        print("loading_time %.3f" % (time.clock() - t0))
+        self.train_writer.add_summary(queue_size_sum, global_step=iter_step)
+        self.train_writer.add_summary(tf.Summary(value=[
+            tf.Summary.Value(tag="loss", simple_value=loss_val.item()),
+            tf.Summary.Value(tag="input/time_per_batch", simple_value=self.batch_time),
+            tf.Summary.Value(tag="input/dequeue_time", simple_value=self.dequeue_time),
+        ]), global_step=iter_step)
+
 
     def init_session(self):
-        self.sess = tf.Session()
+        self.sess = tf.Session(
+            graph=self.g,
+            config=tf.ConfigProto(log_device_placement=False)
+        )
         self.sess.run(tf.global_variables_initializer())
         self.coord = tf.train.Coordinator()
         self.threads = tf.train.start_queue_runners(sess=self.sess, coord=self.coord)
 
-        self.feed_threads = [self.queue_feeder_proc(input_readers.get_feed_yield2, [self.block_size, self.num_blocks, 10], proc=True) for _ in range(3)]
+        self.g.finalize()
+        self.train_writer = tf.train.SummaryWriter(os.path.join(self.log_dir, 'train'), graph=self.g)
+
+        self.feed_threads = [self.queue_feeder_proc(input_readers.get_feed_yield2, [self.block_size, self.num_blocks, 10], proc=True) for _ in range(8)]
         for feed_thread in self.feed_threads:
             feed_thread.start()
 
@@ -209,3 +247,4 @@ class Model():
                 feed_thread.join()
         self.coord.join(self.threads)
         self.sess.close()
+        self.train_writer.flush()
