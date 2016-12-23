@@ -195,7 +195,7 @@ class Model():
         self.coord = tf.train.Coordinator()
         self.threads = tf.train.start_queue_runners(sess=self.sess, coord=self.coord)
 
-        self.feed_threads = [self.queue_feeder_proc(input_readers.get_feed_yield2, [self.block_size, self.num_blocks, 10], proc=False) for _ in range(3)]
+        self.feed_threads = [self.queue_feeder_proc(input_readers.get_feed_yield2, [self.block_size, self.num_blocks, 10], proc=True) for _ in range(3)]
         for feed_thread in self.feed_threads:
             feed_thread.start()
 
