@@ -2,12 +2,11 @@ import numpy as np
 import os
 import util
 from random import shuffle
-
+import sys
 
 def get_feed_yield(keys, batch_size):
     ds = np.load(os.path.expanduser('~/dataset.npz'))
     while True:
-        sum([i for i in range(int(1e7))])  # Expensive CPU op
         feed = {
             name + "_enqueue_val": ds[name] for name in keys
         }
@@ -33,7 +32,13 @@ def get_feed_yield2(block_size, num_blocks, batch_size=10):
                 else:
                     sol = util.read_fast5(fname, block_size, num_blocks)
                     dataset_2_cache[fname] = sol
-                if sol is not None and np.all(sol[3] > 0):
+                if sol is not None:
+                    if np.any(sol[3] == 0):
+                        # print(fname, "y_len 0, skipping", file=sys.stderr)
+                        continue
+                    if sol[0].shape != (block_size * num_blocks, 3):
+                        print(fname, "unexpected shape, skipping")
+                        continue
                     for a, b in zip(arrs, sol):
                         a.append(b)
 

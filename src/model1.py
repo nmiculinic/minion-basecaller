@@ -13,7 +13,7 @@ import input_readers
 
 
 max_reach = 32  # How many extra elements I have to fetch for convolutions
-state_size = 128  # For RNN
+state_size = 50  # For RNN
 out_classes = 4 + 4 + 1  # A,G,T,C plus LAST state for blank. Last due to CTC implementation
 trace_level = tf.RunOptions.NO_TRACE
 
@@ -21,8 +21,8 @@ trace_level = tf.RunOptions.NO_TRACE
 
 
 with tf.variable_scope("input"):
-    block_size = 100   # Training block size
-    num_blocks = 10
+    block_size = 50   # Training block size
+    num_blocks = 2
     batch_size = 16
 
     input_vars = [
@@ -43,7 +43,7 @@ with tf.variable_scope("input"):
         feed = tf.placeholder_with_default(qx, shape=x.get_shape(), name=name + "_feed")
         input_var_dict[name + "_feed"] = feed
         input_var_dict[name + "_assign"] = tf.assign(x, feed, name=name + "_assign")
-        input_var_dict[name + "_enqueue_val"] = tf.placeholder(x.dtype.base_dtype, [None, *x.get_shape()[1:]], name=name + "_enqueue_val")
+        input_var_dict[name + "_enqueue_val"] = tf.placeholder(x.dtype.base_dtype, shape=[None, *x.get_shape()[1:]], name=name + "_enqueue_val")
 
     enqueue_op = queue.enqueue_many([input_var_dict[name + "_enqueue_val"] for name in names])
     input_var_dict['load_queue'] = tf.group(*[v for k, v in input_var_dict.items() if '_assign' in k])
@@ -65,9 +65,10 @@ with tf.name_scope("model"):
         Y_len = tf.squeeze(tf.slice(input_var_dict['Y_len'], [0, block_idx], [batch_size, 1]), [1])
         Y = dense2d_to_sparse(tf.slice(input_var_dict['Y'], [0, begin], [batch_size, block_size]), Y_len, dtype=tf.int32)
 
+
     net = tf.slice(X, [0, left, 0], [batch_size, right - left, -1])
     net.set_shape([batch_size, None, 3])
-    for i, no_channel in zip([1, 2, 4, 8, 16], [32, 64, 128, 256, 256]):
+    for i, no_channel in zip([1,2], [32, 64, 128, 256, 512]):
         with tf.variable_scope("atrous_conv1d_%d" % i):
             filter = tf.get_variable("W", shape=(3, net.get_shape()[-1], no_channel))
             bias = tf.get_variable("b", shape=(no_channel,))
@@ -124,22 +125,18 @@ def queue_feeder_proc(sess, coord, fun, args, proc=False):
 
 if __name__ == "__main__":
 
-    ds = np.load(os.path.expanduser('~/dataset.npz'))
-    keys = list(ds.keys())
-
     sess = tf.Session()
     sess.run(tf.global_variables_initializer())
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
-    feed_threads = [queue_feeder_proc(sess, coord, input_readers.get_feed_yield2, [block_size, num_blocks, 10], proc=True) for _ in range(10)]
+    feed_threads = [queue_feeder_proc(sess, coord, input_readers.get_feed_yield2, [block_size, num_blocks, 10], proc=True) for _ in range(3)]
     for feed_thread in feed_threads:
         feed_thread.start()
 
     try:
         batch_time = 0
-        batch_load_time = 0
-        for i in range(100001):
+        for i in range(10001):
             if i == 0:
                 sess.run(input_var_dict['load_queue'])
 
@@ -162,14 +159,8 @@ if __name__ == "__main__":
                     trace_file = open('timeline.ctf_loss.json', 'w')
                     trace_file.write(trace.generate_chrome_trace_format())
             batch_time = 0.8*batch_time + 0.2 * (time.clock() - tt)
-
-            tt = time.clock()
-            sess.run(input_var_dict['load_queue'])
-            batch_load_time = 0.8*batch_load_time + 0.2 * (time.clock() - tt)
-
             if (i % 20 == 0):
                 print("avg time per batch %.3f" % batch_time)
-                print("avg batch loading_time %.3f" % batch_load_time)
                 state = sess.run(init_state)
                 gg = []
                 for blk in range(num_blocks):
@@ -189,7 +180,9 @@ if __name__ == "__main__":
 
                 print("%4d %6.3f" % (i, np.sum(loss_val)), "decoded:", gg)
                 print_d(0)
-
+                t0 = time.clock()
+                sess.run(input_var_dict['load_queue'])
+                print("loading_time %.3f" % (time.clock() - t0))
 
     finally:
         coord.request_stop()
