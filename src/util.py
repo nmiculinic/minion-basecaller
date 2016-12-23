@@ -95,9 +95,21 @@ def decode(arr):
     return y_out
 
 
-def read_fast5(filename, truncate=5000):
+def read_fast5(filename, block_size, num_blocks):
+    def next_num(prev, symbol):
+        val = {
+                'A':0,
+                'G':1,
+                'T':2,
+                'C':3,
+            }[symbol]
+        if symbol == prev:
+            return 'N', val+4
+        else:
+            return symbol, val
+
     'This assumes we are in the right dir.'
-    with h5py.File(os.path.join('pass', filename + '.fast5'), 'r') as h5:
+    with h5py.File(filename, 'r') as h5:
         reads = h5['Analyses/EventDetection_000/Reads']
         events = np.array(reads[list(reads.keys())[0] + '/Events'])
 
@@ -105,46 +117,49 @@ def read_fast5(filename, truncate=5000):
         basecalled = np.array(basecalled_events.value[['mean', 'stdv', 'model_state', 'move', 'start',
             'length']])
 
-        length = min(events.shape[0], truncate)
-        if events.shape[0] < truncate:
+        length = block_size * num_blocks
+        if events.shape[0] < length:
             print("WARNING...less then truncate events", filename)
-            return None
 
         # x[i] is feat values for event #i
-        x = np.zeros((length, 3))
+        x = np.zeros([length, 3], dtype=np.float32)
+        x_len = min(length, events.shape[0])
+
         # y[2*i] and y[2*i + 1] are bases for event #i
-        y = np.array(['N'] * length)
+        y = np.zeros([length], dtype=np.uint8)
+        y_len = np.zeros([num_blocks], dtype=np.uint8)
 
         bcall_idx = 0
-        write = 0
+        prev, curr_sec = "N", 0
         for i, e in enumerate(events[:length]):
-            write = max(write, i)
-            if write >= length:
-                print("WARN!!! Write", write, filename)
-                return None
+            if i // block_size > curr_sec:
+                prev, curr_sec = "N", i // block_size
+
             if bcall_idx < basecalled.shape[0]:
                 b = basecalled[bcall_idx]
                 if b[0] == e[2] and b[1] == e[3]: # mean == mean and stdv == stdv
+                    add_chr = []
                     if bcall_idx == 0:
-                        write = max(write - 5, 0)
-                        y[write:write+5] = list(b[2].decode("ASCII")) # initial model state
-                        write += 5
+                        add_chr.extend(list(b[2].decode("ASCII"))) # initial model state
                     bcall_idx += 1
                     if b[3] == 1:
-                        y[write] = chr(b[2][-1])
-                        write += 1
+                        add_chr.append(chr(b[2][-1]))
                     if b[3] == 2:
-                        y[write] = chr(b[2][-2])
-                        if write + 1 >= length:
-                            print("WARN!!! Write", write, filename)
-                            return None
-                        y[write + 1] = chr(b[2][-1])
-                        write += 2
+                        add_chr.append(chr(b[2][-2]))
+                        add_chr.append(chr(b[2][-1]))
+#                     print(add_chr)
+                    for c in add_chr:
+                        prev, sym = next_num(prev, c)
+                        y[curr_sec * block_size + y_len[curr_sec]] = sym
+                        y_len[curr_sec] += 1
+                    if y_len[curr_sec] > block_size:
+                        print ("Too many events in block!")
+                        return None
 
-        x[:,0] = events['length'][:length]
-        x[:,1] = events['mean'][:length]
-        x[:,2] = events['stdv'][:length]
-    return x, y
+        x[:events.shape[0],0] = events['length'][:length]
+        x[:events.shape[0],1] = events['mean'][:length]
+        x[:events.shape[0],2] = events['stdv'][:length]
+    return x, x_len, y, y_len
 
 
 def gen_dummy_ds(size=100):
