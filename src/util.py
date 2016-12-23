@@ -98,13 +98,13 @@ def decode(arr):
 def read_fast5(filename, block_size, num_blocks):
     def next_num(prev, symbol):
         val = {
-                'A':0,
-                'G':1,
-                'T':2,
-                'C':3,
+                'A': 0,
+                'G': 1,
+                'T': 2,
+                'C': 3,
             }[symbol]
         if symbol == prev:
-            return 'N', val+4
+            return 'N', val + 4
         else:
             return symbol, val
 
@@ -114,8 +114,7 @@ def read_fast5(filename, block_size, num_blocks):
         events = np.array(reads[list(reads.keys())[0] + '/Events'])
 
         basecalled_events = h5['/Analyses/Basecall_1D_000/BaseCalled_template/Events']
-        basecalled = np.array(basecalled_events.value[['mean', 'stdv', 'model_state', 'move', 'start',
-            'length']])
+        basecalled = np.array(basecalled_events.value[['mean', 'stdv', 'model_state', 'move', 'start', 'length']])
 
         length = block_size * num_blocks
         if events.shape[0] < length:
@@ -137,10 +136,10 @@ def read_fast5(filename, block_size, num_blocks):
 
             if bcall_idx < basecalled.shape[0]:
                 b = basecalled[bcall_idx]
-                if b[0] == e[2] and b[1] == e[3]: # mean == mean and stdv == stdv
+                if b[0] == e[2] and b[1] == e[3]:  # mean == mean and stdv == stdv
                     add_chr = []
                     if bcall_idx == 0:
-                        add_chr.extend(list(b[2].decode("ASCII"))) # initial model state
+                        add_chr.extend(list(b[2].decode("ASCII")))  # initial model state
                     bcall_idx += 1
                     if b[3] == 1:
                         add_chr.append(chr(b[2][-1]))
@@ -153,12 +152,20 @@ def read_fast5(filename, block_size, num_blocks):
                         y[curr_sec * block_size + y_len[curr_sec]] = sym
                         y_len[curr_sec] += 1
                     if y_len[curr_sec] > block_size:
-                        print ("Too many events in block!")
+                        print("Too many events in block!")
                         return None
 
-        x[:events.shape[0],0] = events['length'][:length]
-        x[:events.shape[0],1] = events['mean'][:length]
-        x[:events.shape[0],2] = events['stdv'][:length]
+        x[:events.shape[0], 0] = events['length'][:length]
+        x[:events.shape[0], 1] = events['mean'][:length]
+        x[:events.shape[0], 2] = events['stdv'][:length]
+
+        # Normalizing data to 0 mean, 1 std
+        means = np.array([9.2421999, 104.08872223, 2.02581143], dtype=np.float32)
+        stds = np.array([4.38210583, 16.13312531, 1.82191491], dtype=np.float32)
+
+        x -= means
+        x /= stds
+
     return x, x_len, y, y_len
 
 
