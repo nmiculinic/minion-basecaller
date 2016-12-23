@@ -5,16 +5,6 @@ from random import shuffle
 import sys
 import socket
 
-def get_feed_yield(keys, batch_size):
-    ds = np.load(os.path.expanduser('~/dataset.npz'))
-    while True:
-        feed = {
-            name + "_enqueue_val": ds[name] for name in keys
-        }
-        feed['X_len_enqueue_val'] = np.array([500] * batch_size)
-        yield feed
-
-
 dataset_2_cache = {}
 
 
