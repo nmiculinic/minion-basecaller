@@ -29,6 +29,7 @@ class Model():
         self.block_size = block_size
         self.num_blocks = num_blocks
         self.batch_size = batch_size
+        self.batch_size_var = tf.placeholder_with_default(tf.convert_to_tensor(batch_size, dtype=tf.int32), [])
         self.max_reach = max_reach
         self.queue_cap = queue_cap or 5 * self.self.batch_size
 
@@ -37,10 +38,10 @@ class Model():
             data = model_fn(
                 net,
                 self.X_batch_len,
-                max_reach=max_reach,
-                block_size=block_size,
+                max_reach=self.max_reach,
+                block_size=self.block_size,
                 out_classes=9,
-                batch_size=batch_size
+                batch_size=self.batch_size_var
             )
 
             for k, v in data.items():
@@ -130,9 +131,9 @@ class Model():
                     max_len = tf.shape(X)[1]
                     left = tf.maximum(0, begin - self.max_reach)
                     right = tf.minimum(max_len, begin + self.block_size + self.max_reach)
-                    self.X_batch_len = tf.clip_by_value(self.X_len - self.block_idx * self.block_size, 0, self.block_size)
+                    self.X_batch_len = tf.clip_by_value(tf.slice(self.X_len, [0], [self.batch_size_var]) - self.block_idx * self.block_size, 0, self.block_size)
 
-                net = tf.slice(X, [0, left, 0], [-1, right - left, -1])
+                net = tf.slice(X, [0, left, 0], [self.batch_size_var, right - left, -1])
                 padding = [
                     [0, 0],
                     [tf.maximum(0, self.max_reach - begin), tf.maximum(0, begin + self.block_size + self.max_reach - max_len)],
@@ -140,11 +141,13 @@ class Model():
                 ]
                 padding = tf.convert_to_tensor(padding)
                 net = tf.pad(net, padding)
-                net.set_shape([self.batch_size, 2 * self.max_reach + self.block_size, 3])
+                net.set_shape([None, 2 * self.max_reach + self.block_size, 3])
+                print(net.get_shape())
                 self.X_batch = net
 
             with tf.name_scope("Y_batch"):
-                self.Y_batch_len = tf.squeeze(tf.slice(self.Y_len, [0, self.block_idx], [self.batch_size, 1]), [1])
+                self.Y_batch_len = tf.squeeze(tf.slice(self.Y_len, [0, self.block_idx], [self.batch_size_var, 1]), [1])
+                # TODO: migrate to batch_size_var
                 self.Y_batch = dense2d_to_sparse(tf.slice(self.Y, [0, begin], [self.batch_size, self.block_size]), self.Y_batch_len, dtype=tf.int32)
 
         return net
@@ -232,6 +235,23 @@ class Model():
             tf.Summary.Value(tag="input/between_batch_time", simple_value=self.bbt),
         ]), global_step=iter_step)
 
+    def decode_target(self, idx, pad=None):
+        yy, yy_len = self.sess.run([self.Y, self.Y_len])
+        return decode_example(yy[idx], yy_len[idx], self.num_blocks, self.block_size, pad=pad)
+
+    def eval_x(self, X, X_len):
+        batch_size = X.shape[0]
+        state = self.sess.run(self.init_state, feed_dict={self.batch_size_var: batch_size})
+        out_net = []
+        for blk in range(self.num_blocks):
+            ff, state = self.sess.run([self.pred, self.final_state], feed_dict={
+                self.block_idx: blk,
+                self.init_state: state,
+                self.batch_size_var: batch_size
+            })
+            out_net.append(decode_sparse(ff))
+        return np.array(out_net).T
+
     def save(self, iter_step):
         self.saver.save(
             self.sess,
@@ -258,10 +278,6 @@ class Model():
         self.feed_threads = [self.queue_feeder_proc(input_readers.get_feed_yield2, [self.block_size, self.num_blocks, 10], proc=proc) for _ in range(num_workers)]
         for feed_thread in self.feed_threads:
             feed_thread.start()
-
-    def decode_target(self, idx, pad=None):
-        yy, yy_len = self.sess.run([self.Y, self.Y_len])
-        return decode_example(yy[idx], yy_len[idx], self.num_blocks, self.block_size, pad=pad)
 
     def close_session(self):
         self.coord.request_stop()

@@ -5,6 +5,7 @@ import sys
 import os
 import model_utils
 import time
+import input_readers
 
 
 def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, reuse=False, **kwargs):
@@ -16,6 +17,7 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, reuse=F
     """
 
     print("model in", net.get_shape())
+    # net = tf.Print(net, [tf.shape(net), tf.shape(X_len)], message="netty")
     with tf.name_scope("model"):
         for i, no_channel in zip([1, 2], [16, 32]):
             with tf.variable_scope("atrous_conv1d_%d" % i):
@@ -26,14 +28,14 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, reuse=F
         print("after conv", net.get_shape())
         net = tf.transpose(net, [1, 0, 2], name="Shift_to_time_major")
 
-        # with tf.name_scope("RNN"):
-        #     cell = tf.nn.rnn_cell.GRUCell(state_size)
-        #     init_state = cell.zero_state(batch_size, dtype=tf.float32)
-        #     outputs, final_state = tf.nn.dynamic_rnn(cell, net, initial_state=init_state, sequence_length=X_len, time_major=True)
-        outputs = net
-        init_state = tf.constant(0.1, dtype=tf.float32)
-        final_state = tf.constant(0.1, dtype=tf.float32)
         state_size = 32  # outputs.get_shape()[-1]  # Number of output filters
+        with tf.name_scope("RNN"):
+            cell = tf.nn.rnn_cell.GRUCell(state_size)
+            init_state = cell.zero_state(batch_size, dtype=tf.float32)
+            outputs, final_state = tf.nn.dynamic_rnn(cell, net, initial_state=init_state, sequence_length=X_len, time_major=True)
+        # outputs = net
+        # init_state = tf.constant(0.1, dtype=tf.float32)
+        # final_state = tf.constant(0.1, dtype=tf.float32)
 
         with tf.variable_scope("Output"):
             outputs = tf.reshape(outputs, [-1, state_size])
@@ -54,19 +56,25 @@ if __name__ == "__main__":
         tf.get_default_graph(),
         block_size=20,
         num_blocks=2,
-        batch_size=16,
+        batch_size=4,
         max_reach=3,
         model_fn=model_fn,
         queue_cap=100
         # overwrite=False,
         # run_id="init_model"
     )
+    dummy_input = input_readers.get_feed_yield2(block_size=model.block_size, num_blocks=model.num_blocks, batch_size=4)
     model.init_session(num_workers=2, proc=False)
 
     for i in range(100001):
         model.train_minibatch()
         if i % 50 == 0 or i in [0, 10, 20, 30, 40]:
             model.summarize(i, write_example=True)
+            d = next(dummy_input)
+            X = d['X_enqueue_val']
+            X_len = d['X_len_enqueue_val']
+            print("Eval X:", X.shape, X_len.shape)
+            print(model.eval_x(X, X_len))
         if i % 1000 == 0:
             model.save(i)
 
