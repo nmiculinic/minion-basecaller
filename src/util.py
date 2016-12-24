@@ -163,6 +163,8 @@ def read_fast5_raw(filename, block_size_x, block_size_y, num_blocks, warn_if_sho
                     if y_len[curr_sec] > block_size_y:
                         print("Too many events in block!")
                         return None
+    x -= 646.11133
+    x /= 75.673653
     return x, x_len, y, y_len
 
 
@@ -191,10 +193,10 @@ def decode_sparse(arr, pad=None):
     return sol
 
 
-def decode_example(Y, Y_len, num_blocks, block_size, pad=None):
+def decode_example(Y, Y_len, num_blocks, block_size_y, pad=None):
     gg = []
     for blk in range(num_blocks):
-        gg.append("".join([str(x) for x in decode(Y[blk*block_size:blk*block_size + Y_len[blk]].ravel())]))
+        gg.append("".join([str(x) for x in decode(Y[blk*block_size_y:blk*block_size_y + Y_len[blk]].ravel())]))
 
     if pad is None:
         pad = np.max(list(map(len, gg)))

@@ -18,7 +18,7 @@ repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 
 
 class Model():
-    def __init__(self, g, block_size, num_blocks, batch_size, max_reach, model_fn, log_dir=None, run_id=None, overwrite=False, queue_cap=None, in_data="EVENTS"):
+    def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size=None, block_size_x=None, block_size_y=None, log_dir=None, run_id=None, overwrite=False, queue_cap=None, in_data="EVENTS"):
         """
             Args:
                 max_reach: int, size of contextual window for convolutions etc.
@@ -31,7 +31,8 @@ class Model():
         self.data_in_dim = 1 if in_data == "RAW" else 3
 
         self.__handle_logdir(log_dir, run_id, overwrite)
-        self.block_size = block_size
+        self.block_size_y = block_size_y or block_size
+        self.block_size_x = block_size_x or block_size
         self.num_blocks = num_blocks
         self.batch_size = batch_size
         self.batch_size_var = tf.placeholder_with_default(tf.convert_to_tensor(batch_size, dtype=tf.int32), [])
@@ -44,7 +45,7 @@ class Model():
                 net,
                 self.X_batch_len,
                 max_reach=self.max_reach,
-                block_size=self.block_size,
+                block_size=self.block_size_x,
                 out_classes=9,
                 batch_size=self.batch_size_var
             )
@@ -99,9 +100,9 @@ class Model():
     def __create_train_input_objects(self):
         with tf.variable_scope("input"):
             input_vars = [
-                tf.get_variable("X", initializer=tf.zeros_initializer([self.batch_size, self.block_size * self.num_blocks, self.data_in_dim], tf.float32), trainable=False),
+                tf.get_variable("X", initializer=tf.zeros_initializer([self.batch_size, self.block_size_x * self.num_blocks, self.data_in_dim], tf.float32), trainable=False),
                 tf.get_variable("X_len", initializer=tf.zeros_initializer([self.batch_size], tf.int32), trainable=False),
-                tf.get_variable("Y", initializer=tf.zeros_initializer([self.batch_size, self.block_size * self.num_blocks], tf.uint8), trainable=False),
+                tf.get_variable("Y", initializer=tf.zeros_initializer([self.batch_size, self.block_size_y * self.num_blocks], tf.uint8), trainable=False),
                 tf.get_variable("Y_len", initializer=tf.zeros_initializer([self.batch_size, self.num_blocks], tf.int32), trainable=False),
             ]
             names = [x.name[6:-2] for x in input_vars]  # TODO, hacky
@@ -125,35 +126,37 @@ class Model():
                 self.load_queue = tf.group(*[v for k, v in self.__dict__.items() if '_assign' in k])
 
             self.block_idx = tf.placeholder(dtype=tf.int32, shape=[], name="block_idx")
-            begin = self.block_idx * self.block_size
+            begin_x = self.block_idx * self.block_size_x
+            begin_y = self.block_idx * self.block_size_y
 
             with tf.name_scope("X_batch"):
                 X = self.X
                 with tf.control_dependencies([
-                    tf.assert_less_equal(begin + self.block_size, tf.shape(X)[1], message="Cannot request that many elements from X"),
-                    tf.assert_non_negative(begin, message="Beginning slice must be >=0"),
+                    tf.assert_less_equal(begin_x + self.block_size_x, tf.shape(X)[1], message="Cannot request that many elements from X"),
+                    tf.assert_non_negative(self.block_idx, message="Beginning slice must be >=0"),
                 ]):
-                    max_len = tf.shape(X)[1]
-                    left = tf.maximum(0, begin - self.max_reach)
-                    right = tf.minimum(max_len, begin + self.block_size + self.max_reach)
-                    self.X_batch_len = tf.clip_by_value(tf.slice(self.X_len, [0], [self.batch_size_var]) - self.block_idx * self.block_size, 0, self.block_size)
+                    max_len_x = tf.shape(X)[1]
+                    left = tf.maximum(0, begin_x - self.max_reach)
+                    right = tf.minimum(max_len_x, begin_x + self.block_size_x + self.max_reach)
+                    self.X_batch_len = tf.clip_by_value(
+                        tf.slice(self.X_len, [0], [self.batch_size_var]) - begin_x, 0, self.block_size_x)
 
                 net = tf.slice(X, [0, left, 0], [self.batch_size_var, right - left, -1])
                 padding = [
                     [0, 0],
-                    [tf.maximum(0, self.max_reach - begin), tf.maximum(0, begin + self.block_size + self.max_reach - max_len)],
+                    [tf.maximum(0, self.max_reach - begin_x), tf.maximum(0, begin_x + self.block_size_x + self.max_reach - max_len_x)],
                     [0, 0]
                 ]
                 padding = tf.convert_to_tensor(padding)
                 net = tf.pad(net, padding)
-                net.set_shape([None, 2 * self.max_reach + self.block_size, self.data_in_dim])
+                net.set_shape([None, 2 * self.max_reach + self.block_size_x, self.data_in_dim])
                 print(net.get_shape())
                 self.X_batch = net
 
             with tf.name_scope("Y_batch"):
                 self.Y_batch_len = tf.squeeze(tf.slice(self.Y_len, [0, self.block_idx], [self.batch_size_var, 1]), [1])
                 # TODO: migrate to batch_size_var
-                self.Y_batch = dense2d_to_sparse(tf.slice(self.Y, [0, begin], [self.batch_size, self.block_size]), self.Y_batch_len, dtype=tf.int32)
+                self.Y_batch = dense2d_to_sparse(tf.slice(self.Y, [0, begin_y], [self.batch_size, self.block_size_y]), self.Y_batch_len, dtype=tf.int32)
 
         return net
 
@@ -215,7 +218,7 @@ class Model():
                 self.init_state: state
             }, options=tf.RunOptions(trace_level=self.trace_level),
             run_metadata=run_metadata)
-            out_net.append(decode_sparse(ff, pad=self.block_size)[0])
+            out_net.append(decode_sparse(ff)[0])
             loss += loss_val
 
             if self.trace_level > tf.RunOptions.NO_TRACE:
@@ -225,7 +228,7 @@ class Model():
 
         print("[%s] %4d %6.3f (output -> up, target -> down)" % (self.run_id, iter_step, np.sum(loss_val)))
         if write_example:
-            target = self.decode_target(0, pad=self.block_size)
+            target = self.decode_target(0, pad=self.block_size_y)
             for a, b in zip(out_net, target):
                 print(a)
                 print(b)
@@ -242,7 +245,7 @@ class Model():
 
     def decode_target(self, idx, pad=None):
         yy, yy_len = self.sess.run([self.Y, self.Y_len])
-        return decode_example(yy[idx], yy_len[idx], self.num_blocks, self.block_size, pad=pad)
+        return decode_example(yy[idx], yy_len[idx], self.num_blocks, self.block_size_y, pad=pad)
 
     def eval_x(self, X, X_len):
         batch_size = X.shape[0]
@@ -280,7 +283,17 @@ class Model():
         self.train_writer = tf.train.SummaryWriter(os.path.join(self.log_dir, 'train'), graph=self.g)
 
         # TODO: More efficiantly solve this problem, and halting following:
-        self.feed_threads = [self.queue_feeder_proc(input_readers.get_feed_yield2, [self.block_size, self.num_blocks, 10], proc=proc) for _ in range(num_workers)]
+
+        if self.in_data == "EVENTS":
+            data_thread_fn = lambda:\
+                self.queue_feeder_proc(input_readers.get_feed_yield2, [self.block_size_x, self.num_blocks, 10], proc=proc)
+        elif self.in_data == "RAW":
+            data_thread_fn = lambda:\
+                self.queue_feeder_proc(input_readers.get_raw_feed_yield, [self.block_size_x, self.block_size_y, self.num_blocks, 10], proc=proc)
+        else:
+            raise ValueError("WTF " + self.in_data)
+
+        self.feed_threads = [data_thread_fn() for _ in range(num_workers)]
         for feed_thread in self.feed_threads:
             feed_thread.start()
 
