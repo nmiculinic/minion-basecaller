@@ -33,13 +33,13 @@ class Model():
         self.run_id = run_id
         self.log_dir = os.path.join(log_dir, self.run_id)
 
-        if os.path.exists(self.log_dir) and not overwrite:
-            raise ValueError("path " + self.log_dir + " exists")
+        if os.path.exists(self.log_dir):
+            if overwrite:
+                shutil.rmtree(self.log_dir)
+            else:
+                raise ValueError("path " + self.log_dir + " exists")
+                
         os.makedirs(self.log_dir, mode=0o744, exist_ok=overwrite)
-        if overwrite:
-            shutil.rmtree(self.log_dir)
-            os.makedirs(self.log_dir, mode=0o744, exist_ok=overwrite)
-
         print("Logdir = ", self.log_dir)
 
         self.block_size = block_size
