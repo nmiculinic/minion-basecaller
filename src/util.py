@@ -34,19 +34,20 @@ def atrous_conv1d(value, filters, rate, padding="SAME", name=None):
 
         return value
 
+def next_num(prev, symbol):
+    val = {
+            'A': 0,
+            'G': 1,
+            'T': 2,
+            'C': 3,
+        }[symbol]
+    if symbol == prev:
+        return 'N', val + 4
+    else:
+        return symbol, val
+
 
 def read_fast5(filename, block_size, num_blocks, warn_if_short=False):
-    def next_num(prev, symbol):
-        val = {
-                'A': 0,
-                'G': 1,
-                'T': 2,
-                'C': 3,
-            }[symbol]
-        if symbol == prev:
-            return 'N', val + 4
-        else:
-            return symbol, val
 
     'This assumes we are in the right dir.'
     with h5py.File(filename, 'r') as h5:
@@ -106,6 +107,60 @@ def read_fast5(filename, block_size, num_blocks, warn_if_short=False):
         x -= means
         x /= stds
 
+    return x, x_len, y, y_len
+
+
+def read_fast5_raw(filename, block_size_x, block_size_y, num_blocks, warn_if_short=False):
+    'This assumes we are in the right dir.'
+    with h5py.File(filename, 'r', driver='core') as h5:
+        reads = h5['Analyses/EventDetection_000/Reads']
+        target_read = list(reads.keys())[0]
+        events = np.array(reads[target_read + '/Events'])
+        start_time = events['start'][0]
+        start_pad = int(start_time - h5['Raw/Reads/' + target_read].attrs['start_time'])
+
+        basecalled_events = h5['/Analyses/Basecall_1D_000/BaseCalled_template/Events']
+        basecalled = np.array(basecalled_events.value[['mean', 'stdv', 'model_state', 'move', 'start', 'length']])
+
+        signal = h5['Raw/Reads/' + target_read]['Signal']
+        signal_len = h5['Raw/Reads/' + target_read].attrs['duration'] - start_pad
+
+        x = np.zeros([block_size_x * num_blocks], dtype=np.float32)
+        x_len = min(signal_len, block_size_x * num_blocks)
+        x[:x_len] = signal[start_pad:start_pad + x_len]
+
+        assert(len(signal) == start_pad + np.sum(events['length']))  # Sanity check
+
+        y = np.zeros([block_size_y * num_blocks], dtype=np.uint8)
+        y_len = np.zeros([num_blocks], dtype=np.int32)
+
+        bcall_idx = 0
+        prev, curr_sec = "N", 0
+        for e in events:
+            if (e['start'] - start_time) // block_size_x > curr_sec:
+                prev, curr_sec = "N", (e['start'] - start_time) // block_size_x
+            if curr_sec >= num_blocks:
+                break
+
+            if bcall_idx < basecalled.shape[0]:
+                b = basecalled[bcall_idx]
+                if b[0] == e[2] and b[1] == e[3]:  # mean == mean and stdv == stdv
+                    add_chr = []
+                    if bcall_idx == 0:
+                        add_chr.extend(list(b[2].decode("ASCII")))  # initial model state
+                    bcall_idx += 1
+                    if b[3] == 1:
+                        add_chr.append(chr(b[2][-1]))
+                    if b[3] == 2:
+                        add_chr.append(chr(b[2][-2]))
+                        add_chr.append(chr(b[2][-1]))
+                    for c in add_chr:
+                        prev, sym = next_num(prev, c)
+                        y[curr_sec * block_size_y + y_len[curr_sec]] = sym
+                        y_len[curr_sec] += 1
+                    if y_len[curr_sec] > block_size_y:
+                        print("Too many events in block!")
+                        return None
     return x, x_len, y, y_len
 
 
