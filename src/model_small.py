@@ -18,37 +18,38 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, reuse=F
 
     print("model in", net.get_shape())
     # net = tf.Print(net, [tf.shape(net), tf.shape(X_len)], message="netty")
-    with tf.name_scope("model"):
-        for j in range(3):
-            with tf.variable_scope("block%d" % (j + 1)):
-                for i, no_channel in zip([1, 2, 4], [16, 16, 16]):
-                    with tf.variable_scope("atrous_conv1d_%d" % i):
-                        filter = tf.get_variable("W", shape=(3, net.get_shape()[-1], no_channel))
-                        bias = tf.get_variable("b", shape=(no_channel,))
-                        net = atrous_conv1d(net, filter, i, padding="VALID") + bias
-                        net = tf.nn.relu(net)
-                net = tf.Print(net, [tf.shape(net)], first_n=10, message="net, pre_pool")
-                net = max_pool_1d(net, 2)
-        print("after conv", net.get_shape())
-        net = tf.transpose(net, [1, 0, 2], name="Shift_to_time_major")
+    for j in range(3):
+        with tf.variable_scope("block%d" % (j + 1)):
+            for i, no_channel in zip([1, 2, 4], [16, 16, 16]):
+                with tf.variable_scope("atrous_conv1d_%d" % i):
+                    filter = tf.get_variable("W", shape=(3, net.get_shape()[-1], no_channel))
+                    bias = tf.get_variable("b", shape=(no_channel,))
+                    net = atrous_conv1d(net, filter, i, padding="VALID") + bias
+                    net = tf.nn.relu(net)
+                    tf.get_default_graph().add_to_collection("activations", net)
+            net = tf.Print(net, [tf.shape(net)], first_n=10, message="net, pre_pool")
+            net = max_pool_1d(net, 2)
+    print("after conv", net.get_shape())
+    net = tf.transpose(net, [1, 0, 2], name="Shift_to_time_major")
 
-        state_size = 32  # outputs.get_shape()[-1]  # Number of output filters
-        with tf.name_scope("RNN"):
-            cell = tf.nn.rnn_cell.GRUCell(state_size)
-            init_state = cell.zero_state(batch_size, dtype=tf.float32)
-            outputs, final_state = tf.nn.dynamic_rnn(cell, net, initial_state=init_state, sequence_length=X_len, time_major=True)
-        # outputs = net
-        # init_state = tf.constant(0.1, dtype=tf.float32)
-        # final_state = tf.constant(0.1, dtype=tf.float32)
+    state_size = 32  # outputs.get_shape()[-1]  # Number of output filters
+    with tf.name_scope("RNN"):
+        cell = tf.nn.rnn_cell.GRUCell(state_size)
+        init_state = cell.zero_state(batch_size, dtype=tf.float32)
+        outputs, final_state = tf.nn.dynamic_rnn(cell, net, initial_state=init_state, sequence_length=X_len, time_major=True)
+    # outputs = net
+    # init_state = tf.constant(0.1, dtype=tf.float32)
+    # final_state = tf.constant(0.1, dtype=tf.float32)
 
-        outputs = tf.Print(outputs, [tf.shape(outputs)], first_n=1, message="outputs_pre_w")
-        print("outputs", outputs.get_shape())
-        with tf.variable_scope("Output"):
-            outputs = tf.reshape(outputs, [-1, state_size])
-            W = tf.get_variable("W", shape=[state_size, out_classes])
-            b = tf.get_variable("b", shape=[out_classes])
-            outputs = tf.matmul(outputs, W) + b
-            logits = tf.reshape(outputs, [block_size // 8, batch_size, out_classes])
+    outputs = tf.Print(outputs, [tf.shape(outputs)], first_n=1, message="outputs_pre_w")
+    print("outputs", outputs.get_shape())
+    with tf.variable_scope("Output"):
+        outputs = tf.reshape(outputs, [-1, state_size])
+        W = tf.get_variable("W", shape=[state_size, out_classes])
+        b = tf.get_variable("b", shape=[out_classes])
+        outputs = tf.matmul(outputs, W) + b
+        logits = tf.reshape(outputs, [block_size // 8, batch_size, out_classes])
+
     print("model out", logits.get_shape())
     return {
         'logits': logits,
@@ -78,7 +79,7 @@ if __name__ == "__main__":
     for i in range(100001):
         model.train_minibatch()
         if i % 50 == 0 or i in [0, 10, 20, 30, 40]:
-            model.summarize(i, write_example=True)
+            model.summarize(i, full=True, write_example=True)
         if i % 1000 == 0:
             model.save(i)
 

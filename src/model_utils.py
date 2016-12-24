@@ -13,6 +13,7 @@ import string
 import random
 import shutil
 import warpctc_tensorflow
+from tflearn.summaries import add_gradients_summary, add_activations_summary
 
 repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 
@@ -44,21 +45,22 @@ class Model():
 
         with g.as_default():
             net = self.__create_train_input_objects()
-            data = model_fn(
-                net,
-                self.X_batch_len,
-                max_reach=self.max_reach,
-                block_size=self.block_size_x,
-                out_classes=9,
-                batch_size=self.batch_size_var
-            )
+            with tf.variable_scope("model"):
+                data = model_fn(
+                    net,
+                    self.X_batch_len,
+                    max_reach=self.max_reach,
+                    block_size=self.block_size_x,
+                    out_classes=9,
+                    batch_size=self.batch_size_var
+                )
 
             for k, v in data.items():
                 self.__dict__[k] = v
 
             print("logits: ", self.logits.get_shape())
             with tf.control_dependencies([
-                tf.assert_equal(tf.shape(self.logits)[0], self.block_size_x // self.shrink_factor)
+                tf.assert_equal(tf.shape(self.logits), [self.block_size_x // self.shrink_factor, self.batch_size_var, 9])
             ]):
                 self.logits = tf.identity(self.logits)
 
@@ -81,6 +83,10 @@ class Model():
             optimizer = tf.train.AdamOptimizer()
             self.train_op = optimizer.minimize(loss)
             self.grads = optimizer.compute_gradients(loss)
+
+            self.grad_summ = tf.summary.merge(add_gradients_summary(self.grads))
+            self.activation_summ = tf.summary.merge(
+                add_activations_summary(g.get_collection("activations")))
 
         self.g = g
         self.trace_level = tf.RunOptions.NO_TRACE
@@ -218,15 +224,18 @@ class Model():
         self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
         self.bbt_clock = time.clock()
 
-    def summarize(self, iter_step, write_example=True):
+    def summarize(self, iter_step, full=False, write_example=True):
         state, queue_size_sum, queue_filled, y_len = self.sess.run([self.init_state, self.queue_size, self.queue_filled, self.Y_len])
         print("avg time per batch %.3f, queue_filled = %.3f, avg_y_len = %.3f, load_time_op %.3f, between batch time %.3f" % (self.batch_time, queue_filled, np.mean(y_len), self.dequeue_time, self.bbt))
         out_net = []
         loss = 0
+
+        fetches = [self.loss, self.pred, self.final_state]
+        if full:
+            fetches.extend([self.grad_summ, self.activation_summ])
         for blk in range(self.num_blocks):
             run_metadata = tf.RunMetadata()
-
-            loss_val, ff, state = self.sess.run([self.loss, self.pred, self.final_state], feed_dict={
+            loss_val, ff, state, *summaries = self.sess.run(fetches, feed_dict={
                 self.block_idx: blk,
                 self.init_state: state
             }, options=tf.RunOptions(trace_level=self.trace_level),
@@ -246,7 +255,8 @@ class Model():
                 print(a)
                 print(b)
                 print('----')
-
+        for summary in summaries:
+            self.train_writer.add_summary(summary, global_step=iter_step)
         self.train_writer.add_summary(queue_size_sum, global_step=iter_step)
         self.train_writer.add_summary(tf.Summary(value=[
             tf.Summary.Value(tag="loss", simple_value=loss_val.item()),
@@ -293,7 +303,7 @@ class Model():
         self.threads = tf.train.start_queue_runners(sess=self.sess, coord=self.coord)
 
         self.g.finalize()
-        self.train_writer = tf.train.SummaryWriter(os.path.join(self.log_dir, 'train'), graph=self.g)
+        self.train_writer = tf.summary.FileWriter(os.path.join(self.log_dir, 'train'), graph=self.g)
 
         # TODO: More efficiantly solve this problem, and halting following:
 
