@@ -35,7 +35,7 @@ def atrous_conv1d(value, filters, rate, padding="SAME", name=None):
         return value
 
 
-def read_fast5(filename, block_size, num_blocks):
+def read_fast5(filename, block_size, num_blocks, warn_if_short=False):
     def next_num(prev, symbol):
         val = {
                 'A': 0,
@@ -57,9 +57,8 @@ def read_fast5(filename, block_size, num_blocks):
         basecalled = np.array(basecalled_events.value[['mean', 'stdv', 'model_state', 'move', 'start', 'length']])
 
         length = block_size * num_blocks
-        if events.shape[0] < length:
-            pass
-            # print("WARNING...less then truncate events", filename)
+        if warn_if_short and events.shape[0] < length:
+            print("WARNING...less then truncate events", filename)
 
         # x[i] is feat values for event #i
         x = np.zeros([length, 3], dtype=np.float32)
@@ -67,7 +66,7 @@ def read_fast5(filename, block_size, num_blocks):
 
         # y[2*i] and y[2*i + 1] are bases for event #i
         y = np.zeros([length], dtype=np.uint8)
-        y_len = np.zeros([num_blocks], dtype=np.uint8)
+        y_len = np.zeros([num_blocks], dtype=np.int32)
 
         bcall_idx = 0
         prev, curr_sec = "N", 0
