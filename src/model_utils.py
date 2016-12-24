@@ -25,23 +25,7 @@ class Model():
                 model_fn: function accepting (batch_size, 2*max_reach + block_size, 3) -> (block_size, batch_size, out_classes). Notice shift to time major as well as reduction in time dimension.
         """
 
-        if log_dir is None:
-            log_dir = os.path.join(repo_root, 'log', socket.gethostname())
-        if run_id is None:
-            run_id = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(5))
-
-        self.run_id = run_id
-        self.log_dir = os.path.join(log_dir, self.run_id)
-
-        if os.path.exists(self.log_dir):
-            if overwrite:
-                shutil.rmtree(self.log_dir)
-            else:
-                raise ValueError("path " + self.log_dir + " exists")
-
-        os.makedirs(self.log_dir, mode=0o744, exist_ok=overwrite)
-        print("Logdir = ", self.log_dir)
-
+        self.__handle_logdir(log_dir, run_id, overwrite)
         self.block_size = block_size
         self.num_blocks = num_blocks
         self.batch_size = batch_size
@@ -49,7 +33,7 @@ class Model():
         self.queue_cap = queue_cap or 5 * self.self.batch_size
 
         with g.as_default():
-            net = self._create_train_input_objects()
+            net = self.__create_train_input_objects()
             data = model_fn(
                 net,
                 self.X_batch_len,
@@ -90,7 +74,23 @@ class Model():
         self.bbt = 0
         self.bbt_clock = time.clock()
 
-    def _create_train_input_objects(self):
+    def __handle_logdir(self, log_dir, run_id, overwrite):
+        log_dir = log_dir or os.path.join(repo_root, 'log', socket.gethostname())
+        run_id = run_id or ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(5))
+
+        self.run_id = run_id
+        self.log_dir = os.path.join(log_dir, self.run_id)
+
+        if os.path.exists(self.log_dir):
+            if overwrite:
+                shutil.rmtree(self.log_dir)
+            else:
+                raise ValueError("path " + self.log_dir + " exists")
+
+        os.makedirs(self.log_dir, mode=0o744, exist_ok=overwrite)
+        print("Logdir = ", self.log_dir)
+
+    def __create_train_input_objects(self):
         with tf.variable_scope("input"):
             input_vars = [
                 tf.get_variable("X", initializer=tf.zeros_initializer([self.batch_size, self.block_size * self.num_blocks, 3], tf.float32), trainable=False),

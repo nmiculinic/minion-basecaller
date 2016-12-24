@@ -53,7 +53,7 @@ if __name__ == "__main__":
     model = model_utils.Model(
         tf.get_default_graph(),
         block_size=20,
-        num_blocks=1,
+        num_blocks=2,
         batch_size=16,
         max_reach=3,
         model_fn=model_fn,
