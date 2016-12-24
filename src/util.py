@@ -58,7 +58,8 @@ def read_fast5(filename, block_size, num_blocks):
 
         length = block_size * num_blocks
         if events.shape[0] < length:
-            print("WARNING...less then truncate events", filename)
+            pass
+            # print("WARNING...less then truncate events", filename)
 
         # x[i] is feat values for event #i
         x = np.zeros([length, 3], dtype=np.float32)

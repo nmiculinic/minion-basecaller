@@ -24,20 +24,24 @@ def get_feed_yield2(block_size, num_blocks, batch_size=10, root_dir=None):
             arrs = [[] for _ in range(len(names))]
 
             for fname in map(lambda x: os.path.join(root_dir, x), items[i:i + batch_size]):
-                if fname in dataset_2_cache:
-                    sol = dataset_2_cache[fname]
-                else:
-                    sol = util.read_fast5(fname, block_size, num_blocks)
-                    dataset_2_cache[fname] = sol
-                if sol is not None:
-                    if np.any(sol[3] == 0):
-                        # print(fname, "y_len 0, skipping", file=sys.stderr)
-                        continue
-                    if sol[0].shape != (block_size * num_blocks, 3):
-                        print(fname, "unexpected shape, skipping")
-                        continue
-                    for a, b in zip(arrs, sol):
-                        a.append(b)
+                try:
+                    if fname in dataset_2_cache:
+                        sol = dataset_2_cache[fname]
+                    else:
+                        sol = util.read_fast5(fname, block_size, num_blocks)
+                        dataset_2_cache[fname] = sol
+                    if sol is not None:
+                        if np.any(sol[3] == 0):
+                            print(fname, "y_len 0, skipping", file=sys.stderr)
+                            continue
+                        if sol[0].shape != (block_size * num_blocks, 3):
+                            print(fname, "unexpected shape, skipping", file=sys.stderr)
+                            continue
+                        for a, b in zip(arrs, sol):
+                            a.append(b)
+                except Exception as ex:
+                    print(ex, file=sys.stderr)
+                    continue
 
             yield {
                 name + "_enqueue_val": np.array(arr) for name, arr in zip(names, arrs)

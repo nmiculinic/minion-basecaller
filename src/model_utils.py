@@ -38,7 +38,7 @@ class Model():
                 shutil.rmtree(self.log_dir)
             else:
                 raise ValueError("path " + self.log_dir + " exists")
-                
+
         os.makedirs(self.log_dir, mode=0o744, exist_ok=overwrite)
         print("Logdir = ", self.log_dir)
 
@@ -192,8 +192,8 @@ class Model():
         self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
 
     def summarize(self, iter_step, write_example=True):
-        state, queue_size_sum, queue_filled = self.sess.run([self.init_state, self.queue_size, self.queue_filled])
-        print("avg time per batch %.3f, queue_filled = %.3f" % (self.batch_time, queue_filled))
+        state, queue_size_sum, queue_filled, y_len = self.sess.run([self.init_state, self.queue_size, self.queue_filled, self.Y_len])
+        print("avg time per batch %.3f, queue_filled = %.3f, avg_y_len = %.3f, load_time_op %.3f" % (self.batch_time, queue_filled, np.mean(y_len), self.dequeue_time))
         out_net = []
         loss = 0
         for blk in range(self.num_blocks):
@@ -212,8 +212,8 @@ class Model():
                 trace_file = open(os.path.join(self.log_dir, 'timeline.ctf_decode.json'), 'w')
                 trace_file.write(trace.generate_chrome_trace_format())
 
+        print("[%s] %4d %6.3f (output -> up, target -> down)" % (self.run_id, iter_step, np.sum(loss_val)))
         if write_example:
-            print("[%s] %4d %6.3f (output -> up, target -> down)" % (self.run_id, iter_step, np.sum(loss_val)))
             target = self.decode_target(0, pad=self.block_size)
             for a, b in zip(out_net, target):
                 print(a)
