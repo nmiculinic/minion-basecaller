@@ -18,7 +18,7 @@ repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 
 
 class Model():
-    def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size=None, block_size_x=None, block_size_y=None, log_dir=None, run_id=None, overwrite=False, queue_cap=None, in_data="EVENTS"):
+    def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size=None, block_size_x=None, block_size_y=None, log_dir=None, run_id=None, overwrite=False, queue_cap=None, shrink_factor=1, in_data="EVENTS"):
         """
             Args:
                 max_reach: int, size of contextual window for convolutions etc.
@@ -33,6 +33,9 @@ class Model():
         self.__handle_logdir(log_dir, run_id, overwrite)
         self.block_size_y = block_size_y or block_size
         self.block_size_x = block_size_x or block_size
+        self.shrink_factor = shrink_factor
+        if self.block_size_x % shrink_factor != 0:
+            raise ValueError("shrink factor need to divide block_size_x")
         self.num_blocks = num_blocks
         self.batch_size = batch_size
         self.batch_size_var = tf.placeholder_with_default(tf.convert_to_tensor(batch_size, dtype=tf.int32), [])
@@ -54,15 +57,25 @@ class Model():
                 self.__dict__[k] = v
 
             print("logits: ", self.logits.get_shape())
+            with tf.control_dependencies([
+                tf.assert_equal(tf.shape(self.logits)[0], self.block_size_x // self.shrink_factor)
+            ]):
+                self.logits = tf.identity(self.logits)
 
             with tf.name_scope("loss"):
-                loss = warpctc_tensorflow.ctc(self.logits, self.Y_batch.values, self.Y_batch_len, self.X_batch_len, blank_label=8)
+                loss = warpctc_tensorflow.ctc(
+                    self.logits,
+                    self.Y_batch.values,
+                    self.Y_batch_len,
+                    tf.div(self.X_batch_len, self.shrink_factor),
+                    blank_label=8
+                )
 
                 loss = tf.reduce_mean(loss)
                 self.loss = loss
 
             with tf.name_scope("prediction"):
-                predicted, prdicted_logprob = tf.nn.ctc_beam_search_decoder(self.logits, self.X_batch_len, merge_repeated=True, top_paths=1)
+                predicted, prdicted_logprob = tf.nn.ctc_beam_search_decoder(self.logits, tf.div(self.X_batch_len, self.shrink_factor), merge_repeated=True, top_paths=1)
                 self.pred = tf.cast(predicted[0], tf.int32)
 
             optimizer = tf.train.AdamOptimizer()
