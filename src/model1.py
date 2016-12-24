@@ -52,7 +52,7 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, reuse=F
 if __name__ == "__main__":
     model = model_utils.Model(
         tf.get_default_graph(),
-        block_size=2000,
+        block_size=400,
         num_blocks=1,
         batch_size=32,
         max_reach=31,

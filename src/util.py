@@ -48,8 +48,7 @@ def next_num(prev, symbol):
 
 
 def read_fast5(filename, block_size, num_blocks, warn_if_short=False):
-
-    'This assumes we are in the right dir.'
+    'Read fast5 file.'
     with h5py.File(filename, 'r') as h5:
         reads = h5['Analyses/EventDetection_000/Reads']
         events = np.array(reads[list(reads.keys())[0] + '/Events'])
@@ -125,11 +124,14 @@ def read_fast5_raw(filename, block_size_x, block_size_y, num_blocks, warn_if_sho
         signal = h5['Raw/Reads/' + target_read]['Signal']
         signal_len = h5['Raw/Reads/' + target_read].attrs['duration'] - start_pad
 
-        x = np.zeros([block_size_x * num_blocks], dtype=np.float32)
+        x = np.zeros([block_size_x * num_blocks, 1], dtype=np.float32)
         x_len = min(signal_len, block_size_x * num_blocks)
-        x[:x_len] = signal[start_pad:start_pad + x_len]
+        x[:x_len, 0] = signal[start_pad:start_pad + x_len]
 
-        assert(len(signal) == start_pad + np.sum(events['length']))  # Sanity check
+        if len(signal) != start_pad + np.sum(events['length']):
+            print(filename + " failed sanity check")  # Sanity check
+            assert(len(signal) == start_pad + np.sum(events['length']))  # Sanity check
+            assert(False)
 
         y = np.zeros([block_size_y * num_blocks], dtype=np.uint8)
         y_len = np.zeros([num_blocks], dtype=np.int32)

@@ -18,12 +18,17 @@ repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 
 
 class Model():
-    def __init__(self, g, block_size, num_blocks, batch_size, max_reach, model_fn, log_dir=None, run_id=None, overwrite=False, queue_cap=None):
+    def __init__(self, g, block_size, num_blocks, batch_size, max_reach, model_fn, log_dir=None, run_id=None, overwrite=False, queue_cap=None, in_data="EVENTS"):
         """
             Args:
                 max_reach: int, size of contextual window for convolutions etc.
                 model_fn: function accepting (batch_size, 2*max_reach + block_size, 3) -> (block_size, batch_size, out_classes). Notice shift to time major as well as reduction in time dimension.
         """
+
+        if in_data not in ["RAW", "EVENTS"]:
+            raise ValueError("in_data must be one of two types")
+        self.in_data = in_data
+        self.data_in_dim = 1 if in_data == "RAW" else 3
 
         self.__handle_logdir(log_dir, run_id, overwrite)
         self.block_size = block_size
@@ -94,7 +99,7 @@ class Model():
     def __create_train_input_objects(self):
         with tf.variable_scope("input"):
             input_vars = [
-                tf.get_variable("X", initializer=tf.zeros_initializer([self.batch_size, self.block_size * self.num_blocks, 3], tf.float32), trainable=False),
+                tf.get_variable("X", initializer=tf.zeros_initializer([self.batch_size, self.block_size * self.num_blocks, self.data_in_dim], tf.float32), trainable=False),
                 tf.get_variable("X_len", initializer=tf.zeros_initializer([self.batch_size], tf.int32), trainable=False),
                 tf.get_variable("Y", initializer=tf.zeros_initializer([self.batch_size, self.block_size * self.num_blocks], tf.uint8), trainable=False),
                 tf.get_variable("Y_len", initializer=tf.zeros_initializer([self.batch_size, self.num_blocks], tf.int32), trainable=False),
@@ -141,7 +146,7 @@ class Model():
                 ]
                 padding = tf.convert_to_tensor(padding)
                 net = tf.pad(net, padding)
-                net.set_shape([None, 2 * self.max_reach + self.block_size, 3])
+                net.set_shape([None, 2 * self.max_reach + self.block_size, self.data_in_dim])
                 print(net.get_shape())
                 self.X_batch = net
 
