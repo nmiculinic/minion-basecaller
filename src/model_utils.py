@@ -12,6 +12,8 @@ import os
 import string
 import random
 import shutil
+import warpctc_tensorflow
+
 
 repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 
@@ -115,7 +117,8 @@ class Model():
                 Y_len = tf.squeeze(tf.slice(ops['Y_len'], [0, block_idx], [batch_size, 1]), [1])
                 Y = dense2d_to_sparse(tf.slice(ops['Y'], [0, begin], [batch_size, block_size]), Y_len, dtype=tf.int32)
 
-                loss = tf.nn.ctc_loss(inputs=logits, labels=Y, sequence_length=X_len, time_major=True)
+                loss = warpctc_tensorflow.ctc(logits, Y.values, Y_len, X_len, blank_label=8)
+
                 loss = tf.reduce_mean(loss)
                 self.loss = loss
 
