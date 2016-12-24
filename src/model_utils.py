@@ -18,7 +18,7 @@ import warpctc_tensorflow
 repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 
 class Model():
-    def __init__(self, g, block_size, num_blocks, batch_size, max_reach, model_fn, log_dir=None, run_id=None, overwrite=False):
+    def __init__(self, g, block_size, num_blocks, batch_size, max_reach, model_fn, log_dir=None, run_id=None, overwrite=False, queue_size=None):
         """
             Args:
                 max_reach: int, size of contextual window for convolutions etc.
@@ -56,7 +56,7 @@ class Model():
                 shapes = [x.get_shape()[1:] for x in input_vars]
                 types = [x.dtype.base_dtype for x in input_vars]
 
-                queue_cap = 50 * batch_size
+                queue_cap = queue_size or 50 * batch_size
                 queue = tf.FIFOQueue(queue_cap, types, shapes=shapes)
                 self.queue_filled = tf.to_float(queue.size()) / queue_cap
                 self.queue_size = tf.summary.scalar("queue_filled", self.queue_filled)
@@ -148,6 +148,9 @@ class Model():
             keep_checkpoint_every_n_hours=1,
         )
 
+        self.bbt = 0
+        self.bbt_clock = time.clock()
+
     def queue_feeder_proc(self, fun, args, proc=False):
         """ Proc = True is GIL workaround """
         def thread_fn():
@@ -175,6 +178,7 @@ class Model():
         self.sess.run(self.load_queue)
         self.dequeue_time = 0.9 * self.dequeue_time + 0.1 * (time.clock() - tt)
 
+        self.bbt = 0.8 * self.bbt + 0.2 * (time.clock() - self.bbt_clock)
         tt = time.clock()
         state = self.sess.run(self.init_state)
         for blk in range(self.num_blocks):
@@ -190,10 +194,11 @@ class Model():
                 trace_file = open(os.path.join(self.log_dir, 'timeline.ctf_loss.json'), 'w')
                 trace_file.write(trace.generate_chrome_trace_format())
         self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
+        self.bbt_clock = time.clock()
 
     def summarize(self, iter_step, write_example=True):
         state, queue_size_sum, queue_filled, y_len = self.sess.run([self.init_state, self.queue_size, self.queue_filled, self.Y_len])
-        print("avg time per batch %.3f, queue_filled = %.3f, avg_y_len = %.3f, load_time_op %.3f" % (self.batch_time, queue_filled, np.mean(y_len), self.dequeue_time))
+        print("avg time per batch %.3f, queue_filled = %.3f, avg_y_len = %.3f, load_time_op %.3f, between batch time %.3f" % (self.batch_time, queue_filled, np.mean(y_len), self.dequeue_time, self.bbt))
         out_net = []
         loss = 0
         for blk in range(self.num_blocks):
@@ -225,6 +230,8 @@ class Model():
             tf.Summary.Value(tag="loss", simple_value=loss_val.item()),
             tf.Summary.Value(tag="input/time_per_batch", simple_value=self.batch_time),
             tf.Summary.Value(tag="input/dequeue_time", simple_value=self.dequeue_time),
+            tf.Summary.Value(tag="input/dequeue_time", simple_value=self.dequeue_time),
+            tf.Summary.Value(tag="input/between_batch_time", simple_value=self.bbt),
         ]), global_step=iter_step)
 
     def save(self, iter_step):
