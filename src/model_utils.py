@@ -58,7 +58,8 @@ class Model():
 
                 queue_cap = 5 * batch_size
                 queue = tf.FIFOQueue(queue_cap, types, shapes=shapes)
-                self.queue_size = tf.summary.scalar("queue_filled", tf.to_float(queue.size()) / queue_cap)
+                self.queue_filled = tf.to_float(queue.size()) / queue_cap
+                self.queue_size = tf.summary.scalar("queue_filled", self.queue_filled)
 
                 ops = {}
                 self.dequeue_op = queue.dequeue_many(batch_size)
@@ -191,8 +192,8 @@ class Model():
         self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
 
     def summarize(self, iter_step):
-        print("avg time per batch %.3f" % self.batch_time)
-        state, queue_size_sum = self.sess.run([self.init_state, self.queue_size])
+        state, queue_size_sum, queue_filled = self.sess.run([self.init_state, self.queue_size, self.queue_filled])
+        print("avg time per batch %.3f, queue_filled = %.3f" % (self.batch_time, queue_filled))
         out_net = []
         loss = 0
         for blk in range(self.num_blocks):
