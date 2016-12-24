@@ -5,8 +5,6 @@ from random import shuffle
 import sys
 import socket
 
-dataset_2_cache = {}
-
 
 def get_feed_yield2(block_size, num_blocks, batch_size=10, root_dir=None):
     if root_dir is None:
@@ -25,11 +23,7 @@ def get_feed_yield2(block_size, num_blocks, batch_size=10, root_dir=None):
 
             for fname in map(lambda x: os.path.join(root_dir, x), items[i:i + batch_size]):
                 try:
-                    if fname in dataset_2_cache:
-                        sol = dataset_2_cache[fname]
-                    else:
-                        sol = util.read_fast5(fname, block_size, num_blocks)
-                        dataset_2_cache[fname] = sol
+                    sol = util.read_fast5(fname, block_size, num_blocks)
                     if sol is not None:
                         if np.any(sol[3] == 0):
                             print(fname, "y_len 0, skipping", file=sys.stderr)
