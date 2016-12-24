@@ -56,7 +56,7 @@ class Model():
                 shapes = [x.get_shape()[1:] for x in input_vars]
                 types = [x.dtype.base_dtype for x in input_vars]
 
-                queue_cap = 5 * batch_size
+                queue_cap = 50 * batch_size
                 queue = tf.FIFOQueue(queue_cap, types, shapes=shapes)
                 self.queue_filled = tf.to_float(queue.size()) / queue_cap
                 self.queue_size = tf.summary.scalar("queue_filled", self.queue_filled)
@@ -191,7 +191,7 @@ class Model():
                 trace_file.write(trace.generate_chrome_trace_format())
         self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
 
-    def summarize(self, iter_step):
+    def summarize(self, iter_step, write_example=True):
         state, queue_size_sum, queue_filled = self.sess.run([self.init_state, self.queue_size, self.queue_filled])
         print("avg time per batch %.3f, queue_filled = %.3f" % (self.batch_time, queue_filled))
         out_net = []
@@ -212,12 +212,13 @@ class Model():
                 trace_file = open(os.path.join(self.log_dir, 'timeline.ctf_decode.json'), 'w')
                 trace_file.write(trace.generate_chrome_trace_format())
 
-        print("[%s] %4d %6.3f (output -> up, target -> down)" % (self.run_id, iter_step, np.sum(loss_val)))
-        target = self.decode_target(0, pad=self.block_size)
-        for a, b in zip(out_net, target):
-            print(a)
-            print(b)
-            print('----')
+        if write_example:
+            print("[%s] %4d %6.3f (output -> up, target -> down)" % (self.run_id, iter_step, np.sum(loss_val)))
+            target = self.decode_target(0, pad=self.block_size)
+            for a, b in zip(out_net, target):
+                print(a)
+                print(b)
+                print('----')
 
         self.train_writer.add_summary(queue_size_sum, global_step=iter_step)
         self.train_writer.add_summary(tf.Summary(value=[
@@ -233,7 +234,7 @@ class Model():
             global_step=iter_step
         )
 
-    def init_session(self, restore=None):
+    def init_session(self, restore=None, proc=True, num_workers=4):
         self.sess = tf.Session(
             graph=self.g,
             config=tf.ConfigProto(log_device_placement=False)
@@ -249,7 +250,7 @@ class Model():
         self.train_writer = tf.train.SummaryWriter(os.path.join(self.log_dir, 'train'), graph=self.g)
 
         # TODO: More efficiantly solve this problem, and halting following:
-        self.feed_threads = [self.queue_feeder_proc(input_readers.get_feed_yield2, [self.block_size, self.num_blocks, 10], proc=True) for _ in range(2)]
+        self.feed_threads = [self.queue_feeder_proc(input_readers.get_feed_yield2, [self.block_size, self.num_blocks, 10], proc=proc) for _ in range(num_workers)]
         for feed_thread in self.feed_threads:
             feed_thread.start()
 
