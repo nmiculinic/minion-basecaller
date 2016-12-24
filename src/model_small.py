@@ -69,18 +69,19 @@ if __name__ == "__main__":
         max_reach=49,
         model_fn=model_fn,
         queue_cap=100,
-        shrink_factor=8
-        # overwrite=False,
-        # run_id="init_model"
+        shrink_factor=8,
+        overwrite=False,
+        reuse=True,
+        run_id="init_model"
     )
-    # dummy_input = input_readers.get_feed_yield2(block_size=model.block_size_x, num_blocks=model.num_blocks, batch_size=4)
-    model.init_session(num_workers=2, proc=False)
-
-    for i in range(100001):
+    i = model.init_session(num_workers=2, proc=False, restore=True)
+    print(i)
+    while i < 100001:
+        i += 1
         model.train_minibatch()
-        if i % 50 == 0 or i in [0, 10, 20, 30, 40]:
+        if i % 50 == 0 or i in [1, 10, 20, 30, 40]:
             model.summarize(i, full=True, write_example=True)
-        if i % 1000 == 0:
+        if i % 100 == 0:
             model.save(i)
 
     print("closing session")

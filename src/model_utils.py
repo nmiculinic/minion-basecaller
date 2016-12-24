@@ -19,7 +19,7 @@ repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 
 
 class Model():
-    def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size=None, block_size_x=None, block_size_y=None, log_dir=None, run_id=None, overwrite=False, queue_cap=None, shrink_factor=1, in_data="EVENTS"):
+    def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size=None, block_size_x=None, block_size_y=None, log_dir=None, run_id=None, overwrite=False, reuse=False, queue_cap=None, shrink_factor=1, in_data="EVENTS"):
         """
             Args:
                 max_reach: int, size of contextual window for convolutions etc.
@@ -31,7 +31,10 @@ class Model():
         self.in_data = in_data
         self.data_in_dim = 1 if in_data == "RAW" else 3
 
-        self.__handle_logdir(log_dir, run_id, overwrite)
+        if overwrite and reuse:
+            raise ValueError("Cannot overwrite and reuse logdit and checkpoints")
+
+        self.__handle_logdir(log_dir, run_id, overwrite, reuse)
         self.block_size_y = block_size_y or block_size
         self.block_size_x = block_size_x or block_size
         self.shrink_factor = shrink_factor
@@ -100,7 +103,7 @@ class Model():
         self.bbt = 0
         self.bbt_clock = time.clock()
 
-    def __handle_logdir(self, log_dir, run_id, overwrite):
+    def __handle_logdir(self, log_dir, run_id, overwrite, reuse):
         log_dir = log_dir or os.path.join(repo_root, 'log', socket.gethostname())
         run_id = run_id or ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(5))
 
@@ -110,10 +113,10 @@ class Model():
         if os.path.exists(self.log_dir):
             if overwrite:
                 shutil.rmtree(self.log_dir)
-            else:
+            elif not reuse:
                 raise ValueError("path " + self.log_dir + " exists")
 
-        os.makedirs(self.log_dir, mode=0o744, exist_ok=overwrite)
+        os.makedirs(self.log_dir, mode=0o744, exist_ok=reuse or overwrite)
         print("Logdir = ", self.log_dir)
 
     def __create_train_input_objects(self):
@@ -290,13 +293,17 @@ class Model():
             global_step=iter_step
         )
 
-    def init_session(self, restore=None, proc=True, num_workers=4):
+    def init_session(self, restore=False, checkpoint=None, proc=True, num_workers=4):
         self.sess = tf.Session(
             graph=self.g,
             config=tf.ConfigProto(log_device_placement=False)
         )
-        if restore is not None:
-            self.saver.restore(self.sess, os.path.join(self.log_dir, 'model.ckpt'))
+        if restore:
+            checkpoint = checkpoint or tf.train.latest_checkpoint(self.log_dir)
+            if checkpoint is None:
+                raise ValueError("No checkpoints found")
+            iter_step = int(checkpoint.split('-')[-1])
+            self.saver.restore(self.sess, checkpoint)
         else:
             self.sess.run(tf.global_variables_initializer())
         self.coord = tf.train.Coordinator()
@@ -319,6 +326,8 @@ class Model():
         self.feed_threads = [data_thread_fn() for _ in range(num_workers)]
         for feed_thread in self.feed_threads:
             feed_thread.start()
+
+        return iter_step if restore else 0
 
     def close_session(self):
         self.coord.request_stop()
