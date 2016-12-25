@@ -255,6 +255,8 @@ class Model():
         if log_every is not None and iter_step % log_every == 0:
             fetches = [self.train_op, self.loss]
             vals = self.__rnn_roll(add_fetch=fetches, timeline_suffix="ctc_loss")
+            self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
+            self.bbt_clock = time.clock()
             loss = np.sum(vals[1]).item()
             self.train_writer.add_summary(tf.Summary(value=[
                 tf.Summary.Value(tag="train/loss", simple_value=loss),
@@ -269,9 +271,8 @@ class Model():
             self.logger.info("%4d loss %6.3f bt %.3f, bbt %.3f, avg_y_len %.3f" % (iter_step, loss, self.batch_time, self.bbt, np.mean(y_len)))
         else:
             self.__rnn_roll(add_fetch=[self.train_op], timeline_suffix="ctc_loss")
-
-        self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
-        self.bbt_clock = time.clock()
+            self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
+            self.bbt_clock = time.clock()
 
     def run_validation(self, iter_step, num_batches=5):
         losses = []
