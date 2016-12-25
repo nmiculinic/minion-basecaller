@@ -86,6 +86,7 @@ class Model():
             with tf.name_scope("prediction"):
                 predicted, prdicted_logprob = tf.nn.ctc_beam_search_decoder(self.logits, tf.div(self.X_batch_len, self.shrink_factor), merge_repeated=True, top_paths=1)
                 self.pred = tf.cast(predicted[0], tf.int32)
+                self.edit_distance = tf.edit_distance(self.pred, self.Y_batch)
 
             self.lr = tf.get_variable("learning_rate", initializer=tf.constant_initializer(1e-3), shape=[], trainable=False)
             self.lr_placeholder = tf.placeholder(tf.float32)
@@ -276,27 +277,39 @@ class Model():
 
     def run_validation(self, iter_step, num_batches=5):
         losses = []
+        edit_distances = []
         for _ in range(num_batches):
             _, summ = self.sess.run([self.load_test, self.test_queue_size])
             self.test_writer.add_summary(summ, global_step=iter_step)
-            loss = self.__rnn_roll(add_fetch=[self.loss], timeline_suffix="ctc_val_loss")
+            loss, edit_distance = self.__rnn_roll(
+                add_fetch=[self.loss, self.edit_distance],
+                timeline_suffix="ctc_val_loss"
+            )
             losses.append(np.sum(loss))
+            edit_distances.append(edit_distance)
         avg_loss = np.mean(losses).item()
+        avg_edit_distance = np.mean(edit_distances).item()
         self.test_writer.add_summary(tf.Summary(value=[
             tf.Summary.Value(tag="train/loss", simple_value=avg_loss),
+            tf.Summary.Value(tag="train/edit_distance", simple_value=avg_edit_distance),
         ]), global_step=iter_step)
         self.logger.info("%4d validation loss %6.3f" % (iter_step, avg_loss))
         self.bbt_clock = time.clock()
 
     def summarize(self, iter_step, write_example=True):
-        fetches = [self.loss, self.grad_summ, self.activation_summ]
+        fetches = [self.loss, self.grad_summ, self.activation_summ, self.edit_distance]
         if write_example:
             fetches.append(self.pred)
         vals = self.__rnn_roll(fetches)
 
+        edit_distance = np.mean(vals[3]).item()
         summaries = [x[0] for x in vals[1:3]]
         for summary in summaries:
             self.train_writer.add_summary(summary, global_step=iter_step)
+
+        self.train_writer.add_summary(tf.Summary(value=[
+            tf.Summary.Value(tag="train/edit_distance", simple_value=edit_distance)
+        ]), global_step=iter_step)
 
         if write_example:
             out_net = list(map(lambda x: decode_sparse(x)[0], vals[-1]))
