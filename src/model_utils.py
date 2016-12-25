@@ -48,7 +48,7 @@ class Model():
 
         with g.as_default():
             net = self.__create_train_input_objects()
-            with tf.variable_scope("model"):
+            with tf.name_scope("model"):
                 data = model_fn(
                     net,
                     self.X_batch_len,
@@ -84,8 +84,8 @@ class Model():
                 self.pred = tf.cast(predicted[0], tf.int32)
 
             optimizer = tf.train.AdamOptimizer()
-            self.train_op = optimizer.minimize(loss)
             self.grads = optimizer.compute_gradients(loss)
+            self.train_op = optimizer.apply_gradients(self.grads)
 
             self.grad_summ = tf.summary.merge(add_gradients_summary(self.grads))
             self.activation_summ = tf.summary.merge(
@@ -95,6 +95,7 @@ class Model():
         self.trace_level = tf.RunOptions.NO_TRACE
         self.saver = tf.train.Saver(
             keep_checkpoint_every_n_hours=1,
+            var_list=tf.trainable_variables()
         )
 
         self.batch_time = 0
@@ -135,6 +136,7 @@ class Model():
                 self.queue = tf.FIFOQueue(self.queue_cap, types, shapes=shapes)
                 self.queue_filled = tf.to_float(self.queue.size()) / self.queue_cap
                 self.queue_size = tf.summary.scalar("queue_filled", self.queue_filled)
+                self.close_queue = self.queue.close(True, "close_queue")
 
                 self.dequeue_op = self.queue.dequeue_many(self.batch_size)
                 for name, x, qx in zip(names, input_vars, self.dequeue_op):
@@ -179,7 +181,6 @@ class Model():
                 self.Y_batch_len = tf.squeeze(tf.slice(self.Y_len, [0, self.block_idx], [self.batch_size_var, 1]), [1])
                 # TODO: migrate to batch_size_var
                 self.Y_batch = dense2d_to_sparse(tf.slice(self.Y, [0, begin_y], [self.batch_size, self.block_size_y]), self.Y_batch_len, dtype=tf.int32)
-
         return net
 
     def queue_feeder_proc(self, fun, args, proc=False):
@@ -196,7 +197,10 @@ class Model():
             while not self.coord.should_stop():
                 feed = gen_next()
                 feed = {self.__dict__[k]: v for k, v in feed.items()}
-                self.sess.run(self.enqueue_op, feed_dict=feed)
+                try:
+                    self.sess.run(self.enqueue_op, feed_dict=feed)
+                except tf.errors.CancelledError:
+                    break
             if proc:
                 p.terminate()
         return Thread(target=thread_fn, daemon=True)
@@ -304,6 +308,7 @@ class Model():
                 raise ValueError("No checkpoints found")
             iter_step = int(checkpoint.split('-')[-1])
             self.saver.restore(self.sess, checkpoint)
+            print("Restored to checkpoint", checkpoint)
         else:
             self.sess.run(tf.global_variables_initializer())
         self.coord = tf.train.Coordinator()
@@ -311,8 +316,6 @@ class Model():
 
         self.g.finalize()
         self.train_writer = tf.summary.FileWriter(os.path.join(self.log_dir, 'train'), graph=self.g)
-
-        # TODO: More efficiantly solve this problem, and halting following:
 
         if self.in_data == "EVENTS":
             data_thread_fn = lambda:\
@@ -331,6 +334,7 @@ class Model():
 
     def close_session(self):
         self.coord.request_stop()
+        self.sess.run(self.close_queue)
         self.train_writer.flush()
         for feed_thread in self.feed_threads:
                 feed_thread.join()
