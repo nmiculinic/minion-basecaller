@@ -134,8 +134,7 @@ class Model():
 
             with tf.name_scope("queue_handling"):
                 self.queue = tf.FIFOQueue(self.queue_cap, types, shapes=shapes)
-                self.queue_filled = tf.to_float(self.queue.size()) / self.queue_cap
-                self.queue_size = tf.summary.scalar("queue_filled", self.queue_filled)
+                self.queue_size = tf.summary.scalar("queue_filled", self.queue.size())
                 self.close_queue = self.queue.close(True, "close_queue")
 
                 self.dequeue_op = self.queue.dequeue_many(self.batch_size)
@@ -232,8 +231,8 @@ class Model():
         self.bbt_clock = time.clock()
 
     def summarize(self, iter_step, full=False, write_example=True):
-        state, queue_size_sum, queue_filled, y_len = self.sess.run([self.init_state, self.queue_size, self.queue_filled, self.Y_len])
-        print("avg time per batch %.3f, queue_filled = %.3f, avg_y_len = %.3f, load_time_op %.3f, between batch time %.3f" % (self.batch_time, queue_filled, np.mean(y_len), self.dequeue_time, self.bbt))
+        state, queue_size_sum, y_len = self.sess.run([self.init_state, self.queue_size, self.Y_len])
+        print("avg time per batch %.3f, avg_y_len = %.3f, load_time_op %.3f, between batch time %.3f" % (self.batch_time, np.mean(y_len), self.dequeue_time, self.bbt))
         out_net = []
         loss = 0
 
@@ -268,7 +267,6 @@ class Model():
         self.train_writer.add_summary(tf.Summary(value=[
             tf.Summary.Value(tag="loss", simple_value=loss_val.item()),
             tf.Summary.Value(tag="input/time_per_batch", simple_value=self.batch_time),
-            tf.Summary.Value(tag="input/dequeue_time", simple_value=self.dequeue_time),
             tf.Summary.Value(tag="input/dequeue_time", simple_value=self.dequeue_time),
             tf.Summary.Value(tag="input/between_batch_time", simple_value=self.bbt),
         ]), global_step=iter_step)
