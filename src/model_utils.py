@@ -182,27 +182,7 @@ class Model():
                 self.Y_batch = dense2d_to_sparse(tf.slice(self.Y, [0, begin_y], [self.batch_size, self.block_size_y]), self.Y_batch_len, dtype=tf.int32)
         return net
 
-    def queue_feeder_proc(self, fun, args, proc=False):
-        """ Proc = True is GIL workaround """
-        def thread_fn():
-            if proc:
-                q = multiprocessing.Queue()
-                p = multiprocessing.Process(target=input_readers.proc_wrapper, args=(q, fun, *args))
-                p.start()
-                gen_next = lambda: q.get()
-            else:
-                gen_fn = fun(*args)
-                gen_next = lambda: next(gen_fn)
-            while not self.coord.should_stop():
-                feed = gen_next()
-                feed = {self.__dict__[k]: v for k, v in feed.items()}
-                try:
-                    self.sess.run(self.enqueue_op, feed_dict=feed)
-                except tf.errors.CancelledError:
-                    break
-            if proc:
-                p.terminate()
-        return Thread(target=thread_fn, daemon=True)
+
 
     def __rnn_roll(self, add_fetch=[], add_feed={}, timeline_suffix=""):
         if 'sess' not in self.__dict__:
@@ -297,40 +277,71 @@ class Model():
             global_step=iter_step
         )
 
-    def init_session(self, restore=False, checkpoint=None, proc=True, num_workers=4):
-        self.sess = tf.Session(
-            graph=self.g,
-            config=tf.ConfigProto(log_device_placement=False)
-        )
-        if restore:
-            checkpoint = checkpoint or tf.train.latest_checkpoint(self.log_dir)
-            if checkpoint is None:
-                raise ValueError("No checkpoints found")
+    def restore(self, checkpoint=None):
+        checkpoint = checkpoint or tf.train.latest_checkpoint(self.log_dir)
+        if checkpoint is None:
+            raise ValueError("No checkpoints found")
             iter_step = int(checkpoint.split('-')[-1])
             self.saver.restore(self.sess, checkpoint)
             print("Restored to checkpoint", checkpoint)
-        else:
-            self.sess.run(tf.global_variables_initializer())
-        self.coord = tf.train.Coordinator()
-        self.threads = tf.train.start_queue_runners(sess=self.sess, coord=self.coord)
+        return iter_step
 
-        self.g.finalize()
-        self.train_writer = tf.summary.FileWriter(os.path.join(self.log_dir, 'train'), graph=self.g)
+    def __queue_feeder_thread(self, fun, args, proc):
+        """ Proc = True is GIL workaround """
+        def thread_fn():
+            if proc:
+                q = multiprocessing.Queue()
+                p = multiprocessing.Process(target=input_readers.proc_wrapper, args=(q, fun, *args))
+                p.start()
+                gen_next = lambda: q.get()
+            else:
+                gen_fn = fun(*args)
+                gen_next = lambda: next(gen_fn)
+            while not self.coord.should_stop():
+                feed = gen_next()
+                feed = {self.__dict__[k]: v for k, v in feed.items()}
+                try:
+                    self.sess.run(self.enqueue_op, feed_dict=feed)
+                except tf.errors.CancelledError:
+                    break
+            if proc:
+                p.terminate()
+        return Thread(target=thread_fn, daemon=True)
 
+    def __start_queues(self, num_workers, proc):
         if self.in_data == "EVENTS":
-            data_thread_fn = lambda:\
-                self.queue_feeder_proc(input_readers.get_feed_yield2, [self.block_size_x, self.num_blocks, 10], proc=proc)
+            def data_thread_fn():
+                return self.__queue_feeder_thread(
+                    input_readers.get_feed_yield2,
+                    [self.block_size_x, self.num_blocks, 10],
+                    proc=proc
+                )
         elif self.in_data == "RAW":
-            data_thread_fn = lambda:\
-                self.queue_feeder_proc(input_readers.get_raw_feed_yield, [self.block_size_x, self.block_size_y, self.num_blocks, 10], proc=proc)
+            def data_thread_fn():
+                return self.__queue_feeder_thread(
+                    input_readers.get_raw_feed_yield,
+                    [self.block_size_x, self.block_size_y, self.num_blocks, 10],
+                    proc=proc
+                )
         else:
-            raise ValueError("WTF " + self.in_data)
+            raise ValueError("in data unexpected, got: " + self.in_data)
 
         self.feed_threads = [data_thread_fn() for _ in range(num_workers)]
         for feed_thread in self.feed_threads:
             feed_thread.start()
 
-        return iter_step if restore else 0
+    def init_session(self, proc=True, num_workers=3):
+        self.sess = tf.Session(
+            graph=self.g,
+            config=tf.ConfigProto(log_device_placement=False)
+        )
+        self.sess.run(tf.global_variables_initializer())
+        self.coord = tf.train.Coordinator()
+        self.threads = tf.train.start_queue_runners(sess=self.sess, coord=self.coord)
+
+        self.g.finalize()
+        self.train_writer = tf.summary.FileWriter(os.path.join(self.log_dir, 'train'), graph=self.g)
+        self.__start_queues(num_workers, proc)
 
     def close_session(self):
         self.coord.request_stop()
