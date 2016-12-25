@@ -14,8 +14,11 @@ import random
 import shutil
 import warpctc_tensorflow
 from tflearn.summaries import add_gradients_summary, add_activations_summary
+import logging
 
 repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
+log_fmt = '[%(levelname)s] %(name)s: %(message)s'
+logging.basicConfig(level=logging.INFO, format=log_fmt)
 
 
 class Model():
@@ -120,6 +123,7 @@ class Model():
 
         os.makedirs(self.log_dir, mode=0o744, exist_ok=reuse or overwrite)
         print("Logdir = ", self.log_dir)
+        self.logger = logging.getLogger(run_id)
 
     def __create_train_input_objects(self):
         with tf.variable_scope("input"):
@@ -250,7 +254,7 @@ class Model():
             queue_size_sum, y_len = self.sess.run([self.train_queue_size, self.Y_len])
             self.train_writer.add_summary(queue_size_sum)
 
-            print("[%s] %4d loss %6.3f bt %.3f, bbt %.3f, avg_y_len = %.3f" % (self.run_id, iter_step, loss, self.batch_time, self.bbt, np.mean(y_len)))
+            self.logger.info("%4d loss %6.3f bt %.3f, bbt %.3f, avg_y_len = %.3f" % (iter_step, loss, self.batch_time, self.bbt, np.mean(y_len)))
         else:
             self.__rnn_roll(add_fetch=[self.train_op], timeline_suffix="ctc_loss")
 
