@@ -87,13 +87,22 @@ class Model():
                 predicted, prdicted_logprob = tf.nn.ctc_beam_search_decoder(self.logits, tf.div(self.X_batch_len, self.shrink_factor), merge_repeated=True, top_paths=1)
                 self.pred = tf.cast(predicted[0], tf.int32)
 
-            optimizer = tf.train.AdamOptimizer()
+            self.lr = tf.get_variable("learning_rate", initializer=tf.constant_initializer(1e-3), shape=[], trainable=False)
+            self.lr_placeholder = tf.placeholder(tf.float32)
+            self.assign_lr = tf.assign(self.lr, self.lr_placeholder)
+
+            optimizer = tf.train.AdamOptimizer(self.lr)
             self.grads = optimizer.compute_gradients(loss)
             self.train_op = optimizer.apply_gradients(self.grads)
 
             self.grad_summ = tf.summary.merge(add_gradients_summary(self.grads))
             self.activation_summ = tf.summary.merge(
                 add_activations_summary(g.get_collection("activations")))
+
+            self.train_summ = tf.summary.merge([
+                self.train_queue_size,
+                tf.summary.scalar("train/learning_rate", self.lr)
+            ])
 
         self.g = g
         self.trace_level = tf.RunOptions.NO_TRACE
@@ -232,6 +241,9 @@ class Model():
                 sol[i].append(val)
         return sol
 
+    def set_lr(self, lr):
+        self.sess.run(self.assign_lr, feed_dict={self.lr_placeholder: lr})
+
     def train_minibatch(self, iter_step, log_every=20):
         tt = time.clock()
         self.sess.run(self.load_train)
@@ -245,16 +257,16 @@ class Model():
             vals = self.__rnn_roll(add_fetch=fetches, timeline_suffix="ctc_loss")
             loss = np.sum(vals[1]).item()
             self.train_writer.add_summary(tf.Summary(value=[
-                tf.Summary.Value(tag="loss", simple_value=loss),
+                tf.Summary.Value(tag="train/loss", simple_value=loss),
                 tf.Summary.Value(tag="input/batch_time", simple_value=self.batch_time),
                 tf.Summary.Value(tag="input/dequeue_time", simple_value=self.dequeue_time),
                 tf.Summary.Value(tag="input/between_batch_time", simple_value=self.bbt),
             ]), global_step=iter_step)
 
-            queue_size_sum, y_len = self.sess.run([self.train_queue_size, self.Y_len])
-            self.train_writer.add_summary(queue_size_sum, global_step=iter_step)
+            train_summ, y_len = self.sess.run([self.train_summ, self.Y_len])
+            self.train_writer.add_summary(train_summ, global_step=iter_step)
 
-            self.logger.info("%4d loss %6.3f bt %.3f, bbt %.3f, avg_y_len = %.3f" % (iter_step, loss, self.batch_time, self.bbt, np.mean(y_len)))
+            self.logger.info("%4d loss %6.3f bt %.3f, bbt %.3f, avg_y_len %.3f" % (iter_step, loss, self.batch_time, self.bbt, np.mean(y_len)))
         else:
             self.__rnn_roll(add_fetch=[self.train_op], timeline_suffix="ctc_loss")
 
@@ -270,7 +282,7 @@ class Model():
             losses.append(np.sum(loss))
         avg_loss = np.mean(losses).item()
         self.test_writer.add_summary(tf.Summary(value=[
-            tf.Summary.Value(tag="loss", simple_value=avg_loss),
+            tf.Summary.Value(tag="train/loss", simple_value=avg_loss),
         ]), global_step=iter_step)
         self.logger.info("%4d validation loss %6.3f" % (iter_step, avg_loss))
         self.bbt_clock = time.clock()
