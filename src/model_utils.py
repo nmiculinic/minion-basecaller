@@ -204,57 +204,60 @@ class Model():
                 p.terminate()
         return Thread(target=thread_fn, daemon=True)
 
-    def train_minibatch(self):
+    def __rnn_roll(self, add_fetch=[], add_feed={}, timeline_suffix=""):
         if 'sess' not in self.__dict__:
             raise ValueError("session not initialized")
 
+        fetch = [self.final_state]
+        fetch.extend(add_fetch)
+        run_metadata = tf.RunMetadata()
+        sol = []
+        state = self.sess.run(self.init_state, feed_dict=add_feed)
+        for blk in range(self.num_blocks):
+            feed = {
+                self.block_idx: blk,
+                self.init_state: state,
+            }
+            feed.update(add_feed)
+            state, *vals = self.sess.run(
+                fetch,
+                feed_dict=feed,
+                options=tf.RunOptions(trace_level=self.trace_level),
+                run_metadata=run_metadata
+            )
+
+            if self.trace_level > tf.RunOptions.NO_TRACE:
+                trace = timeline.Timeline(step_stats=run_metadata.step_stats)
+                trace_file = open(os.path.join(self.log_dir, 'timeline.' + timeline_suffix + '.json'), 'w')
+                trace_file.write(trace.generate_chrome_trace_format())
+            sol.append(vals)
+        return sol
+
+    def train_minibatch(self):
         tt = time.clock()
         self.sess.run(self.load_queue)
         self.dequeue_time = 0.9 * self.dequeue_time + 0.1 * (time.clock() - tt)
 
         self.bbt = 0.8 * self.bbt + 0.2 * (time.clock() - self.bbt_clock)
         tt = time.clock()
-        state = self.sess.run(self.init_state)
-        for blk in range(self.num_blocks):
-            run_metadata = tf.RunMetadata()
-            loss_val, _, state = self.sess.run([self.loss, self.train_op, self.final_state], feed_dict={
-                self.block_idx: blk,
-                self.init_state: state
-            }, options=tf.RunOptions(trace_level=self.trace_level),
-            run_metadata=run_metadata)
-
-            if self.trace_level > tf.RunOptions.NO_TRACE:
-                trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-                trace_file = open(os.path.join(self.log_dir, 'timeline.ctf_loss.json'), 'w')
-                trace_file.write(trace.generate_chrome_trace_format())
+        self.__rnn_roll(add_fetch=[self.train_op], timeline_suffix="ctc_loss")
         self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
         self.bbt_clock = time.clock()
 
     def summarize(self, iter_step, full=False, write_example=True):
         state, queue_size_sum, y_len = self.sess.run([self.init_state, self.queue_size, self.Y_len])
         print("avg time per batch %.3f, avg_y_len = %.3f, load_time_op %.3f, between batch time %.3f" % (self.batch_time, np.mean(y_len), self.dequeue_time, self.bbt))
-        out_net = []
-        loss = 0
 
-        fetches = [self.loss, self.pred, self.final_state]
+        fetches = [self.loss, self.pred]
         if full:
             fetches.extend([self.grad_summ, self.activation_summ])
-        for blk in range(self.num_blocks):
-            run_metadata = tf.RunMetadata()
-            loss_val, ff, state, *summaries = self.sess.run(fetches, feed_dict={
-                self.block_idx: blk,
-                self.init_state: state
-            }, options=tf.RunOptions(trace_level=self.trace_level),
-            run_metadata=run_metadata)
-            out_net.append(decode_sparse(ff)[0])
-            loss += loss_val
+        vals = self.__rnn_roll(fetches)
 
-            if self.trace_level > tf.RunOptions.NO_TRACE:
-                trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-                trace_file = open(os.path.join(self.log_dir, 'timeline.ctf_decode.json'), 'w')
-                trace_file.write(trace.generate_chrome_trace_format())
+        loss_val = np.sum(ff[0] for ff in vals)
+        out_net = [decode_sparse(ff[1])[0] for ff in vals]
+        summaries = vals[0][2:]
 
-        print("[%s] %4d %6.3f (output -> up, target -> down)" % (self.run_id, iter_step, np.sum(loss_val)))
+        print("[%s] %4d %6.3f (output -> up, target -> down)" % (self.run_id, iter_step, loss_val))
         if write_example:
             target = self.decode_target(0, pad=self.block_size_y)
             for a, b in zip(out_net, target):
@@ -277,16 +280,15 @@ class Model():
 
     def eval_x(self, X, X_len):
         batch_size = X.shape[0]
-        state = self.sess.run(self.init_state, feed_dict={self.batch_size_var: batch_size})
-        out_net = []
-        for blk in range(self.num_blocks):
-            ff, state = self.sess.run([self.pred, self.final_state], feed_dict={
-                self.block_idx: blk,
-                self.init_state: state,
-                self.batch_size_var: batch_size
-            })
-            out_net.append(decode_sparse(ff))
-        return np.array(out_net).T
+
+        feed = {
+            self.batch_size_var: batch_size,
+            self.X: X,
+            self.X_len: X_len
+        }
+
+        vals = self.__rnn_roll([self.pred], feed, timeline_suffix="eval_x")
+        return np.array([decode_sparse(ff) for ff in vals]).T
 
     def save(self, iter_step):
         self.saver.save(
