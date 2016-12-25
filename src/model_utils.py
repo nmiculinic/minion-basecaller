@@ -228,14 +228,32 @@ class Model():
                 sol[i].append(val)
         return sol
 
-    def train_minibatch(self, iter_step, log_every=None):
+    def train_minibatch(self, iter_step, log_every=20):
         tt = time.clock()
         self.sess.run(self.load_train)
         self.dequeue_time = 0.9 * self.dequeue_time + 0.1 * (time.clock() - tt)
 
         self.bbt = 0.8 * self.bbt + 0.2 * (time.clock() - self.bbt_clock)
         tt = time.clock()
-        self.__rnn_roll(add_fetch=[self.train_op], timeline_suffix="ctc_loss")
+
+        if log_every is not None and iter_step % log_every == 0:
+            fetches = [self.train_op, self.loss]
+            vals = self.__rnn_roll(add_fetch=fetches, timeline_suffix="ctc_loss")
+            loss = np.sum(vals[1]).item()
+            self.train_writer.add_summary(tf.Summary(value=[
+                tf.Summary.Value(tag="loss", simple_value=loss),
+                tf.Summary.Value(tag="input/batch_time", simple_value=self.batch_time),
+                tf.Summary.Value(tag="input/dequeue_time", simple_value=self.dequeue_time),
+                tf.Summary.Value(tag="input/between_batch_time", simple_value=self.bbt),
+            ]), global_step=iter_step)
+
+            queue_size_sum, y_len = self.sess.run([self.train_queue_size, self.Y_len])
+            self.train_writer.add_summary(queue_size_sum)
+
+            print("[%s] %4d loss %6.3f bt %.3f, bbt %.3f, avg_y_len = %.3f" % (self.run_id, iter_step, loss, self.batch_time, self.bbt, np.mean(y_len)))
+        else:
+            self.__rnn_roll(add_fetch=[self.train_op], timeline_suffix="ctc_loss")
+
         self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
         self.bbt_clock = time.clock()
 
@@ -251,36 +269,23 @@ class Model():
         ]), global_step=iter_step)
         self.bbt_clock = time.clock()
 
-    def summarize(self, iter_step, full=False, write_example=True):
-        state, queue_size_sum, y_len = self.sess.run([self.init_state, self.train_queue_size, self.Y_len])
-        print("avg time per batch %.3f, avg_y_len = %.3f, load_time_op %.3f, between batch time %.3f" % (self.batch_time, np.mean(y_len), self.dequeue_time, self.bbt))
-
-        fetches = [self.loss, self.pred]
-        if full:
-            fetches.extend([self.grad_summ, self.activation_summ])
+    def summarize(self, iter_step, write_example=True):
+        fetches = [self.loss, self.grad_summ, self.activation_summ]
+        if write_example:
+            fetches.append(self.pred)
         vals = self.__rnn_roll(fetches)
 
-        loss_val = np.sum(vals[0])
-        out_net = list(map(lambda x: decode_sparse(x)[0], vals[1]))
-        summaries = [x[0] for x in vals[2:]]
-
-        print("[%s] %4d %6.3f (output -> up, target -> down)" % (self.run_id, iter_step, loss_val))
-        if write_example:
-            target = self.decode_target(0, pad=self.block_size_y)
-            for a, b in zip(out_net, target):
-                print(a)
-                print(b)
-                print('----')
+        summaries = [x[0] for x in vals[1:3]]
         for summary in summaries:
             self.train_writer.add_summary(summary, global_step=iter_step)
-        self.train_writer.add_summary(queue_size_sum, global_step=iter_step)
-        self.train_writer.add_summary(tf.Summary(value=[
-            tf.Summary.Value(tag="loss", simple_value=loss_val.item()),
-            tf.Summary.Value(tag="input/time_per_batch", simple_value=self.batch_time),
-            tf.Summary.Value(tag="input/dequeue_time", simple_value=self.dequeue_time),
-            tf.Summary.Value(tag="input/between_batch_time", simple_value=self.bbt),
-        ]), global_step=iter_step)
 
+        if write_example:
+            out_net = list(map(lambda x: decode_sparse(x)[0], vals[-1]))
+            target = self.decode_target(0, pad=self.block_size_y)
+            for a, b in zip(out_net, target):
+                print("OUTPUT:", a)
+                print("TARGET:", b)
+                print('----')
 
     def decode_target(self, idx, pad=None):
         yy, yy_len = self.sess.run([self.Y, self.Y_len])
@@ -306,6 +311,10 @@ class Model():
         )
 
     def restore(self, checkpoint=None):
+        """
+            Args:
+                checkpoint: filename to restore, default to last checkpoint
+        """
         checkpoint = checkpoint or tf.train.latest_checkpoint(self.log_dir)
         if checkpoint is None:
             raise ValueError("No checkpoints found")
