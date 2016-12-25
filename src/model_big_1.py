@@ -1,11 +1,8 @@
 import tensorflow as tf
 import numpy as np
 from util import atrous_conv1d
-import sys
 import os
 import model_utils
-import time
-import input_readers
 from tflearn.layers.conv import max_pool_1d
 
 
@@ -27,7 +24,7 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, reuse=F
                         bias = tf.get_variable("b", shape=(no_channel,))
                         net = atrous_conv1d(net, filter, i, padding="VALID") + bias
                         net = tf.nn.relu(net)
-                net = tf.Print(net, [tf.shape(net)], first_n=10, message="net, pre_pool")
+                net = tf.Print(net, [tf.shape(net)], first_n=5, message="net, pre_pool")
                 net = max_pool_1d(net, 2)
         print("after conv", net.get_shape())
         net = tf.transpose(net, [1, 0, 2], name="Shift_to_time_major")
@@ -64,22 +61,19 @@ if __name__ == "__main__":
         max_reach=147,
         model_fn=model_fn,
         queue_cap=300,
-        overwrite=True,
+        overwrite=False,
+        reuse=False,
         shrink_factor=8,
         run_id="init_raw_model",
     )
 
-    model.init_session(num_workers=8, proc=True)
-
-    for i in range(200001):
+    iter_step = model.init_session(num_workers=4, restore=False, proc=True)
+    for i in range(iter_step + 1, 100001):
         model.train_minibatch()
-        if i % 50 == 0 or i in [0, 10, 20, 30, 40]:
+        if i % 1000 == 0 or i == 1:
+            model.summarize(i, write_example=False, full=True)
+        elif i % 50 == 0 or i in [10, 20, 30, 40]:
             model.summarize(i, write_example=False)
-        if i % 1000 == 0:
+        if i % 2000 == 0:
             model.save(i)
-
-    print("closing session")
     model.close_session()
-    print("finishing")
-    time.sleep(120)
-    sys.exit(0)
