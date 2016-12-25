@@ -86,7 +86,10 @@ class Model():
             with tf.name_scope("prediction"):
                 predicted, prdicted_logprob = tf.nn.ctc_beam_search_decoder(self.logits, tf.div(self.X_batch_len, self.shrink_factor), merge_repeated=True, top_paths=1)
                 self.pred = tf.cast(predicted[0], tf.int32)
-                self.edit_distance = tf.edit_distance(self.pred, self.Y_batch)
+                self.edit_distance = tf.edit_distance(
+                    self.__dedup_output(self.pred),
+                    self.__dedup_output(self.Y_batch)
+                )
 
             self.lr = tf.get_variable("learning_rate", initializer=tf.constant_initializer(1e-3), shape=[], trainable=False)
             self.lr_placeholder = tf.placeholder(tf.float32)
@@ -117,6 +120,15 @@ class Model():
 
         self.bbt = 0
         self.bbt_clock = time.clock()
+
+    def __dedup_output(self, sparse_tensor):
+        sol_values = sparse_tensor.values - 4 * tf.to_int32(sparse_tensor.values >= 4)
+        sol = tf.SparseTensor(
+            sparse_tensor.indices,
+            tf.Print(sol_values, [sol_values, sparse_tensor.values], first_n=5, message="__dedup", summarize=20),
+            sparse_tensor.shape
+        )
+        return sol
 
     def __handle_logdir(self, log_dir, run_id, overwrite, reuse):
         log_dir = log_dir or os.path.join(repo_root, 'log', socket.gethostname())
