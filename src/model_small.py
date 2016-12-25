@@ -70,22 +70,18 @@ if __name__ == "__main__":
         model_fn=model_fn,
         queue_cap=100,
         shrink_factor=8,
-        overwrite=False,
-        reuse=True,
+        overwrite=True,
+        reuse=False,
         run_id="init_model"
     )
-    i = model.init_session(num_workers=2, proc=False, restore=True)
-    print(i)
-    while i < 100001:
-        i += 1
-        model.train_minibatch()
+    model.init_session()
+    for i in range(1, 3501):
+        model.train_minibatch(i)
         if i % 50 == 0 or i in [1, 10, 20, 30, 40]:
-            model.summarize(i, full=True, write_example=True)
+            model.summarize(i, write_example=True)
+            model.run_validation(i)
         if i % 100 == 0:
-            model.save(i)
+            # model.save(i)
+            pass
 
-    print("closing session")
     model.close_session()
-    print("finishing")
-    time.sleep(120)
-    sys.exit(0)

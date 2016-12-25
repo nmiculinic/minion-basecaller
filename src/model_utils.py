@@ -268,9 +268,11 @@ class Model():
             self.test_writer.add_summary(summ, global_step=iter_step)
             loss = self.__rnn_roll(add_fetch=[self.loss], timeline_suffix="ctc_val_loss")
             losses.append(np.sum(loss))
+        avg_loss = np.mean(losses).item()
         self.test_writer.add_summary(tf.Summary(value=[
-            tf.Summary.Value(tag="loss", simple_value=np.mean(losses)),
+            tf.Summary.Value(tag="loss", simple_value=avg_loss),
         ]), global_step=iter_step)
+        self.logger.info("%4d validation loss %6.3f" % (iter_step, avg_loss))
         self.bbt_clock = time.clock()
 
     def summarize(self, iter_step, write_example=True):
@@ -327,7 +329,7 @@ class Model():
             print("Restored to checkpoint", checkpoint)
         return iter_step
 
-    def __queue_feeder_thread(self, fun, args, proc):
+    def __queue_feeder_thread(self, enqueue_op, fun, args, proc):
         """ Proc = True is GIL workaround """
         def thread_fn():
             if proc:
@@ -342,7 +344,7 @@ class Model():
                 feed = gen_next()
                 feed = {self.__dict__[k]: v for k, v in feed.items()}
                 try:
-                    self.sess.run(self.enqueue_train, feed_dict=feed)
+                    self.sess.run(enqueue_op, feed_dict=feed)
                 except tf.errors.CancelledError:
                     break
             if proc:
@@ -351,23 +353,26 @@ class Model():
 
     def __start_queues(self, num_workers, proc):
         if self.in_data == "EVENTS":
-            def data_thread_fn():
+            def data_thread_fn(enqueue_op, file_list):
                 return self.__queue_feeder_thread(
+                    enqueue_op,
                     input_readers.get_feed_yield2,
-                    [self.block_size_x, self.num_blocks, 10],
+                    [self.block_size_x, self.num_blocks, file_list, 10],
                     proc=proc
                 )
         elif self.in_data == "RAW":
-            def data_thread_fn():
+            def data_thread_fn(enqueue_op, file_list):
                 return self.__queue_feeder_thread(
+                    enqueue_op,
                     input_readers.get_raw_feed_yield,
-                    [self.block_size_x, self.block_size_y, self.num_blocks, 10],
+                    [self.block_size_x, self.block_size_y, self.num_blocks, file_list, 10],
                     proc=proc
                 )
         else:
             raise ValueError("in data unexpected, got: " + self.in_data)
 
-        self.feed_threads = [data_thread_fn() for _ in range(num_workers)]
+        self.feed_threads = [data_thread_fn(self.enqueue_train, 'train.txt') for _ in range(num_workers)]
+        self.feed_threads.append(data_thread_fn(self.enqueue_test, 'test.txt'))
         for feed_thread in self.feed_threads:
             feed_thread.start()
 

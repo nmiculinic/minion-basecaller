@@ -19,7 +19,7 @@ def sanitize_input_line(fname):
     return fname
 
 
-def get_feed_yield_abs(feed_fn, batch_size, file_list='train.txt', root_dir=None, **kwargs):
+def get_feed_yield_abs(feed_fn, batch_size, file_list, root_dir=None, **kwargs):
     root_dir = root_dir or root_dir_map[socket.gethostname()]
     with open(os.path.join(root_dir, file_list), 'r') as f:
         items = list(map(sanitize_input_line, f.readlines()))
@@ -46,18 +46,18 @@ def get_feed_yield_abs(feed_fn, batch_size, file_list='train.txt', root_dir=None
                     }
 
 
-def get_feed_yield2(block_size, num_blocks, batch_size=10, warn_if_short=False, root_dir=None):
-    return get_feed_yield_abs(lambda filename: util.read_fast5(filename, block_size, num_blocks, warn_if_short), batch_size, root_dir=root_dir)
+def get_feed_yield2(block_size, num_blocks, file_list, batch_size=10, warn_if_short=False, root_dir=None):
+    return get_feed_yield_abs(lambda filename: util.read_fast5(filename, block_size, num_blocks, warn_if_short), batch_size, file_list, root_dir=root_dir)
 
 
-def get_raw_feed_yield(block_size_x, block_size_y, num_blocks, batch_size=10, warn_if_short=False, root_dir=None):
+def get_raw_feed_yield(block_size_x, block_size_y, num_blocks, file_list, batch_size=10, warn_if_short=False, root_dir=None):
     return get_feed_yield_abs(lambda filename: util.read_fast5_raw(
         filename,
         block_size_x=block_size_x,
         block_size_y=block_size_y,
         num_blocks=num_blocks,
         warn_if_short=warn_if_short),
-        batch_size=batch_size, root_dir=root_dir)
+        batch_size=batch_size, file_list=file_list, root_dir=root_dir)
 
 
 def proc_wrapper(q, fun, *args):
