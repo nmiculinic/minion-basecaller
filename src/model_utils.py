@@ -324,10 +324,11 @@ class Model():
         checkpoint = checkpoint or tf.train.latest_checkpoint(self.log_dir)
         if checkpoint is None:
             raise ValueError("No checkpoints found")
+        else:
             iter_step = int(checkpoint.split('-')[-1])
             self.saver.restore(self.sess, checkpoint)
-            print("Restored to checkpoint", checkpoint)
-        return iter_step
+            self.logger.info("%4d Restored to checkpoint %s" % (iter_step, checkpoint))
+            return iter_step
 
     def __queue_feeder_thread(self, enqueue_op, fun, args, proc):
         """ Proc = True is GIL workaround """
