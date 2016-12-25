@@ -252,7 +252,7 @@ class Model():
             ]), global_step=iter_step)
 
             queue_size_sum, y_len = self.sess.run([self.train_queue_size, self.Y_len])
-            self.train_writer.add_summary(queue_size_sum)
+            self.train_writer.add_summary(queue_size_sum, global_step=iter_step)
 
             self.logger.info("%4d loss %6.3f bt %.3f, bbt %.3f, avg_y_len = %.3f" % (iter_step, loss, self.batch_time, self.bbt, np.mean(y_len)))
         else:
