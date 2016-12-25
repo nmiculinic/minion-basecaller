@@ -19,7 +19,7 @@ repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 
 
 class Model():
-    def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size=None, block_size_x=None, block_size_y=None, log_dir=None, run_id=None, overwrite=False, reuse=False, queue_cap=None, shrink_factor=1, in_data="EVENTS"):
+    def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size=None, block_size_x=None, block_size_y=None, log_dir=None, run_id=None, overwrite=False, reuse=False, queue_cap=None, shrink_factor=1, test_queue_cap=None, in_data="EVENTS"):
         """
             Args:
                 max_reach: int, size of contextual window for convolutions etc.
@@ -44,7 +44,8 @@ class Model():
         self.batch_size = batch_size
         self.batch_size_var = tf.placeholder_with_default(tf.convert_to_tensor(batch_size, dtype=tf.int32), [])
         self.max_reach = max_reach
-        self.queue_cap = queue_cap or 5 * self.self.batch_size
+        self.train_queue_cap = queue_cap or 5 * self.batch_size
+        self.test_queue_cap = test_queue_cap or self.train_queue_cap
 
         with g.as_default():
             net = self.__create_train_input_objects()
@@ -133,20 +134,35 @@ class Model():
             types = [x.dtype.base_dtype for x in input_vars]
 
             with tf.name_scope("queue_handling"):
-                self.queue = tf.FIFOQueue(self.queue_cap, types, shapes=shapes)
-                self.queue_size = tf.summary.scalar("queue_filled", self.queue.size())
-                self.close_queue = self.queue.close(True, "close_queue")
+                self.train_queue = tf.FIFOQueue(self.train_queue_cap, types, shapes=shapes)
+                self.test_queue = tf.FIFOQueue(self.test_queue_cap, types, shapes=shapes)
 
-                self.dequeue_op = self.queue.dequeue_many(self.batch_size)
-                for name, x, qx in zip(names, input_vars, self.dequeue_op):
+                self.train_queue_size = tf.summary.scalar("train_queue_filled", self.train_queue.size())
+                self.test_queue_size = tf.summary.scalar("test_queue_filled", self.test_queue.size())
+
+                self.close_queues = tf.group(
+                    self.train_queue.close(True),
+                    self.test_queue.close(True)
+                )
+
+                for name, x in zip(
+                    names,
+                    input_vars,
+                ):
                     self.__dict__[name] = x
-                    feed = tf.placeholder_with_default(qx, shape=x.get_shape(), name=name + "_feed")
-                    self.__dict__[name + "_feed"] = feed
-                    self.__dict__[name + "_assign"] = tf.assign(x, feed, name=name + "_assign")
                     self.__dict__[name + "_enqueue_val"] = tf.placeholder(x.dtype.base_dtype, shape=[None, *x.get_shape()[1:]], name=name + "_enqueue_val")
 
-                self.enqueue_op = self.queue.enqueue_many([self.__dict__[name + "_enqueue_val"] for name in names])
-                self.load_queue = tf.group(*[v for k, v in self.__dict__.items() if '_assign' in k])
+                self.enqueue_train = self.train_queue.enqueue_many(
+                    [self.__dict__[name + "_enqueue_val"] for name in names])
+                self.enqueue_test = self.test_queue.enqueue_many(
+                    [self.__dict__[name + "_enqueue_val"] for name in names])
+
+                self.load_train = tf.group(*[
+                    tf.assign(x, qx) for x, qx in zip(input_vars, self.train_queue.dequeue_many(self.batch_size))
+                ])
+                self.load_test = tf.group(*[
+                    tf.assign(x, qx) for x, qx in zip(input_vars, self.test_queue.dequeue_many(self.batch_size))
+                ])
 
             self.block_idx = tf.placeholder(dtype=tf.int32, shape=[], name="block_idx")
             begin_x = self.block_idx * self.block_size_x
@@ -182,8 +198,6 @@ class Model():
                 self.Y_batch = dense2d_to_sparse(tf.slice(self.Y, [0, begin_y], [self.batch_size, self.block_size_y]), self.Y_batch_len, dtype=tf.int32)
         return net
 
-
-
     def __rnn_roll(self, add_fetch=[], add_feed={}, timeline_suffix=""):
         if 'sess' not in self.__dict__:
             raise ValueError("session not initialized")
@@ -191,7 +205,7 @@ class Model():
         fetch = [self.final_state]
         fetch.extend(add_fetch)
         run_metadata = tf.RunMetadata()
-        sol = []
+        sol = [[] for _ in range(len(add_fetch))]
         state = self.sess.run(self.init_state, feed_dict=add_feed)
         for blk in range(self.num_blocks):
             feed = {
@@ -206,16 +220,17 @@ class Model():
                 run_metadata=run_metadata
             )
 
-            if self.trace_level > tf.RunOptions.NO_TRACE:
+            if blk == 0 and self.trace_level > tf.RunOptions.NO_TRACE:
                 trace = timeline.Timeline(step_stats=run_metadata.step_stats)
                 trace_file = open(os.path.join(self.log_dir, 'timeline.' + timeline_suffix + '.json'), 'w')
                 trace_file.write(trace.generate_chrome_trace_format())
-            sol.append(vals)
+            for i, val in enumerate(vals):
+                sol[i].append(val)
         return sol
 
-    def train_minibatch(self):
+    def train_minibatch(self, iter_step, log_every=None):
         tt = time.clock()
-        self.sess.run(self.load_queue)
+        self.sess.run(self.load_train)
         self.dequeue_time = 0.9 * self.dequeue_time + 0.1 * (time.clock() - tt)
 
         self.bbt = 0.8 * self.bbt + 0.2 * (time.clock() - self.bbt_clock)
@@ -224,8 +239,20 @@ class Model():
         self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
         self.bbt_clock = time.clock()
 
+    def run_validation(self, iter_step, num_batches=5):
+        losses = []
+        for _ in range(num_batches):
+            _, summ = self.sess.run([self.load_test, self.test_queue_size])
+            self.test_writer.add_summary(summ, global_step=iter_step)
+            loss = self.__rnn_roll(add_fetch=[self.loss], timeline_suffix="ctc_val_loss")
+            losses.append(np.sum(loss))
+        self.test_writer.add_summary(tf.Summary(value=[
+            tf.Summary.Value(tag="loss", simple_value=np.mean(losses)),
+        ]), global_step=iter_step)
+        self.bbt_clock = time.clock()
+
     def summarize(self, iter_step, full=False, write_example=True):
-        state, queue_size_sum, y_len = self.sess.run([self.init_state, self.queue_size, self.Y_len])
+        state, queue_size_sum, y_len = self.sess.run([self.init_state, self.train_queue_size, self.Y_len])
         print("avg time per batch %.3f, avg_y_len = %.3f, load_time_op %.3f, between batch time %.3f" % (self.batch_time, np.mean(y_len), self.dequeue_time, self.bbt))
 
         fetches = [self.loss, self.pred]
@@ -233,9 +260,9 @@ class Model():
             fetches.extend([self.grad_summ, self.activation_summ])
         vals = self.__rnn_roll(fetches)
 
-        loss_val = np.sum(ff[0] for ff in vals)
-        out_net = [decode_sparse(ff[1])[0] for ff in vals]
-        summaries = vals[0][2:]
+        loss_val = np.sum(vals[0])
+        out_net = list(map(lambda x: decode_sparse(x)[0], vals[1]))
+        summaries = [x[0] for x in vals[2:]]
 
         print("[%s] %4d %6.3f (output -> up, target -> down)" % (self.run_id, iter_step, loss_val))
         if write_example:
@@ -253,6 +280,7 @@ class Model():
             tf.Summary.Value(tag="input/dequeue_time", simple_value=self.dequeue_time),
             tf.Summary.Value(tag="input/between_batch_time", simple_value=self.bbt),
         ]), global_step=iter_step)
+
 
     def decode_target(self, idx, pad=None):
         yy, yy_len = self.sess.run([self.Y, self.Y_len])
@@ -301,7 +329,7 @@ class Model():
                 feed = gen_next()
                 feed = {self.__dict__[k]: v for k, v in feed.items()}
                 try:
-                    self.sess.run(self.enqueue_op, feed_dict=feed)
+                    self.sess.run(self.enqueue_train, feed_dict=feed)
                 except tf.errors.CancelledError:
                     break
             if proc:
@@ -341,11 +369,12 @@ class Model():
 
         self.g.finalize()
         self.train_writer = tf.summary.FileWriter(os.path.join(self.log_dir, 'train'), graph=self.g)
+        self.test_writer = tf.summary.FileWriter(os.path.join(self.log_dir, 'test'), graph=self.g)
         self.__start_queues(num_workers, proc)
 
     def close_session(self):
         self.coord.request_stop()
-        self.sess.run(self.close_queue)
+        self.sess.run(self.close_queues)
         self.train_writer.flush()
         for feed_thread in self.feed_threads:
                 feed_thread.join()
