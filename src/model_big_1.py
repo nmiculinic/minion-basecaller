@@ -4,7 +4,7 @@ from util import atrous_conv1d
 import os
 import model_utils
 from tflearn.layers.conv import max_pool_1d
-
+import logging
 
 def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, reuse=False, **kwargs):
     """
@@ -57,22 +57,36 @@ if __name__ == "__main__":
         block_size_y=500,
         in_data="RAW",
         num_blocks=2,
-        batch_size=16,
+        batch_size=32,
         max_reach=147,
         model_fn=model_fn,
         queue_cap=300,
         overwrite=False,
-        reuse=False,
+        reuse=True,
         shrink_factor=8,
         run_id="init_raw_model",
     )
 
-    iter_step = model.init_session(num_workers=4, restore=False, proc=True)
-    for i in range(iter_step + 1, 100001):
-        model.train_minibatch()
-        if i % 1000 == 0 or i == 1:
-            model.summarize(i, write_example=False, full=True)
-        elif i % 50 == 0 or i in [10, 20, 30, 40]:
+    lr_schedule = {
+        87000: 5e-4,
+        125000: 1e-4,
+        150000: 5e-5,
+    }
+
+    model.init_session()
+    iter_step = model.restore()
+    lr = 1e-3
+    for k, v in lr_schedule.items():
+        if iter_step > k:
+            lr = min(v, lr)
+    model.set_lr(lr)
+
+    for i in range(iter_step + 1, 200001):
+        if i in lr_schedule:
+            model.set_lr(lr_schedule[i])
+        model.train_minibatch(i)
+        if i % 200 == 0:
+            model.run_validation(i)
             model.summarize(i, write_example=False)
         if i % 2000 == 0:
             model.save(i)
