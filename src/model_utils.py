@@ -97,6 +97,9 @@ class Model():
 
             optimizer = tf.train.AdamOptimizer(self.lr)
             self.grads = optimizer.compute_gradients(loss)
+            with tf.name_scope("gradient_clipping"):
+                self.grads = [(tf.clip_by_value(grad, -2., 2.), var) for grad, var in self.grads]
+
             self.train_op = optimizer.apply_gradients(self.grads)
 
             self.grad_summ = tf.summary.merge(add_gradients_summary(self.grads))
