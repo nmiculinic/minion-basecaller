@@ -21,8 +21,12 @@ log_fmt = '[%(levelname)s] %(name)s: %(message)s'
 logging.basicConfig(level=logging.INFO, format=log_fmt)
 
 
+def default_lr_fn(global_step):
+    return tf.train.exponential_decay(1e-3, global_step, 100000, 0.01)
+
+
 class Model():
-    def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size=None, block_size_x=None, block_size_y=None, log_dir=None, run_id=None, overwrite=False, reuse=False, queue_cap=None, shrink_factor=1, test_queue_cap=None, in_data="EVENTS"):
+    def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size=None, block_size_x=None, block_size_y=None, log_dir=None, run_id=None, overwrite=False, reuse=False, queue_cap=None, shrink_factor=1, test_queue_cap=None, in_data="EVENTS", lr_fn=None):
         """
             Args:
                 max_reach: int, size of contextual window for convolutions etc.
@@ -33,6 +37,7 @@ class Model():
             raise ValueError("in_data must be one of two types")
         self.in_data = in_data
         self.data_in_dim = 1 if in_data == "RAW" else 3
+        self.lr_fn = default_lr_fn or lr_fn
 
         if overwrite and reuse:
             raise ValueError("Cannot overwrite and reuse logdit and checkpoints")
@@ -91,10 +96,9 @@ class Model():
                     self.__dedup_output(self.Y_batch)
                 )
 
-            self.lr = tf.get_variable("learning_rate", initializer=tf.constant_initializer(1e-3), shape=[], trainable=False)
-            self.lr_placeholder = tf.placeholder(tf.float32)
-            self.assign_lr = tf.assign(self.lr, self.lr_placeholder)
-
+            self.global_step = tf.Variable(0, name='global_step', trainable=False)
+            self.inc_gs = tf.assign_add(self.global_step, 1)
+            self.lr = self.lr_fn(self.global_step)
             optimizer = tf.train.AdamOptimizer(self.lr)
             self.grads = optimizer.compute_gradients(loss)
             with tf.name_scope("gradient_clipping"):
@@ -115,7 +119,6 @@ class Model():
         self.trace_level = tf.RunOptions.NO_TRACE
         self.saver = tf.train.Saver(
             keep_checkpoint_every_n_hours=1,
-            var_list=tf.trainable_variables()
         )
 
         self.batch_time = 0
@@ -257,12 +260,16 @@ class Model():
                 sol[i].append(val)
         return sol
 
-    def set_lr(self, lr):
-        self.sess.run(self.assign_lr, feed_dict={self.lr_placeholder: lr})
+    def __inc_gs(self):
+        self.sess.run(self.inc_gs)
 
-    def train_minibatch(self, iter_step, log_every=20):
+    def get_global_step(self):
+        return self.sess.run(self.global_step)
+
+    def train_minibatch(self, log_every=20):
         tt = time.clock()
-        self.sess.run(self.load_train)
+        iter_step, _ = self.sess.run([self.global_step, self.load_train])
+        self.sess.run([self.inc_gs])
         self.dequeue_time = 0.9 * self.dequeue_time + 0.1 * (time.clock() - tt)
 
         self.bbt = 0.8 * self.bbt + 0.2 * (time.clock() - self.bbt_clock)
@@ -290,11 +297,11 @@ class Model():
             self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
             self.bbt_clock = time.clock()
 
-    def run_validation(self, iter_step, num_batches=5):
+    def run_validation(self, num_batches=5):
         losses = []
         edit_distances = []
         for _ in range(num_batches):
-            _, summ = self.sess.run([self.load_test, self.test_queue_size])
+            _, iter_step, summ = self.sess.run([self.load_test, self.global_step, self.test_queue_size])
             self.test_writer.add_summary(summ, global_step=iter_step)
             loss, edit_distance = self.__rnn_roll(
                 add_fetch=[self.loss, self.edit_distance],
@@ -311,7 +318,8 @@ class Model():
         self.logger.info("%4d validation loss %6.3f" % (iter_step, avg_loss))
         self.bbt_clock = time.clock()
 
-    def summarize(self, iter_step, write_example=True):
+    def summarize(self, write_example=True):
+        iter_step = self.get_global_step()
         fetches = [self.loss, self.grad_summ, self.activation_summ, self.edit_distance]
         if write_example:
             fetches.append(self.pred)
@@ -350,26 +358,30 @@ class Model():
         vals = self.__rnn_roll([self.pred], feed, timeline_suffix="eval_x")
         return np.array([decode_sparse(ff) for ff in vals]).T
 
-    def save(self, iter_step):
+    def save(self):
         self.saver.save(
             self.sess,
             os.path.join(self.log_dir, 'model.ckpt'),
-            global_step=iter_step
+            global_step=self.get_global_step()
         )
+        self.logger.info("%4d saved checkpoing", self.get_global_step())
 
-    def restore(self, checkpoint=None):
+    def restore(self, checkpoint=None, must_exist=True):
         """
             Args:
                 checkpoint: filename to restore, default to last checkpoint
         """
         checkpoint = checkpoint or tf.train.latest_checkpoint(self.log_dir)
         if checkpoint is None:
-            raise ValueError("No checkpoints found")
-        else:
-            iter_step = int(checkpoint.split('-')[-1])
-            self.saver.restore(self.sess, checkpoint)
+            if must_exist:
+                raise ValueError("No checkpoints found")
+            iter_step = self.get_global_step()
             self.logger.info("%4d Restored to checkpoint %s" % (iter_step, checkpoint))
-            return iter_step
+        else:
+            self.saver.restore(self.sess, checkpoint)
+            iter_step = self.get_global_step()
+            self.logger.info("%4d Restored to checkpoint %s" % (iter_step, checkpoint))
+        return iter_step
 
     def __queue_feeder_thread(self, enqueue_op, fun, args, proc):
         """ Proc = True is GIL workaround """
