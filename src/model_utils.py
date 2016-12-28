@@ -26,11 +26,12 @@ def default_lr_fn(global_step):
 
 
 class Model():
-    def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size=None, block_size_x=None, block_size_y=None, log_dir=None, run_id=None, overwrite=False, reuse=False, queue_cap=None, shrink_factor=1, test_queue_cap=None, in_data="EVENTS", lr_fn=None):
+    def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size=None, block_size_x=None, block_size_y=None, log_dir=None, run_id=None, overwrite=False, reuse=False, queue_cap=None, shrink_factor=1, test_queue_cap=None, in_data="EVENTS", lr_fn=None, hyper={}):
         """
             Args:
                 max_reach: int, size of contextual window for convolutions etc.
                 model_fn: function accepting (batch_size, 2*max_reach + block_size, 3) -> (block_size, batch_size, out_classes). Notice shift to time major as well as reduction in time dimension.
+                hyper: dictionary of hyperparameters passed to the model function as **hyper
         """
 
         if in_data not in ["RAW", "EVENTS"]:
@@ -64,7 +65,8 @@ class Model():
                     max_reach=self.max_reach,
                     block_size=self.block_size_x,
                     out_classes=9,
-                    batch_size=self.batch_size_var
+                    batch_size=self.batch_size_var,
+                    **hyper
                 )
 
             for k, v in data.items():
@@ -85,8 +87,12 @@ class Model():
                     blank_label=8
                 )
 
-                loss = tf.reduce_mean(loss)
-                self.loss = loss
+                self.loss = tf.reduce_mean(loss)
+                if 'reg' in self.__dict__:
+                    self.logger.info("Adding regularization loss")
+                    self.loss = self.loss + self.reg
+                else:
+                    self.reg = tf.constant(0)
 
             with tf.name_scope("prediction"):
                 predicted, prdicted_logprob = tf.nn.ctc_beam_search_decoder(self.logits, tf.div(self.X_batch_len, self.shrink_factor), merge_repeated=True, top_paths=1)
@@ -276,13 +282,15 @@ class Model():
         tt = time.clock()
 
         if log_every is not None and iter_step % log_every == 0:
-            fetches = [self.train_op, self.loss]
+            fetches = [self.train_op, self.loss, self.reg]
             vals = self.__rnn_roll(add_fetch=fetches, timeline_suffix="ctc_loss")
             self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
             self.bbt_clock = time.clock()
             loss = np.sum(vals[1]).item()
+            reg_loss = np.sum(vals[2]).item()
             self.train_writer.add_summary(tf.Summary(value=[
                 tf.Summary.Value(tag="train/loss", simple_value=loss),
+                tf.Summary.Value(tag="train/reg_loss", simple_value=reg_loss),
                 tf.Summary.Value(tag="input/batch_time", simple_value=self.batch_time),
                 tf.Summary.Value(tag="input/dequeue_time", simple_value=self.dequeue_time),
                 tf.Summary.Value(tag="input/between_batch_time", simple_value=self.bbt),
@@ -291,7 +299,7 @@ class Model():
             train_summ, y_len = self.sess.run([self.train_summ, self.Y_len])
             self.train_writer.add_summary(train_summ, global_step=iter_step)
 
-            self.logger.info("%4d loss %6.3f bt %.3f, bbt %.3f, avg_y_len %.3f" % (iter_step, loss, self.batch_time, self.bbt, np.mean(y_len)))
+            self.logger.info("%4d loss %6.3f reg_loss %6.3f bt %.3f, bbt %.3f, avg_y_len %.3f", iter_step, loss, reg_loss, self.batch_time, self.bbt, np.mean(y_len))
         else:
             self.__rnn_roll(add_fetch=[self.train_op], timeline_suffix="ctc_loss")
             self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
@@ -299,20 +307,24 @@ class Model():
 
     def run_validation(self, num_batches=5):
         losses = []
+        reg_losses = []
         edit_distances = []
         for _ in range(num_batches):
             _, iter_step, summ = self.sess.run([self.load_test, self.global_step, self.test_queue_size])
             self.test_writer.add_summary(summ, global_step=iter_step)
-            loss, edit_distance = self.__rnn_roll(
-                add_fetch=[self.loss, self.edit_distance],
+            loss, reg_loss, edit_distance = self.__rnn_roll(
+                add_fetch=[self.loss, self.reg, self.edit_distance],
                 timeline_suffix="ctc_val_loss"
             )
             losses.append(np.sum(loss))
+            reg_losses.append(np.sum(reg_loss))
             edit_distances.append(edit_distance)
         avg_loss = np.mean(losses).item()
+        avg_reg_loss = np.mean(reg_losses).item()
         avg_edit_distance = np.mean(edit_distances).item()
         self.test_writer.add_summary(tf.Summary(value=[
             tf.Summary.Value(tag="train/loss", simple_value=avg_loss),
+            tf.Summary.Value(tag="train/reg_loss", simple_value=avg_reg_loss),
             tf.Summary.Value(tag="train/edit_distance", simple_value=avg_edit_distance),
         ]), global_step=iter_step)
         self.logger.info("%4d validation loss %6.3f" % (iter_step, avg_loss))
