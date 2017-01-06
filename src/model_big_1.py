@@ -64,30 +64,16 @@ if __name__ == "__main__":
         overwrite=False,
         reuse=True,
         shrink_factor=8,
-        run_id="init_raw_model",
+        run_id=__file__[:-3],
     )
 
-    lr_schedule = {
-        87000: 5e-4,
-        125000: 1e-4,
-        150000: 5e-5,
-    }
-
     model.init_session()
-    iter_step = model.restore()
-    lr = 1e-3
-    for k, v in lr_schedule.items():
-        if iter_step > k:
-            lr = min(v, lr)
-    model.set_lr(lr)
-
+    iter_step = model.restore(must_exist=False)
     for i in range(iter_step + 1, 200001):
-        if i in lr_schedule:
-            model.set_lr(lr_schedule[i])
         model.train_minibatch(i)
         if i % 200 == 0:
-            model.run_validation(i)
-            model.summarize(i, write_example=False)
+            model.run_validation()
+            model.summarize(write_example=False)
         if i % 2000 == 0:
-            model.save(i)
+            model.save()
     model.close_session()
