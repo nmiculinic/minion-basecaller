@@ -50,23 +50,24 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, reuse=F
     }
 
 
-if __name__ == "__main__":
-    model = model_utils.Model(
-        tf.get_default_graph(),
-        block_size_x=8 * 500,
-        block_size_y=500,
-        in_data="RAW",
-        num_blocks=2,
-        batch_size=32,
-        max_reach=147,
-        model_fn=model_fn,
-        queue_cap=300,
-        overwrite=False,
-        reuse=True,
-        shrink_factor=8,
-        run_id=__file__[:-3],
-    )
+model = model_utils.Model(
+    tf.get_default_graph(),
+    block_size_x=8 * 500,
+    block_size_y=500,
+    in_data="RAW",
+    num_blocks=2,
+    batch_size=32,
+    max_reach=147,
+    model_fn=model_fn,
+    queue_cap=300,
+    overwrite=False,
+    reuse=True,
+    shrink_factor=8,
+    run_id=__file__[:-3],
+)
 
+
+if __name__ == "__main__":
     model.init_session()
     iter_step = model.restore(must_exist=False)
     for i in range(iter_step + 1, 200001):

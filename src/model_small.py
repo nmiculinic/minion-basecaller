@@ -7,6 +7,7 @@ import model_utils
 import time
 import input_readers
 from tflearn.layers.conv import max_pool_1d
+import ops
 
 def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, reuse=False, **kwargs):
     """
@@ -54,34 +55,41 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, reuse=F
     return {
         'logits': logits,
         'init_state': init_state,
-        'final_state': final_state
+        'final_state': final_state,
+        'reg': ops.running_mean(logits, [3, 4, 5], [1, 4, 16], out_classes)
     }
 
 
-if __name__ == "__main__":
-    model = model_utils.Model(
-        tf.get_default_graph(),
-        block_size_x=8 * 10,
-        block_size_y=10,
-        in_data="RAW",
-        num_blocks=2,
-        batch_size=16,
-        max_reach=49,
-        model_fn=model_fn,
-        queue_cap=100,
-        shrink_factor=8,
-        overwrite=True,
-        reuse=False,
-        run_id="init_model"
-    )
-    model.init_session()
-    for i in range(1, 3501):
-        model.train_minibatch(i)
-        if i % 50 == 0 or i in [1, 10, 20, 30, 40]:
-            model.summarize(i, write_example=True)
-            model.run_validation(i)
-        if i % 100 == 0:
-            # model.save(i)
-            pass
+model = model_utils.Model(
+    tf.Graph(),
+    block_size_x=8 * 20,
+    block_size_y=20,
+    in_data="RAW",
+    num_blocks=2,
+    batch_size=64,
+    max_reach=49,
+    model_fn=model_fn,
+    queue_cap=100,
+    shrink_factor=8,
+    overwrite=False,
+    reuse=True,
+    run_id="init_model",
+    lr_fn=lambda gs: tf.train.exponential_decay(1e-3, gs, 10000, 0.01)
+)
 
-    model.close_session()
+if __name__ == "__main__":
+
+    print(__file__[:-3])
+    try:
+        model.init_session()
+        iter_step = model.restore(must_exist=False)
+        for i in range(iter_step + 1, 10001):
+            model.train_minibatch(log_every=5)
+            assert i == model.get_global_step()
+            if i % 50 == 0 or i in [1, 10, 20, 30, 40]:
+                model.summarize(write_example=True)
+                model.run_validation()
+            if i % 100 == 0:
+                model.save()
+    finally:
+        model.close_session()

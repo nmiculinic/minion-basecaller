@@ -51,12 +51,12 @@ class Model():
             raise ValueError("shrink factor need to divide block_size_x")
         self.num_blocks = num_blocks
         self.batch_size = batch_size
-        self.batch_size_var = tf.placeholder_with_default(tf.convert_to_tensor(batch_size, dtype=tf.int32), [])
         self.max_reach = max_reach
         self.train_queue_cap = queue_cap or 5 * self.batch_size
         self.test_queue_cap = test_queue_cap or self.train_queue_cap
 
         with g.as_default():
+            self.batch_size_var = tf.placeholder_with_default(tf.convert_to_tensor(batch_size, dtype=tf.int32), [])
             net = self.__create_train_input_objects()
             with tf.name_scope("model"):
                 data = model_fn(
@@ -121,11 +121,12 @@ class Model():
                 tf.summary.scalar("train/learning_rate", self.lr)
             ])
 
+            self.saver = tf.train.Saver(
+                keep_checkpoint_every_n_hours=1,
+            )
+
         self.g = g
         self.trace_level = tf.RunOptions.NO_TRACE
-        self.saver = tf.train.Saver(
-            keep_checkpoint_every_n_hours=1,
-        )
 
         self.batch_time = 0
         self.dequeue_time = 0
@@ -443,13 +444,14 @@ class Model():
             feed_thread.start()
 
     def init_session(self, proc=True, num_workers=3):
-        self.sess = tf.Session(
-            graph=self.g,
-            config=tf.ConfigProto(log_device_placement=False)
-        )
-        self.sess.run(tf.global_variables_initializer())
-        self.coord = tf.train.Coordinator()
-        self.threads = tf.train.start_queue_runners(sess=self.sess, coord=self.coord)
+        with self.g.as_default():
+            self.sess = tf.Session(
+                graph=self.g,
+                config=tf.ConfigProto(log_device_placement=False)
+            )
+            self.sess.run(tf.global_variables_initializer())
+            self.coord = tf.train.Coordinator()
+            self.threads = tf.train.start_queue_runners(sess=self.sess, coord=self.coord)
 
         self.g.finalize()
         self.train_writer = tf.summary.FileWriter(os.path.join(self.log_dir, 'train'), graph=self.g)
