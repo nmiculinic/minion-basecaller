@@ -33,7 +33,7 @@ def get_feed_yield_abs(feed_fn, batch_size, file_list, root_dir=None, **kwargs):
                         sol = feed_fn(fname)
                         if sol is not None:
                             if np.any(sol[3] == 0):
-                                print(fname, "y_len 0, skipping", file=sys.stderr)
+                                # print(fname, "y_len 0, skipping", file=sys.stderr)
                                 continue
                             for a, b in zip(arrs, sol):
                                 a.append(b)

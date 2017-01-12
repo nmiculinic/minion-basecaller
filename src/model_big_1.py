@@ -51,7 +51,7 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, reuse=F
 
 
 model = model_utils.Model(
-    tf.get_default_graph(),
+    tf.Graph(),
     block_size_x=8 * 500,
     block_size_y=500,
     in_data="RAW",
