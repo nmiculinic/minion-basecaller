@@ -20,7 +20,8 @@ def sanitize_input_line(fname):
 
 
 def get_feed_yield_abs(feed_fn, batch_size, file_list, root_dir=None, **kwargs):
-    root_dir = root_dir or root_dir_map[socket.gethostname()]
+    if root_dir is None:
+        root_dir = root_dir_map.get(socket.gethostname(), '/data')
     with open(os.path.join(root_dir, file_list), 'r') as f:
         items = list(map(sanitize_input_line, f.readlines()))
     names = ["X", "X_len", "Y", "Y_len"]
