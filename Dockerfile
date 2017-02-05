@@ -28,11 +28,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-RUN pip3 --no-cache-dir install tensorflow tflearn Pillow h5py
+# --build-arg tf=tensorflow-gpu for gpu enabled tensorflow
+ARG tf=tensorflow
+RUN pip3 --no-cache-dir install $tf tflearn Pillow h5py
 
 WORKDIR /opt
 ENV TENSORFLOW_SRC_PATH=/opt/tensorflow
 ENV WARP_CTC_PATH=/opt/warp-ctc/build
+ENV CUDA_HOME=/usr/local/cuda
 
 RUN git clone https://github.com/tensorflow/tensorflow.git tensorflow
 RUN git clone https://github.com/nmiculinic/warp-ctc.git warp-ctc
