@@ -16,6 +16,7 @@ import warpctc_tensorflow
 from tflearn.summaries import add_gradients_summary, add_activations_summary
 import logging
 
+hostname = os.environ.get("MINION_HOSTNAME", socket.gethostname())
 repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 log_fmt = '[%(levelname)s] %(name)s: %(message)s'
 logging.basicConfig(level=logging.INFO, format=log_fmt)
@@ -144,7 +145,7 @@ class Model():
         return sol
 
     def __handle_logdir(self, log_dir, run_id, overwrite, reuse):
-        log_dir = log_dir or os.path.join(repo_root, 'log', socket.gethostname())
+        log_dir = log_dir or os.path.join(repo_root, 'log', hostname)
         run_id = run_id or ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(5))
 
         self.run_id = run_id
