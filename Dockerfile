@@ -28,8 +28,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# --build-arg tf=tensorflow-gpu for gpu enabled tensorflow
-ARG tf=tensorflow
+# --build-arg tf=tensorflow for CPU only tensorflow
+ARG tf=tensorflow-gpu
 RUN pip3 --no-cache-dir install $tf tflearn Pillow h5py
 
 WORKDIR /opt
