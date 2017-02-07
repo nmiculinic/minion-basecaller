@@ -30,7 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # --build-arg tf=tensorflow for CPU only tensorflow
 ARG tf=tensorflow-gpu
-RUN pip3 --no-cache-dir install $tf tflearn Pillow h5py
+RUN pip3 --no-cache-dir install $tf tflearn Pillow h5py python-dotenv sigopt
 
 WORKDIR /opt
 ENV TENSORFLOW_SRC_PATH=/opt/tensorflow
@@ -49,6 +49,8 @@ RUN python3 setup.py install
 
 # For CUDA profiling, TensorFlow requires CUPTI.
 ENV LD_LIBRARY_PATH /opt/warp-ctc/build:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
+
+RUN pip3 --no-cache-dir install git+https://github.com/nmiculinic/edlib-python.git
 
 RUN mkdir /code
 RUN mkdir /data
