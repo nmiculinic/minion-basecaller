@@ -7,37 +7,7 @@ from tflearn.layers.normalization import batch_normalization
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 
-conn = Connection(client_token=os.environ["SIGOPT_KEY"])
 
-if os.environ["EXPERIMENT_ID"] == "NEW":
-    experiment = conn.experiments().create(
-        name='Franke Optimization (Python)',
-        parameters=[
-            dict(name='batch_size_log', type='int', bounds=dict(min=4, max=7)),
-            dict(name='initial_lr', type='double',
-                 bounds=dict(min=1e-6, max=1e-3)),
-            dict(name='decay_factor', type='double',
-                 bounds=dict(min=1e-3, max=0.5)),
-
-            dict(name="lower_lg", type='int', bounds={'min': 1, 'max': 5}),
-            dict(name="upper_lg", type='int', bounds={'min': 5, 'max': 8}),
-
-            dict(name="b1_layers", type='int', bounds={'min': 1, 'max': 4}),
-            dict(name="b2_layers", type='int', bounds={'min': 1, 'max': 4}),
-            dict(name="b3_layers", type='int', bounds={'min': 1, 'max': 4}),
-
-            dict(name="receptive_field_l", type='int',
-                 bounds={'min': 0, 'max': 2}),
-            dict(name="receptive_field_u", type='int',
-                 bounds={'min': 1, 'max': 3})
-        ],
-        observation_budget=int(os.environ["OBS"])
-    )
-    print("Created experiment: https://sigopt.com/experiment/" + experiment.id)
-    experiment_id = experiment.id
-else:
-    experiment_id = os.environ["EXPERIMENT_ID"]
-    print("Using experiment: https://sigopt.com/experiment/" + experiment_id)
 
 
 def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, **kwargs):
@@ -103,7 +73,82 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, **kwarg
     }
 
 
+def model_run(run_no, hyper):
+    model = model_utils.Model(
+        tf.get_default_graph(),
+        block_size_x=8 * 130,
+        block_size_y=130,
+        in_data="RAW",
+        num_blocks=6,
+        batch_size=2**hyper['batch_size_log'],
+        max_reach=150,
+        model_fn=model_fn,
+        queue_cap=500,
+        overwrite=True,
+        reuse=False,
+        shrink_factor=8,
+        run_id="sigopt_%02d" % run_no,
+        lr_fn=lambda global_step: tf.train.exponential_decay(hyper['initial_lr'], global_step, 100000, hyper['decay_factor']),
+        hyper=hyper,
+    )
+
+    model.logger.info("Running hyper parameters %s", str(hyper))
+
+    try:
+        model.init_session()
+        model.train_writer.flush()
+        for i in range(model.restore(must_exist=False) + 1, 0):
+            model.train_minibatch()
+            if i % 2 == 0:
+                model.run_validation()
+                model.summarize(write_example=False)
+            if i % 10 == 0:
+                model.save()
+
+        model.save()
+        model.logger.info("Running final validation run")
+        avg_loss, avg_edit = model.run_validation(num_batches=50)
+        model.logger.info("Average loss %7.4f, Average edit distance %7.4f", avg_loss, avg_edit)
+        return avg_edit
+    except Exception as ex:
+        model.logger.error("Error happened")
+    finally:
+        model.close_session()
+
+
 if __name__ == "__main__":
+
+    conn = Connection(client_token=os.environ["SIGOPT_KEY"])
+
+    if os.environ["EXPERIMENT_ID"] == "NEW":
+        experiment = conn.experiments().create(
+            name='Franke Optimization (Python)',
+            parameters=[
+                dict(name='batch_size_log', type='int', bounds=dict(min=4, max=7)),
+                dict(name='initial_lr', type='double',
+                     bounds=dict(min=1e-6, max=1e-3)),
+                dict(name='decay_factor', type='double',
+                     bounds=dict(min=1e-3, max=0.5)),
+
+                dict(name="lower_lg", type='int', bounds={'min': 3, 'max': 6}),
+                dict(name="upper_lg", type='int', bounds={'min': 5, 'max': 8}),
+
+                dict(name="b1_layers", type='int', bounds={'min': 2, 'max': 4}),
+                dict(name="b2_layers", type='int', bounds={'min': 2, 'max': 4}),
+                dict(name="b3_layers", type='int', bounds={'min': 2, 'max': 4}),
+
+                dict(name="receptive_field_l", type='int',
+                     bounds={'min': 0, 'max': 2}),
+                dict(name="receptive_field_u", type='int',
+                     bounds={'min': 1, 'max': 3})
+            ],
+            observation_budget=int(os.environ["OBS"])
+        )
+        print("Created experiment: https://sigopt.com/experiment/" + experiment.id)
+        experiment_id = experiment.id
+    else:
+        experiment_id = os.environ["EXPERIMENT_ID"]
+        print("Using experiment: https://sigopt.com/experiment/" + experiment_id)
 
     run_no = 0
     while True:
@@ -112,47 +157,12 @@ if __name__ == "__main__":
         suggestion = conn.experiments(experiment_id).suggestions().create()
         hyper = dict(suggestion.assignments)
         print(hyper)
-
-        model = model_utils.Model(
-            tf.get_default_graph(),
-            block_size_x=8 * 130,
-            block_size_y=130,
-            in_data="RAW",
-            num_blocks=6,
-            batch_size=2**hyper['batch_size_log'],
-            max_reach=150,
-            model_fn=model_fn,
-            queue_cap=500,
-            overwrite=True,
-            reuse=False,
-            shrink_factor=8,
-            run_id="sigopt_%02d" % run_no,
-            lr_fn=lambda global_step: tf.train.exponential_decay(hyper['initial_lr'], global_step, 100000, hyper['decay_factor']),
-            hyper=hyper,
-        )
-
-        model.logger.info("Running hyper parameters %s", str(hyper))
-
-        try:
-            model.init_session()
-            model.train_writer.flush()
-            for i in range(model.restore(must_exist=False) + 1, 101):
-                model.train_minibatch()
-                if i % 2 == 0:
-                    model.run_validation()
-                    model.summarize(write_example=False)
-                if i % 10 == 0:
-                    model.save()
-
-            model.save()
-            conn.experiments(experiment_id).observations().create(
-                suggestion=suggestion.id,
-                value=hyper,
-                metadata=dict(
-                    hostname=model_utils.hostname,
-                    run_no=run_no,
-                    logdir=model.log_dir
-                )
+        value = model_run(run_no, hyper)
+        conn.experiments(experiment_id).observations().create(
+            suggestion=suggestion.id,
+            value=-value,
+            metadata=dict(
+                hostname=model_utils.hostname,
+                run_no=run_no,
             )
-        finally:
-            model.close_session()
+        )
