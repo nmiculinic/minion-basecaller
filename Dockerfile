@@ -30,7 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # --build-arg tf=tensorflow for CPU only tensorflow
 ARG tf=tensorflow-gpu
-RUN pip3 --no-cache-dir install $tf tflearn Pillow h5py python-dotenv sigopt
+RUN pip3 --no-cache-dir install $tf git+https://github.com/tflearn/tflearn.git Pillow h5py python-dotenv sigopt
 
 WORKDIR /opt
 ENV TENSORFLOW_SRC_PATH=/opt/tensorflow
