@@ -15,7 +15,7 @@ import shutil
 import warpctc_tensorflow
 from tflearn.summaries import add_gradients_summary, add_activations_summary
 import logging
-from tflearn.config import is_training, get_training_mode
+from tflearn.config import is_training
 
 hostname = os.environ.get("MINION_HOSTNAME", socket.gethostname())
 repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
@@ -262,9 +262,12 @@ class Model():
             )
 
             if blk == 0 and self.trace_level > tf.RunOptions.NO_TRACE:
+                gs = self.get_global_step()
                 trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-                trace_file = open(os.path.join(self.log_dir, 'timeline.' + timeline_suffix + '.json'), 'w')
+                trace_file = open(os.path.join(self.log_dir, 'timeline.%d' % gs + timeline_suffix + '.json'), 'w')
                 trace_file.write(trace.generate_chrome_trace_format())
+                self.train_writer.add_run_metadata(run_metadata, "step%d" % gs, global_step=gs)
+                self.logger.info("%4d running full trace!!!", gs)
             for i, val in enumerate(vals):
                 sol[i].append(val)
         return sol
@@ -275,7 +278,7 @@ class Model():
     def get_global_step(self):
         return self.sess.run(self.global_step)
 
-    def train_minibatch(self, log_every=20):
+    def train_minibatch(self, log_every=20, trace_every=10000):
         is_training(True, session=self.sess)
         tt = time.clock()
         iter_step, _ = self.sess.run([self.global_step, self.load_train])
@@ -285,7 +288,10 @@ class Model():
         self.bbt = 0.8 * self.bbt + 0.2 * (time.clock() - self.bbt_clock)
         tt = time.clock()
 
-        if log_every is not None and iter_step % log_every == 0:
+        if iter_step % trace_every == 0:
+            self.trace_level = tf.RunOptions.FULL_TRACE
+
+        if iter_step % log_every == 0:
             fetches = [self.train_op, self.loss, self.reg]
             vals = self.__rnn_roll(add_fetch=fetches, timeline_suffix="ctc_loss")
             self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
@@ -308,6 +314,8 @@ class Model():
             self.__rnn_roll(add_fetch=[self.train_op], timeline_suffix="ctc_loss")
             self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
             self.bbt_clock = time.clock()
+
+        self.trace_level = tf.RunOptions.NO_TRACE
 
     def run_validation(self, num_batches=5):
         is_training(False, session=self.sess)
