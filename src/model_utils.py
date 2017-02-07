@@ -15,6 +15,7 @@ import shutil
 import warpctc_tensorflow
 from tflearn.summaries import add_gradients_summary, add_activations_summary
 import logging
+from tflearn.config import is_training, get_training_mode
 
 hostname = os.environ.get("MINION_HOSTNAME", socket.gethostname())
 repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
@@ -275,6 +276,7 @@ class Model():
         return self.sess.run(self.global_step)
 
     def train_minibatch(self, log_every=20):
+        is_training(True, session=self.sess)
         tt = time.clock()
         iter_step, _ = self.sess.run([self.global_step, self.load_train])
         self.sess.run([self.inc_gs])
@@ -308,6 +310,7 @@ class Model():
             self.bbt_clock = time.clock()
 
     def run_validation(self, num_batches=5):
+        is_training(False, session=self.sess)
         losses = []
         reg_losses = []
         edit_distances = []
@@ -333,6 +336,7 @@ class Model():
         self.bbt_clock = time.clock()
 
     def summarize(self, write_example=True):
+        is_training(False, session=self.sess)
         iter_step = self.get_global_step()
         fetches = [self.loss, self.grad_summ, self.activation_summ, self.edit_distance]
         if write_example:
@@ -361,6 +365,7 @@ class Model():
         return decode_example(yy[idx], yy_len[idx], self.num_blocks, self.block_size_y, pad=pad)
 
     def eval_x(self, X, X_len):
+        is_training(False, session=self.sess)
         batch_size = X.shape[0]
 
         feed = {
