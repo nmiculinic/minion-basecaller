@@ -40,7 +40,7 @@ class Model():
             raise ValueError("in_data must be one of two types")
         self.in_data = in_data
         self.data_in_dim = 1 if in_data == "RAW" else 3
-        self.lr_fn = default_lr_fn or lr_fn
+        self.lr_fn = lr_fn or default_lr_fn
 
         if overwrite and reuse:
             raise ValueError("Cannot overwrite and reuse logdit and checkpoints")
@@ -290,7 +290,7 @@ class Model():
         self.bbt = 0.8 * self.bbt + 0.2 * (time.clock() - self.bbt_clock)
         tt = time.clock()
 
-        if iter_step % trace_every == 0:
+        if iter_step > 0 and iter_step % trace_every == 0:
             self.trace_level = tf.RunOptions.FULL_TRACE
 
         if iter_step % log_every == 0:
@@ -311,6 +311,7 @@ class Model():
             train_summ, y_len = self.sess.run([self.train_summ, self.Y_len])
             self.train_writer.add_summary(train_summ, global_step=iter_step)
 
+            print('\r')
             self.logger.info("%4d loss %6.3f reg_loss %6.3f bt %.3f, bbt %.3f, avg_y_len %.3f", iter_step, loss, reg_loss, self.batch_time, self.bbt, np.mean(y_len))
         else:
             self.__rnn_roll(add_fetch=[self.train_op], timeline_suffix="ctc_loss")
