@@ -15,7 +15,7 @@ import shutil
 import warpctc_tensorflow
 from tflearn.summaries import add_gradients_summary, add_activations_summary
 import logging
-from tflearn.config import is_training
+from tflearn.config import is_training, get_training_mode
 
 hostname = os.environ.get("MINION_HOSTNAME", socket.gethostname())
 repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
@@ -58,6 +58,7 @@ class Model():
         self.test_queue_cap = test_queue_cap or self.train_queue_cap
 
         with g.as_default():
+            self.training_mode = get_training_mode()
             self.batch_size_var = tf.placeholder_with_default(tf.convert_to_tensor(batch_size, dtype=tf.int32), [])
             net = self.__create_train_input_objects()
             with tf.name_scope("model"):
@@ -279,7 +280,8 @@ class Model():
         return self.sess.run(self.global_step)
 
     def train_minibatch(self, log_every=20, trace_every=10000):
-        is_training(True, session=self.sess)
+        with self.g.as_default():
+            is_training(True, session=self.sess)
         tt = time.clock()
         iter_step, _ = self.sess.run([self.global_step, self.load_train])
         self.sess.run([self.inc_gs])
@@ -318,7 +320,17 @@ class Model():
         self.trace_level = tf.RunOptions.NO_TRACE
 
     def run_validation(self, num_batches=5):
-        is_training(False, session=self.sess)
+        """
+        Runs validation.
+
+        Args:
+        num_batches: Number of batches to run validation.
+
+        Returns:
+            A tuple (average loss, average edit distance) on validation set
+        """
+        with self.g.as_default():
+            is_training(False, session=self.sess)
         losses = []
         reg_losses = []
         edit_distances = []
@@ -342,9 +354,11 @@ class Model():
         ]), global_step=iter_step)
         self.logger.info("%4d validation loss %6.3f" % (iter_step, avg_loss))
         self.bbt_clock = time.clock()
+        return avg_loss, avg_edit_distance
 
     def summarize(self, write_example=True):
-        is_training(False, session=self.sess)
+        with self.g.as_default():
+            is_training(False, session=self.sess)
         iter_step = self.get_global_step()
         fetches = [self.loss, self.grad_summ, self.activation_summ, self.edit_distance]
         if write_example:
@@ -373,7 +387,8 @@ class Model():
         return decode_example(yy[idx], yy_len[idx], self.num_blocks, self.block_size_y, pad=pad)
 
     def eval_x(self, X, X_len):
-        is_training(False, session=self.sess)
+        with self.g.as_default():
+            is_training(False, session=self.sess)
         batch_size = X.shape[0]
 
         feed = {
@@ -466,7 +481,6 @@ class Model():
             self.sess.run(tf.global_variables_initializer())
             self.coord = tf.train.Coordinator()
             self.threads = tf.train.start_queue_runners(sess=self.sess, coord=self.coord)
-
         self.g.finalize()
         self.train_writer = tf.summary.FileWriter(os.path.join(self.log_dir, 'train'), graph=self.g)
         self.test_writer = tf.summary.FileWriter(os.path.join(self.log_dir, 'test'), graph=self.g)
