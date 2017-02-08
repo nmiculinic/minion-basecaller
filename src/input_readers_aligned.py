@@ -2,6 +2,7 @@ import os
 import socket
 import sys
 from random import shuffle
+import traceback as tb
 
 import numpy as np
 import util
@@ -42,7 +43,9 @@ def get_feed_yield_abs(feed_fn, batch_size, file_list, root_dir=None, **kwargs):
                         for a, b in zip(arrs, sol):
                             a.append(b)
                 except Exception as ex:
-                    print(ex, file=sys.stderr)
+                    print('\r=== ERROR ===\n', __file__, ex, file=sys.stderr)
+                    tb.print_last()
+                    print('=== END ERROR ===')
                     continue
 
                 yield {
@@ -67,5 +70,3 @@ def get_raw_feed_yield(block_size_x, block_size_y, num_blocks, file_list, batch_
                                    warn_if_short=warn_if_short)
 
     return get_feed_yield_abs(load_f, batch_size=batch_size, file_list=file_list, root_dir=root_dir)
-
-
