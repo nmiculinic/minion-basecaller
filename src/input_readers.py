@@ -4,7 +4,7 @@ import util
 from random import shuffle
 import sys
 import socket
-
+import traceback as tb
 
 root_dir_map = {
     'karla': '/hgst8TB/fjurisic/ecoli',
@@ -39,7 +39,9 @@ def get_feed_yield_abs(feed_fn, batch_size, file_list, root_dir=None, **kwargs):
                             for a, b in zip(arrs, sol):
                                 a.append(b)
                     except Exception as ex:
-                        print(ex, file=sys.stderr)
+                        print('\r=== ERROR ===\n', __file__, ex, file=sys.stderr)
+                        tb.print_last()
+                        print('=== END ERROR ===')
                         continue
 
                     yield {
