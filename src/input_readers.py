@@ -40,7 +40,7 @@ def get_feed_yield_abs(feed_fn, batch_size, file_list, root_dir=None, **kwargs):
                                 a.append(b)
                     except Exception as ex:
                         print('\r=== ERROR ===\n', __file__, ex, file=sys.stderr)
-                        tb.print_last()
+                        tb.print_exc()
                         print('=== END ERROR ===')
                         continue
 
