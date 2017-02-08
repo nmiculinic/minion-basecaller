@@ -40,7 +40,7 @@ class Model():
             raise ValueError("in_data must be one of two types")
         self.in_data = in_data
         self.data_in_dim = 1 if in_data == "RAW" else 3
-        self.lr_fn = default_lr_fn or lr_fn
+        self.lr_fn = lr_fn or default_lr_fn
 
         if overwrite and reuse:
             raise ValueError("Cannot overwrite and reuse logdit and checkpoints")
@@ -58,6 +58,7 @@ class Model():
         self.test_queue_cap = test_queue_cap or self.train_queue_cap
 
         with g.as_default():
+            self.training_mode = get_training_mode()
             self.batch_size_var = tf.placeholder_with_default(tf.convert_to_tensor(batch_size, dtype=tf.int32), [])
             net = self.__create_train_input_objects()
             with tf.name_scope("model"):
@@ -262,9 +263,12 @@ class Model():
             )
 
             if blk == 0 and self.trace_level > tf.RunOptions.NO_TRACE:
+                gs = self.get_global_step()
                 trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-                trace_file = open(os.path.join(self.log_dir, 'timeline.' + timeline_suffix + '.json'), 'w')
+                trace_file = open(os.path.join(self.log_dir, 'timeline.%d' % gs + timeline_suffix + '.json'), 'w')
                 trace_file.write(trace.generate_chrome_trace_format())
+                self.train_writer.add_run_metadata(run_metadata, "step%d" % gs, global_step=gs)
+                self.logger.info("%4d running full trace!!!", gs)
             for i, val in enumerate(vals):
                 sol[i].append(val)
         return sol
@@ -275,8 +279,9 @@ class Model():
     def get_global_step(self):
         return self.sess.run(self.global_step)
 
-    def train_minibatch(self, log_every=20):
-        is_training(True, session=self.sess)
+    def train_minibatch(self, log_every=20, trace_every=10000):
+        with self.g.as_default():
+            is_training(True, session=self.sess)
         tt = time.clock()
         iter_step, _ = self.sess.run([self.global_step, self.load_train])
         self.sess.run([self.inc_gs])
@@ -285,7 +290,10 @@ class Model():
         self.bbt = 0.8 * self.bbt + 0.2 * (time.clock() - self.bbt_clock)
         tt = time.clock()
 
-        if log_every is not None and iter_step % log_every == 0:
+        if iter_step > 0 and iter_step % trace_every == 0:
+            self.trace_level = tf.RunOptions.FULL_TRACE
+
+        if iter_step % log_every == 0:
             fetches = [self.train_op, self.loss, self.reg]
             vals = self.__rnn_roll(add_fetch=fetches, timeline_suffix="ctc_loss")
             self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
@@ -303,14 +311,27 @@ class Model():
             train_summ, y_len = self.sess.run([self.train_summ, self.Y_len])
             self.train_writer.add_summary(train_summ, global_step=iter_step)
 
+            print('\r')
             self.logger.info("%4d loss %6.3f reg_loss %6.3f bt %.3f, bbt %.3f, avg_y_len %.3f", iter_step, loss, reg_loss, self.batch_time, self.bbt, np.mean(y_len))
         else:
             self.__rnn_roll(add_fetch=[self.train_op], timeline_suffix="ctc_loss")
             self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
             self.bbt_clock = time.clock()
 
+        self.trace_level = tf.RunOptions.NO_TRACE
+
     def run_validation(self, num_batches=5):
-        is_training(False, session=self.sess)
+        """
+        Runs validation.
+
+        Args:
+        num_batches: Number of batches to run validation.
+
+        Returns:
+            A tuple (average loss, average edit distance) on validation set
+        """
+        with self.g.as_default():
+            is_training(False, session=self.sess)
         losses = []
         reg_losses = []
         edit_distances = []
@@ -334,9 +355,11 @@ class Model():
         ]), global_step=iter_step)
         self.logger.info("%4d validation loss %6.3f" % (iter_step, avg_loss))
         self.bbt_clock = time.clock()
+        return avg_loss, avg_edit_distance
 
     def summarize(self, write_example=True):
-        is_training(False, session=self.sess)
+        with self.g.as_default():
+            is_training(False, session=self.sess)
         iter_step = self.get_global_step()
         fetches = [self.loss, self.grad_summ, self.activation_summ, self.edit_distance]
         if write_example:
@@ -365,7 +388,8 @@ class Model():
         return decode_example(yy[idx], yy_len[idx], self.num_blocks, self.block_size_y, pad=pad)
 
     def eval_x(self, X, X_len):
-        is_training(False, session=self.sess)
+        with self.g.as_default():
+            is_training(False, session=self.sess)
         batch_size = X.shape[0]
 
         feed = {
@@ -458,7 +482,6 @@ class Model():
             self.sess.run(tf.global_variables_initializer())
             self.coord = tf.train.Coordinator()
             self.threads = tf.train.start_queue_runners(sess=self.sess, coord=self.coord)
-
         self.g.finalize()
         self.train_writer = tf.summary.FileWriter(os.path.join(self.log_dir, 'train'), graph=self.g)
         self.test_writer = tf.summary.FileWriter(os.path.join(self.log_dir, 'test'), graph=self.g)
