@@ -14,8 +14,6 @@ root_dir_map = {
 
 def sanitize_input_line(fname):
     fname = fname.strip().split()[0]
-    if fname[-6:] != '.fast5':
-        fname = fname + ".fast5"
     return fname
 
 
@@ -23,7 +21,7 @@ def get_feed_yield_abs(feed_fn, batch_size, file_list, root_dir=None, **kwargs):
     if root_dir is None:
         root_dir = root_dir_map.get(socket.gethostname(), '/data')
     with open(os.path.join(root_dir, file_list), 'r') as f:
-        items = list(map(sanitize_input_line, f.readlines()))
+        items = items = list(map(sanitize_input_line, f.readlines()))
     names = ["X", "X_len", "Y", "Y_len"]
 
     while True:
@@ -32,8 +30,8 @@ def get_feed_yield_abs(feed_fn, batch_size, file_list, root_dir=None, **kwargs):
             arrs = [[] for _ in range(len(names))]
 
             for fname in items[i:i + batch_size]:
-                fast5_path = os.path.join(root_dir, 'pass', x)
-                ref_path = os.path.join(root_dir, 'ref', x)
+                fast5_path = os.path.join(root_dir, 'pass', fname + '.fast5')
+                ref_path = os.path.join(root_dir, 'ref', fname + '.ref')
 
                 try:
                     sol = feed_fn(fast5_path, ref_path)
@@ -62,7 +60,7 @@ def get_feed_yield2(block_size, num_blocks, file_list, batch_size=10, warn_if_sh
 def get_raw_feed_yield(block_size_x, block_size_y, num_blocks, file_list, batch_size=10, warn_if_short=False,
                        root_dir=None):
     def load_f(fast5_path, ref_path):
-        return util.read_fast5_raw(fast5_path, ref_path,
+        return util.read_fast5_raw_ref(fast5_path, ref_path,
                                    block_size_x=block_size_x,
                                    block_size_y=block_size_y,
                                    num_blocks=num_blocks,
