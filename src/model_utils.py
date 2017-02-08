@@ -19,7 +19,7 @@ from tflearn.config import is_training, get_training_mode
 
 hostname = os.environ.get("MINION_HOSTNAME", socket.gethostname())
 repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
-log_fmt = '[%(levelname)s] %(name)s: %(message)s'
+log_fmt = '\r[%(levelname)s] %(name)s: %(message)s'
 logging.basicConfig(level=logging.INFO, format=log_fmt)
 
 
@@ -155,6 +155,7 @@ class Model():
 
         if os.path.exists(self.log_dir):
             if overwrite:
+                print("Clearing %s" % self.log_dir)
                 shutil.rmtree(self.log_dir)
             elif not reuse:
                 raise ValueError("path " + self.log_dir + " exists")
@@ -293,13 +294,15 @@ class Model():
         if iter_step > 0 and iter_step % trace_every == 0:
             self.trace_level = tf.RunOptions.FULL_TRACE
 
+        fetches = [self.train_op, self.loss, self.reg]
+        # fetches = [self.train_op]
+        vals = self.__rnn_roll(add_fetch=fetches, timeline_suffix="ctc_loss")
+        self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
+        self.bbt_clock = time.clock()
+        loss = np.sum(vals[1]).item()
+        reg_loss = np.sum(vals[2]).item()
+
         if iter_step % log_every == 0:
-            fetches = [self.train_op, self.loss, self.reg]
-            vals = self.__rnn_roll(add_fetch=fetches, timeline_suffix="ctc_loss")
-            self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
-            self.bbt_clock = time.clock()
-            loss = np.sum(vals[1]).item()
-            reg_loss = np.sum(vals[2]).item()
             self.train_writer.add_summary(tf.Summary(value=[
                 tf.Summary.Value(tag="train/loss", simple_value=loss),
                 tf.Summary.Value(tag="train/reg_loss", simple_value=reg_loss),
@@ -311,14 +314,10 @@ class Model():
             train_summ, y_len = self.sess.run([self.train_summ, self.Y_len])
             self.train_writer.add_summary(train_summ, global_step=iter_step)
 
-            print('\r')
             self.logger.info("%4d loss %6.3f reg_loss %6.3f bt %.3f, bbt %.3f, avg_y_len %.3f", iter_step, loss, reg_loss, self.batch_time, self.bbt, np.mean(y_len))
-        else:
-            self.__rnn_roll(add_fetch=[self.train_op], timeline_suffix="ctc_loss")
-            self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
-            self.bbt_clock = time.clock()
 
         self.trace_level = tf.RunOptions.NO_TRACE
+        return loss
 
     def run_validation(self, num_batches=5):
         """
