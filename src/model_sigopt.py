@@ -32,7 +32,7 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, **kwarg
                         net = conv_1d(
                             net,
                             2**kwargs['l%d_upper_lg' % block],
-                            1 + 2 * kwargs['l%d_receptive_field_u' % block],
+                            1 + 2 * kwargs['l%d_receptive_field_l' % block] + 2 * kwargs['l%d_receptive_field_u' % block],
                             scope='conv_1d_upper'
                         )
                         net = batch_normalization(net, scope='batch_norm')
@@ -53,7 +53,7 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, **kwarg
         net = tf.transpose(net, [1, 0, 2], name="Shift_to_time_major")
 
         print(net.get_shape)
-        state_size = 2**kwargs['upper_lg']
+        state_size = 2**kwargs['l3_upper_lg']
         outputs = net
         outputs = tf.Print(
             outputs, [tf.shape(outputs), block_size // 8 * batch_size, state_size], first_n=1, message="outputs_pre_w")
@@ -82,11 +82,11 @@ def model_run(run_no, experiment_id, hyper):
     start_timestamp = monotonic()
     model = model_utils.Model(
         tf.Graph(),
-        block_size_x=8 * 128,
-        block_size_y=128,
+        block_size_x=8 * 256,
+        block_size_y=512,
         in_data="ALIGNED_RAW",
-        num_blocks=1,
-        batch_size=32,
+        num_blocks=5,
+        batch_size=16,
         max_reach=8 * 20,  # 160
         model_fn=model_fn,
         queue_cap=300,
@@ -99,34 +99,12 @@ def model_run(run_no, experiment_id, hyper):
         hyper=hyper,
     )
 
-    try:
-        model.init_session(num_workers=15)
-        for i in range(model.restore(must_exist=False) + 1, 100001):
-            print('\r%s Step %4d, loss %7.4f' % (model.run_id, i,
-                                                 model.train_minibatch(trace_every=500)), end='')
-            if i > 0 and i % 20 == 0:
-                model.run_validation(num_batches=1)
-                model.summarize(write_example=False)
-            if i > 0 and i % 3000 == 0:
-                model.save()
-
-        model.save()
-        model.logger.info("Running final validation run")
-        avg_loss, avg_edit = model.run_validation(num_batches=10)
-        model.logger.info(
-            "Average loss %7.4f, Average edit distance %7.4f", avg_loss, avg_edit)
-        return avg_edit, {
-            'time[h]': (monotonic() - start_timestamp) / 3600.0,
-            'logdir': model.log_dir,
-            'average_loss_cv': avg_loss
-        }
-    except:
-        model.logger.error("Error happened", exc_info=True)
-    finally:
-        model.train_writer.flush()
-        model.test_writer.flush()
-        model.close_session()
-
+    avg_loss, avg_edit = model.simple_managed_train_model(100000)
+    return avg_edit, {
+        'time[h]': (monotonic() - start_timestamp) / 3600.0,
+        'logdir': model.log_dir,
+        'average_loss_cv': avg_loss
+    }
 
 params = [
     dict(name='initial_lr', type='double',
@@ -146,7 +124,7 @@ for layer in [1, 2, 3]:
         {"name": "l%d_receptive_field_l" % layer, "type": 'int',
             "bounds": {'min': 0, 'max': 2}},
         {"name": "l%d_receptive_field_u" % layer, "type": 'int',
-            "bounds": {'min': 1, 'max': 3}},
+            "bounds": {'min': 0, 'max': 2}},
     ])
 
 
@@ -154,9 +132,6 @@ def verify_hyper(hyper):
     for i in [1, 2, 3]:
         if hyper['l%d_upper_lg' % i] < hyper['l%d_lower_lg' % i]:
             print("Rejecting because upper/lower")
-            return False
-        if hyper['l%d_receptive_field_l' % i] < hyper['l%d_receptive_field_u' % i]:
-            print("Rejecting because receptive field mismatch")
             return False
 
     if hyper['l1_upper_lg'] > hyper['l2_upper_lg']:

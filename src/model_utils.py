@@ -18,6 +18,7 @@ from tflearn.summaries import add_gradients_summary, add_activations_summary
 import logging
 from tflearn.config import is_training, get_training_mode
 
+
 hostname = os.environ.get("MINION_HOSTNAME", socket.gethostname())
 repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 log_fmt = '\r[%(levelname)s] %(name)s: %(message)s'
@@ -506,6 +507,31 @@ class Model():
         self.train_writer = tf.summary.FileWriter(os.path.join(self.log_dir, 'train'), graph=self.g)
         self.test_writer = tf.summary.FileWriter(os.path.join(self.log_dir, 'test'), graph=self.g)
         self.__start_queues(num_workers, proc)
+
+    def simple_managed_train_model(self, num_steps, val_every=20, save_every=3000, **kwargs):
+        try:
+            self.init_session()
+            for i in range(self.restore(must_exist=False) + 1, num_steps + 1):
+                print('\r%s Step %4d, loss %7.4f batch_time %.3f bbt %.3f dequeue %.3f  ' % (self.run_id, i, self.train_minibatch(trace_every=500), self.batch_time, self.bbt, self.dequeue_time), end='')
+                if i > 0 and i % val_every == 0:
+                    self.run_validation(num_batches=1)
+                    self.summarize(write_example=False)
+                if i > 0 and i % save_every == 0:
+                    self.save()
+
+            self.save()
+            self.logger.info("Running final validation run")
+            avg_loss, avg_edit = self.run_validation(num_batches=10)
+            self.logger.info(
+                "Average loss %7.4f, Average edit distance %7.4f", avg_loss, avg_edit)
+            return avg_loss, avg_edit
+
+        except:
+            self.logger.error("Error happened", exc_info=True)
+        finally:
+            self.train_writer.flush()
+            self.test_writer.flush()
+            self.close_session()
 
     def close_session(self):
         self.coord.request_stop()
