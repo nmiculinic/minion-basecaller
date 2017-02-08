@@ -4,6 +4,7 @@ import socket
 import tensorflow as tf
 from util import dense2d_to_sparse, decode_example, decode_sparse
 import input_readers
+import input_readers_aligned
 import multiprocessing
 from threading import Thread
 import time
@@ -36,10 +37,11 @@ class Model():
                 hyper: dictionary of hyperparameters passed to the model function as **hyper
         """
 
-        if in_data not in ["RAW", "EVENTS"]:
+        if in_data not in ["RAW", "EVENTS", "ALIGNED_RAW", "ALIGNED_EVENTS"]:
             raise ValueError("in_data must be one of two types")
+
         self.in_data = in_data
-        self.data_in_dim = 1 if in_data == "RAW" else 3
+        self.data_in_dim = 1 if in_data == "RAW" or in_data == "ALIGNED_RAW" else 3
         self.lr_fn = lr_fn or default_lr_fn
 
         if overwrite and reuse:
@@ -465,6 +467,25 @@ class Model():
                     [self.block_size_x, self.block_size_y, self.num_blocks, file_list, 10],
                     proc=proc
                 )
+
+        elif self.in_data == "ALIGNED_RAW":
+            def data_thread_fn(enqueue_op, file_list):
+                return self.__queue_feeder_thread(
+                    enqueue_op,
+                    input_readers_aligned.get_raw_feed_yield,
+                    [self.block_size_x, self.block_size_y, self.num_blocks, file_list, 10],
+                    proc=proc
+                )
+
+        elif self.in_data == "ALIGNED_EVENTS":
+            def data_thread_fn(enqueue_op, file_list):
+                return self.__queue_feeder_thread(
+                    enqueue_op,
+                    input_readers_aligned.get_feed_yield2,
+                    [self.block_size_x, self.num_blocks, file_list, 10],
+                    proc=proc
+                )
+
         else:
             raise ValueError("in data unexpected, got: " + self.in_data)
 
@@ -495,3 +516,4 @@ class Model():
                 feed_thread.join()
         self.coord.join(self.threads)
         self.sess.close()
+

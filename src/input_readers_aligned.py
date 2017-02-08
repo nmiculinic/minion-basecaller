@@ -69,13 +69,3 @@ def get_raw_feed_yield(block_size_x, block_size_y, num_blocks, file_list, batch_
     return get_feed_yield_abs(load_f, batch_size=batch_size, file_list=file_list, root_dir=root_dir)
 
 
-def proc_wrapper(q, fun, *args):
-    for feed in fun(*args):
-        q.put(feed)
-
-
-if __name__ == "__main__":
-    print("usao")
-    for x in get_feed_yield2(10, 1):
-        print(x)
-    print("izasao")
