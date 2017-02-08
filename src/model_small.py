@@ -86,9 +86,10 @@ if __name__ == "__main__":
         for i in range(iter_step + 1, 10001):
             model.train_minibatch(log_every=5)
             assert i == model.get_global_step()
-            if i % 50 == 0 or i in [1, 10, 20, 30, 40]:
+            if i % 20 == 0 or i in [1, 10, 20, 30, 40]:
                 model.summarize(write_example=True)
-                model.run_validation()
+                _, avg_edit_distance = model.run_validation()
+                print(avg_edit_distance)
             if i % 100 == 0:
                 model.save()
     finally:

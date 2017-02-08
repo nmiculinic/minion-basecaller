@@ -68,13 +68,4 @@ model = model_utils.Model(
 
 
 if __name__ == "__main__":
-    model.init_session()
-    iter_step = model.restore(must_exist=False)
-    for i in range(iter_step + 1, 200001):
-        model.train_minibatch(i)
-        if i % 200 == 0:
-            model.run_validation()
-            model.summarize(write_example=False)
-        if i % 2000 == 0:
-            model.save()
-    model.close_session()
+    model.simple_managed_train_model(200000)
