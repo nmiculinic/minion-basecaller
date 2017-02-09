@@ -83,7 +83,7 @@ def model_run(run_no, experiment_id, hyper):
     model = model_utils.Model(
         tf.Graph(),
         block_size_x=8 * 256,
-        block_size_y=512,
+        block_size_y=256,
         in_data="ALIGNED_RAW",
         num_blocks=5,
         batch_size=16,
