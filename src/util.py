@@ -294,8 +294,13 @@ def extract_blocks(ref_seq, called_seq, events_len, block_size, num_blocks):
         y_block = slice(i * block_size, i * block_size + n_bases)
 
         y[y_block] = _transform_multiples(ref_seq[ref_block])
-        y_len[i] = n_bases
 
+        assert np.all(
+            y[i * block_size: i * block_size + n_bases - 1] !=
+            y[1 + i * block_size: i * block_size + n_bases]
+        )
+
+        y_len[i] = n_bases
         sum_len += curr_len
 
     return y, y_len

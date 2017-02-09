@@ -48,6 +48,8 @@ def get_feed_yield_abs(feed_fn, batch_size, file_list, root_dir=None, **kwargs):
                         if np.any(sol[3] > 256):  # Hardcoded...I know I know
                             err_long += 1
                             continue
+                        np.testing.assert_array_less(0, sol[3], err_msg='y_len must be > 0')
+
                         for a, b in zip(arrs, sol):
                             a.append(b)
                 except Exception as ex:
