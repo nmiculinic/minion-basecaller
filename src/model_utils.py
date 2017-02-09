@@ -362,7 +362,7 @@ class Model():
             tf.Summary.Value(tag="train/reg_loss", simple_value=avg_reg_loss),
             tf.Summary.Value(tag="train/edit_distance", simple_value=avg_edit_distance),
         ]), global_step=iter_step)
-        self.logger.info("%4d validation loss %6.3f" % (iter_step, avg_loss))
+        self.logger.info("%4d validation loss %6.3f edit_distance %.3f" % (iter_step, avg_loss, avg_edit_distance))
         self.bbt_clock = time.clock()
         return avg_loss, avg_edit_distance
 
