@@ -340,7 +340,7 @@ def read_fast5_ref(fast5_path, ref_path, block_size, num_blocks, warn_if_short=F
                     added_bases += b[3]
                     events_len[curr_sec] += added_bases
 
-        ref_seq = ref_file.readlines()[3]
+        ref_seq = ref_file.readlines()[3].strip()
         called_seq = get_basecalled_sequence(basecalled_events)
         y, y_len = extract_blocks(ref_seq, called_seq, events_len, block_size, num_blocks)
 
@@ -410,7 +410,7 @@ def read_fast5_raw_ref(fast5_path, ref_path, block_size_x, block_size_y, num_blo
                     added_bases += b[3]
                     events_len[curr_sec] += added_bases
 
-        ref_seq = ref_file.readlines()[3]
+        ref_seq = ref_file.readlines()[3].strip()
         called_seq = get_basecalled_sequence(basecalled_events)
         y, y_len = extract_blocks(ref_seq, called_seq, events_len, block_size_y, num_blocks)
 
