@@ -25,6 +25,10 @@ def get_feed_yield_abs(feed_fn, batch_size, file_list, root_dir=None, **kwargs):
         items = items = list(map(sanitize_input_line, f.readlines()))
     names = ["X", "X_len", "Y", "Y_len"]
 
+    err_short = 0
+    err_long = 0
+    total = 0
+
     while True:
         shuffle(items)
         for i in range(0, len(items), batch_size):
@@ -38,7 +42,11 @@ def get_feed_yield_abs(feed_fn, batch_size, file_list, root_dir=None, **kwargs):
                     sol = feed_fn(fast5_path, ref_path)
                     if sol is not None:
                         if np.any(sol[3] == 0):
+                            err_short += 1
                             # print(fname, "y_len 0, skipping", file=sys.stderr)
+                            continue
+                        if np.any(sol[3] > 256):  # Hardcoded...I know I know
+                            err_long += 1
                             continue
                         for a, b in zip(arrs, sol):
                             a.append(b)
@@ -50,7 +58,12 @@ def get_feed_yield_abs(feed_fn, batch_size, file_list, root_dir=None, **kwargs):
 
                 yield {
                     name + "_enqueue_val": np.array(arr) for name, arr in zip(names, arrs)
-                    }
+                }
+
+                total += 1
+                if total % 1000 == 0 or total in [1, 100, 200]:
+                    print("\rread %d datapoints. err_short_rate %.3f, err_long_rate %.3f" % (total, err_short / total, err_long / total))
+
 
 
 def get_feed_yield2(block_size, num_blocks, file_list, batch_size=10, warn_if_short=False, root_dir=None):
