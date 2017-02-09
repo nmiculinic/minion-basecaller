@@ -289,7 +289,7 @@ class Model():
 
             Args:
                 log_every: how many time steps to log train_writer and stdout
-                trace_every: how many time steps to perform full trace execution (slow). It always performs it at global step 100.
+                trace_every: how many time steps to perform full trace execution (slow). It always performs it at global step 25.
         """
         with self.g.as_default():
             is_training(True, session=self.sess)
@@ -301,7 +301,7 @@ class Model():
         self.bbt = 0.8 * self.bbt + 0.2 * (time.clock() - self.bbt_clock)
         tt = time.clock()
 
-        if (iter_step > 0 and iter_step % trace_every == 0) or iter_step == 100:
+        if (iter_step > 0 and iter_step % trace_every == 0) or iter_step == 25:
             self.trace_level = tf.RunOptions.FULL_TRACE
 
         fetches = [self.train_op, self.loss, self.reg]
