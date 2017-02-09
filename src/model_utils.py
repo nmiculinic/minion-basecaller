@@ -515,13 +515,13 @@ class Model():
         self.test_writer = tf.summary.FileWriter(os.path.join(self.log_dir, 'test'), graph=self.g)
         self.__start_queues(num_workers, proc)
 
-    def simple_managed_train_model(self, num_steps, val_every=20, save_every=3000, **kwargs):
+    def simple_managed_train_model(self, num_steps, val_every=250, save_every=5000, **kwargs):
         try:
             self.init_session()
             for i in range(self.restore(must_exist=False) + 1, num_steps + 1):
-                print('\r%s Step %4d, loss %7.4f batch_time %.3f bbt %.3f dequeue %.3f  ' % (self.run_id, i, self.train_minibatch(trace_every=500), self.batch_time, self.bbt, self.dequeue_time), end='')
+                print('\r%s Step %4d, loss %7.4f batch_time %.3f bbt %.3f dequeue %.3f  ' % (self.run_id, i, self.train_minibatch(), self.batch_time, self.bbt, self.dequeue_time), end='')
                 if i > 0 and i % val_every == 0:
-                    self.run_validation(num_batches=1)
+                    self.run_validation()
                     self.summarize(write_example=False)
                 if i > 0 and i % save_every == 0:
                     self.save()
