@@ -8,7 +8,6 @@ from dotenv import load_dotenv, find_dotenv
 from time import monotonic
 load_dotenv(find_dotenv())
 
-
 def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, **kwargs):
     """
         Args:
@@ -37,8 +36,6 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, **kwarg
                         )
                         net = batch_normalization(net, scope='batch_norm')
                         net = tf.nn.relu(net)
-                net = tf.Print(net, [tf.shape(net)],
-                               first_n=5, message="net, pre_pool")
                 net = max_pool_1d(net, 2)
 
         print("block_size", block_size // 8)
@@ -52,12 +49,10 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, **kwarg
 
         net = tf.transpose(net, [1, 0, 2], name="Shift_to_time_major")
 
-        print(net.get_shape)
         state_size = 2**kwargs['l3_upper_lg']
         outputs = net
-        outputs = tf.Print(
-            outputs, [tf.shape(outputs), block_size // 8 * batch_size, state_size], first_n=1, message="outputs_pre_w")
         print("outputs", outputs.get_shape())
+
         with tf.variable_scope("Output"):
             outputs = tf.reshape(
                 outputs, [block_size // 8 * batch_size, state_size], name="flatten")
