@@ -286,6 +286,9 @@ def extract_blocks(ref_seq, called_seq, events_len, block_size, num_blocks):
 
     sum_len = 0
     for i, curr_len in enumerate(events_len):
+        if curr_len == 0:
+            continue
+
         ref_start = aligment_end[sum_len]
         ref_end = aligment_end[sum_len + curr_len - 1] + 1
         ref_block = slice(ref_start, ref_end)
