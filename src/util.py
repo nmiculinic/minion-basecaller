@@ -274,6 +274,10 @@ def _transform_multiples(seq):
     return transformed
 
 
+class AligmentError(Exception):
+    pass
+
+
 def extract_blocks(ref_seq, called_seq, events_len, block_size, num_blocks, skip_first=True):
     aligner = Edlib()
     result = aligner.align(called_seq, ref_seq)
@@ -297,7 +301,10 @@ def extract_blocks(ref_seq, called_seq, events_len, block_size, num_blocks, skip
             n_bases = ref_end - ref_start
             y_block = slice(i * block_size, i * block_size + n_bases)
 
-            y[y_block] = _transform_multiples(ref_seq[ref_block])
+            try:
+                y[y_block] = _transform_multiples(ref_seq[ref_block])
+            except:
+                raise AligmentError()
 
             assert np.all(
                 y[i * block_size: i * block_size + n_bases - 1] !=

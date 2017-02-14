@@ -171,7 +171,7 @@ class Model():
         self.logger.setLevel(logging.INFO)
 
         hdlr = logging.FileHandler(os.path.join(self.log_dir, str(self.run_id) + ".log"))
-        file_log_fmt = '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+        file_log_fmt = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
         hdlr.setFormatter(file_log_fmt)
         hdlr.setLevel(logging.DEBUG)
         self.logger.addHandler(hdlr)
@@ -511,7 +511,7 @@ class Model():
                 return self.__queue_feeder_thread(
                     enqueue_op,
                     input_readers_aligned.get_raw_feed_yield,
-                    [self.block_size_x, self.block_size_y, self.num_blocks, file_list, 10],
+                    [self.logger, self.block_size_x, self.block_size_y, self.num_blocks, file_list, 10],
                     proc=proc
                 )
 
@@ -520,7 +520,7 @@ class Model():
                 return self.__queue_feeder_thread(
                     enqueue_op,
                     input_readers_aligned.get_feed_yield2,
-                    [self.block_size_x, self.num_blocks, file_list, 10],
+                    [self.logger, self.block_size_x, self.num_blocks, file_list, 10],
                     proc=proc
                 )
 
