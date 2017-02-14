@@ -274,7 +274,7 @@ def _transform_multiples(seq):
     return transformed
 
 
-def extract_blocks(ref_seq, called_seq, events_len, block_size, num_blocks):
+def extract_blocks(ref_seq, called_seq, events_len, block_size, num_blocks, skip_first=True):
     aligner = Edlib()
     result = aligner.align(called_seq, ref_seq)
     aligment_seq = result.alignment
@@ -289,21 +289,22 @@ def extract_blocks(ref_seq, called_seq, events_len, block_size, num_blocks):
         if curr_len == 0:
             continue
 
-        ref_start = aligment_end[sum_len]
-        ref_end = aligment_end[sum_len + curr_len - 1] + 1
-        ref_block = slice(ref_start, ref_end)
+        if i > 0 or not skip_first:
+            ref_start = aligment_end[sum_len]
+            ref_end = aligment_end[sum_len + curr_len - 1] + 1
+            ref_block = slice(ref_start, ref_end)
 
-        n_bases = ref_end - ref_start
-        y_block = slice(i * block_size, i * block_size + n_bases)
+            n_bases = ref_end - ref_start
+            y_block = slice(i * block_size, i * block_size + n_bases)
 
-        y[y_block] = _transform_multiples(ref_seq[ref_block])
+            y[y_block] = _transform_multiples(ref_seq[ref_block])
 
-        assert np.all(
-            y[i * block_size: i * block_size + n_bases - 1] !=
-            y[1 + i * block_size: i * block_size + n_bases]
-        )
+            assert np.all(
+                y[i * block_size: i * block_size + n_bases - 1] !=
+                y[1 + i * block_size: i * block_size + n_bases]
+            )
 
-        y_len[i] = n_bases
+            y_len[i] = n_bases
         sum_len += curr_len
 
     return y, y_len
@@ -373,6 +374,8 @@ def read_fast5_ref(fast5_path, ref_path, block_size, num_blocks, warn_if_short=F
 
 
 def read_fast5_raw_ref(fast5_path, ref_path, block_size_x, block_size_y, num_blocks, warn_if_short=False):
+
+    num_blocks += 1
     with h5py.File(fast5_path, 'r') as h5, open(ref_path, 'r') as ref_file:
         reads = h5['Analyses/EventDetection_000/Reads']
         target_read = list(reads.keys())[0]
@@ -424,13 +427,15 @@ def read_fast5_raw_ref(fast5_path, ref_path, block_size_x, block_size_y, num_blo
         called_seq = get_basecalled_sequence(basecalled_events)
         y, y_len = extract_blocks(ref_seq, called_seq, events_len, block_size_y, num_blocks)
 
+        y_len = y_len[1:]
+        y = y[block_size_y:]
         if any(y_len > block_size_y):
             print("Too many events in block!")
             return None
 
     x -= 646.11133
     x /= 75.673653
-    return x, x_len, y, y_len
+    return x[block_size_x:], max(0, x_len - block_size_x), y, y_len
 
 
 if __name__ == "__main__":
