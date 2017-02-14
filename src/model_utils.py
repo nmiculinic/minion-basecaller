@@ -248,34 +248,40 @@ class Model():
         if 'sess' not in self.__dict__:
             raise ValueError("session not initialized")
 
-        fetch = [self.final_state]
-        fetch.extend(add_fetch)
-        run_metadata = tf.RunMetadata()
-        sol = [[] for _ in range(len(add_fetch))]
-        state = self.sess.run(self.init_state, feed_dict=add_feed)
-        for blk in range(self.num_blocks):
-            feed = {
-                self.block_idx: blk,
-                self.init_state: state,
-            }
-            feed.update(add_feed)
-            state, *vals = self.sess.run(
-                fetch,
-                feed_dict=feed,
-                options=tf.RunOptions(trace_level=self.trace_level),
-                run_metadata=run_metadata
-            )
+        for retry in range(1, 4):
+            try:
+                fetch = [self.final_state]
+                fetch.extend(add_fetch)
+                run_metadata = tf.RunMetadata()
+                sol = [[] for _ in range(len(add_fetch))]
+                state = self.sess.run(self.init_state, feed_dict=add_feed)
+                for blk in range(self.num_blocks):
+                    feed = {
+                        self.block_idx: blk,
+                        self.init_state: state,
+                    }
+                    feed.update(add_feed)
+                    state, *vals = self.sess.run(
+                        fetch,
+                        feed_dict=feed,
+                        options=tf.RunOptions(trace_level=self.trace_level),
+                        run_metadata=run_metadata
+                    )
 
-            if blk == 0 and self.trace_level > tf.RunOptions.NO_TRACE:
-                gs = self.get_global_step()
-                trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-                trace_file = open(os.path.join(self.log_dir, 'timeline.%d' % gs + timeline_suffix + '.json'), 'w')
-                trace_file.write(trace.generate_chrome_trace_format())
-                self.train_writer.add_run_metadata(run_metadata, "step%d" % gs, global_step=gs)
-                self.logger.info("%4d running full trace!!!", gs)
-            for i, val in enumerate(vals):
-                sol[i].append(val)
-        return sol
+                    if blk == 0 and self.trace_level > tf.RunOptions.NO_TRACE:
+                        gs = self.get_global_step()
+                        trace = timeline.Timeline(step_stats=run_metadata.step_stats)
+                        trace_file = open(os.path.join(self.log_dir, 'timeline.%d' % gs + timeline_suffix + '.json'), 'w')
+                        trace_file.write(trace.generate_chrome_trace_format())
+                        self.train_writer.add_run_metadata(run_metadata, "step%d" % gs, global_step=gs)
+                        self.logger.info("%4d running full trace!!!", gs)
+                    for i, val in enumerate(vals):
+                        sol[i].append(val)
+                    return sol
+            except Exception as ex:
+                self.logger.error('\r=== ERROR RNN ROLL, retrying %d ===\n',  retry, exec_info=1)
+                tb.print_exc()
+                continue
 
     def __inc_gs(self):
         self.sess.run(self.inc_gs)
