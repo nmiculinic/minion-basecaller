@@ -50,7 +50,7 @@ RUN python3 setup.py install
 # For CUDA profiling, TensorFlow requires CUPTI.
 ENV LD_LIBRARY_PATH /opt/warp-ctc/build:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
 
-RUN pip3 --no-cache-dir install git+https://github.com/nmiculinic/edlib-python.git
+RUN pip3 --no-cache-dir install git+https://github.com/nmiculinic/edlib-python.git slacker-log-handler
 
 RUN mkdir /code
 RUN mkdir /data
