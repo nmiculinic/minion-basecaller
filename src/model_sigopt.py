@@ -77,15 +77,15 @@ def model_run(run_no, experiment_id, hyper):
     start_timestamp = monotonic()
     model = model_utils.Model(
         tf.Graph(),
-        block_size_x=8 * 256,
-        block_size_y=256,
+        block_size_x=8 * 3 * 600 // 2,
+        block_size_y=600,
         in_data="ALIGNED_RAW",
-        num_blocks=5,
+        num_blocks=1,
         batch_size=16,
         max_reach=8 * 20,  # 160
         model_fn=model_fn,
         queue_cap=300,
-        overwrite=True,
+        overwrite=False,
         reuse=False,
         shrink_factor=8,
         run_id="sigopt_%s_%02d" % (experiment_id, run_no),
@@ -94,7 +94,7 @@ def model_run(run_no, experiment_id, hyper):
         hyper=hyper,
     )
 
-    avg_loss, avg_edit = model.simple_managed_train_model(100000)
+    avg_loss, avg_edit = model.simple_managed_train_model(200001)
     return avg_edit, {
         'time[h]': (monotonic() - start_timestamp) / 3600.0,
         'logdir': model.log_dir,
@@ -174,6 +174,13 @@ if __name__ == "__main__":
             )
             suggestion = conn.experiments(experiment_id).suggestions().create()
             hyper = dict(suggestion.assignments)
+
+#### ADJUST
+        if os.environ['SIGOPT_KEY'].startswith("TJEAVRLBP"):
+            print("DEVELOPMENT MODE!!!")
+            hyper['initial_lr'] = 1e-4
+            hyper['decay_factor'] = 0.1
+####
 
         value, metadata = model_run(run_no, experiment_id, hyper)
         conn.experiments(experiment_id).observations().create(
