@@ -17,7 +17,7 @@ import warpctc_tensorflow
 from tflearn.summaries import add_gradients_summary, add_activations_summary
 import logging
 from tflearn.config import is_training, get_training_mode
-
+from slacker_log_handler import SlackerLogHandler
 
 hostname = os.environ.get("MINION_HOSTNAME", socket.gethostname())
 repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
@@ -30,7 +30,7 @@ def default_lr_fn(global_step):
 
 
 class Model():
-    def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size=None, block_size_x=None, block_size_y=None, log_dir=None, run_id=None, overwrite=False, reuse=False, queue_cap=None, shrink_factor=1, test_queue_cap=None, in_data="EVENTS", lr_fn=None, hyper={}):
+    def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size=None, block_size_x=None, block_size_y=None, log_dir=None, run_id=None, overwrite=False, reuse=False, queue_cap=None, shrink_factor=1, test_queue_cap=None, in_data="EVENTS", lr_fn=None, dtype=tf.float32, hyper={}):
         """
             Args:
                 max_reach: int, size of contextual window for convolutions etc.
@@ -59,6 +59,7 @@ class Model():
         self.max_reach = max_reach
         self.train_queue_cap = queue_cap or 5 * self.batch_size
         self.test_queue_cap = test_queue_cap or self.train_queue_cap
+        self.dtype = dtype
 
         with g.as_default():
             self.training_mode = get_training_mode()
@@ -72,6 +73,7 @@ class Model():
                     block_size=self.block_size_x,
                     out_classes=9,
                     batch_size=self.batch_size_var,
+                    dtype=dtype,
                     **hyper
                 )
 
@@ -166,11 +168,32 @@ class Model():
         os.makedirs(self.log_dir, mode=0o744, exist_ok=reuse or overwrite)
         print("Logdir = ", self.log_dir)
         self.logger = logging.getLogger(run_id)
+        self.logger.setLevel(logging.INFO)
+
+        hdlr = logging.FileHandler(os.path.join(self.log_dir, str(self.run_id) + ".log"))
+        file_log_fmt = '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+        hdlr.setFormatter(file_log_fmt)
+        hdlr.setLevel(logging.DEBUG)
+        self.logger.addHandler(hdlr)
+
+        if "SLACK_TOKEN" in os.environ:
+            self.logger.info("Adding slack logger")
+            slack_handler = SlackerLogHandler(os.environ['SLACK_TOKEN'], hostname, stack_trace=True, username=hostname)
+
+            slack_handler.setFormatter(file_log_fmt)
+            slack_handler.setLevel(logging.INFO)
+            self.logger.addHandler(slack_handler)
+
+            slack_handler = SlackerLogHandler(os.environ['SLACK_TOKEN'], 'error', username=hostname)
+
+            slack_handler.setFormatter(file_log_fmt)
+            slack_handler.setLevel(logging.ERROR)
+            self.logger.addHandler(slack_handler)
 
     def __create_train_input_objects(self):
         with tf.variable_scope("input"):
             input_vars = [
-                tf.get_variable("X", initializer=tf.zeros_initializer([self.batch_size, self.block_size_x * self.num_blocks, self.data_in_dim], tf.float32), trainable=False),
+                tf.get_variable("X", initializer=tf.zeros_initializer([self.batch_size, self.block_size_x * self.num_blocks, self.data_in_dim], self.dtype), dtype=self.dtype, trainable=False),
                 tf.get_variable("X_len", initializer=tf.zeros_initializer([self.batch_size], tf.int32), trainable=False),
                 tf.get_variable("Y", initializer=tf.zeros_initializer([self.batch_size, self.block_size_y * self.num_blocks], tf.uint8), trainable=False),
                 tf.get_variable("Y_len", initializer=tf.zeros_initializer([self.batch_size, self.num_blocks], tf.int32), trainable=False),
@@ -279,9 +302,11 @@ class Model():
                         sol[i].append(val)
                     return sol
             except Exception as ex:
-                self.logger.error('\r=== ERROR RNN ROLL, retrying %d ===\n',  retry, exec_info=1)
-                tb.print_exc()
-                continue
+                self.logger.error('\r=== ERROR RNN ROLL, retrying %d ===\n', retry, exc_info=True)
+                if isinstance(ex, KeyboardInterrupt):
+                    raise
+                else:
+                    continue
 
     def __inc_gs(self):
         self.sess.run(self.inc_gs)
@@ -521,14 +546,15 @@ class Model():
         self.test_writer = tf.summary.FileWriter(os.path.join(self.log_dir, 'test'), graph=self.g)
         self.__start_queues(num_workers, proc)
 
-    def simple_managed_train_model(self, num_steps, val_every=250, save_every=5000, **kwargs):
+    def simple_managed_train_model(self, num_steps, val_every=250, save_every=5000, summarize=True, **kwargs):
         try:
             self.init_session()
             for i in range(self.restore(must_exist=False) + 1, num_steps + 1):
                 print('\r%s Step %4d, loss %7.4f batch_time %.3f bbt %.3f dequeue %.3f  ' % (self.run_id, i, self.train_minibatch(), self.batch_time, self.bbt, self.dequeue_time), end='')
                 if i > 0 and i % val_every == 0:
                     self.run_validation()
-                    self.summarize(write_example=False)
+                    if summarize:
+                        self.summarize(write_example=False)
                 if i > 0 and i % save_every == 0:
                     self.save()
 
@@ -540,7 +566,8 @@ class Model():
             return avg_loss, avg_edit
 
         except:
-            self.logger.error("Error happened", exc_info=True)
+            self.logger.error("Error happened", exc_info=1)
+            raise
         finally:
             self.train_writer.flush()
             self.test_writer.flush()
