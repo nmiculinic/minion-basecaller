@@ -560,7 +560,7 @@ class Model():
 
             self.save()
             self.logger.info("Running final validation run")
-            avg_loss, avg_edit = self.run_validation(num_batches=10)
+            avg_loss, avg_edit = self.run_validation(num_batches=26000 // self.batch_size)
             self.logger.info(
                 "Average loss %7.4f, Average edit distance %7.4f", avg_loss, avg_edit)
             return avg_loss, avg_edit
