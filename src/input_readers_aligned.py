@@ -26,8 +26,8 @@ def get_feed_yield_abs(feed_fn, batch_size, file_list, root_dir=None, **kwargs):
     names = ["X", "X_len", "Y", "Y_len"]
 
     err_short = 0
-    err_long = 0
     total = 0
+    other_error = 0
 
     while True:
         shuffle(items)
@@ -45,13 +45,12 @@ def get_feed_yield_abs(feed_fn, batch_size, file_list, root_dir=None, **kwargs):
                             err_short += 1
                             # print(fname, "y_len 0, skipping", file=sys.stderr)
                             continue
-                        if np.any(sol[3] > 256):  # Hardcoded...I know I know
-                            err_long += 1
-                            continue
                         np.testing.assert_array_less(0, sol[3], err_msg='y_len must be > 0')
 
                         for a, b in zip(arrs, sol):
                             a.append(b)
+                    else:
+                        other_error += 1
                 except Exception as ex:
                     print('\r=== ERROR [%s]===\n' % fname, ex, file=sys.stderr)
                     tb.print_exc()
@@ -64,7 +63,7 @@ def get_feed_yield_abs(feed_fn, batch_size, file_list, root_dir=None, **kwargs):
 
                 total += 1
                 if total % 1000 == 0 or total in [1, 100, 200]:
-                    print("\rread %d datapoints. err_short_rate %.3f, err_long_rate %.3f" % (total, err_short / total, err_long / total))
+                    print("\rread %d datapoints. err_short_rate %.3f other %.3f " % (total, err_short / total, other_error / total))
 
 
 
