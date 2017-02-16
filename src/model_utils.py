@@ -259,7 +259,7 @@ class Model():
                 net = tf.pad(net, padding)
                 net.set_shape([None, 2 * self.max_reach + self.block_size_x, self.data_in_dim])
                 print(net.get_shape())
-                self.X_batch = net
+                self.X_batch = tf.placeholder_with_default(net, (None, None, self.data_in_dim))
 
             with tf.name_scope("Y_batch"):
                 self.Y_batch_len = tf.squeeze(tf.slice(self.Y_len, [0, self.block_idx], [self.batch_size_var, 1]), [1])
@@ -493,7 +493,7 @@ class Model():
             def data_thread_fn(enqueue_op, file_list):
                 return self.__queue_feeder_thread(
                     enqueue_op,
-                    input_readers.get_feed_yield2,
+                    input_readers.get_event_feed_yield,
                     [self.block_size_x, self.num_blocks, file_list, 10],
                     proc=proc
                 )
@@ -510,7 +510,7 @@ class Model():
             def data_thread_fn(enqueue_op, file_list):
                 return self.__queue_feeder_thread(
                     enqueue_op,
-                    input_readers_aligned.get_raw_feed_yield,
+                    input_readers_aligned.get_raw_ref_feed_yield,
                     [self.logger, self.block_size_x, self.block_size_y, self.num_blocks, file_list, 10],
                     proc=proc
                 )
@@ -519,7 +519,7 @@ class Model():
             def data_thread_fn(enqueue_op, file_list):
                 return self.__queue_feeder_thread(
                     enqueue_op,
-                    input_readers_aligned.get_feed_yield2,
+                    input_readers_aligned.get_event_ref_feed_yield,
                     [self.logger, self.block_size_x, self.num_blocks, file_list, 10],
                     proc=proc
                 )
@@ -546,7 +546,7 @@ class Model():
         self.test_writer = tf.summary.FileWriter(os.path.join(self.log_dir, 'test'), graph=self.g)
         self.__start_queues(num_workers, proc)
 
-    def simple_managed_train_model(self, num_steps, val_every=250, save_every=5000, summarize=True, **kwargs):
+    def simple_managed_train_model(self, num_steps, val_every=250, save_every=5000, summarize=True, final_val_samples=26000, **kwargs):
         try:
             self.init_session()
             for i in range(self.restore(must_exist=False) + 1, num_steps + 1):
@@ -560,7 +560,7 @@ class Model():
 
             self.save()
             self.logger.info("Running final validation run")
-            avg_loss, avg_edit = self.run_validation(num_batches=26000 // self.batch_size)
+            avg_loss, avg_edit = self.run_validation(num_batches=final_val_samples // self.batch_size)
             self.logger.info(
                 "Average loss %7.4f, Average edit distance %7.4f", avg_loss, avg_edit)
             return avg_loss, avg_edit
