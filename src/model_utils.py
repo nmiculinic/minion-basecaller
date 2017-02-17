@@ -18,6 +18,8 @@ import logging
 from tflearn.config import is_training, get_training_mode
 from slacker_log_handler import SlackerLogHandler
 from edlib import Edlib
+import inspect
+import dill
 
 hostname = os.environ.get("MINION_HOSTNAME", socket.gethostname())
 repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
@@ -49,6 +51,28 @@ class Model():
             raise ValueError("Cannot overwrite and reuse logdit and checkpoints")
 
         self.__handle_logdir(log_dir, run_id, overwrite, reuse)
+
+        frame = inspect.currentframe()
+        args, _, _, values = inspect.getargvalues(frame)
+        valargs = {arg: values[arg] for arg in args}
+        del valargs['g']
+        del valargs['self']
+
+        for k in sorted(valargs.keys()):
+            print("%-20s: %7s" % (k, str(valargs[k])))
+
+        if not reuse:
+            with open(os.path.join(self.log_dir, 'model_params.pickle'), 'wb') as f:
+
+                dill.dump(valargs, f, dill.HIGHEST_PROTOCOL)
+                self.logger.info("Dumping model params to %s", fname)
+        else:
+            self.logger.info("Reuse is True, not dumping model params")
+
+        del args
+        del values
+        del valargs
+
         self.block_size_y = block_size_y or block_size
         self.block_size_x = block_size_x or block_size
         self.shrink_factor = shrink_factor
