@@ -9,10 +9,18 @@ from dotenv import load_dotenv, find_dotenv
 from time import monotonic
 import model_utils
 import dill
+import argparse
 load_dotenv(find_dotenv())
 
 
 def sigopt_runner(module_name, observation_budget=20):
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("train_steps", nargs='?', type=int, default=100000, help='Number of training steps')
+    parser.add_argument('--budget', nargs='?', type=int, default=observation_budget)
+    parser.add_argument('--name', nargs='?', type=str, default=module_name, help="Model name", dest="model_name")
+    args = parser.parse_args()
+
     model_module = importlib.import_module(module_name)
     content = dir(model_module)
     conn = Connection(client_token=os.environ["SIGOPT_KEY"])
@@ -20,9 +28,9 @@ def sigopt_runner(module_name, observation_budget=20):
         experiment = conn.experiments().create(
             name='MinION basecaller residual',
             parameters=model_module.params,
-            observation_budget=observation_budget
+            observation_budget=args.budget
         )
-        print("Created experiment: https://sigopt.com/experiment/" + experiment.id, "Budget %d" % observation_budget)
+        print("Created experiment: https://sigopt.com/experiment/" + experiment.id, "Budget %d" % args.budget)
         experiment_id = experiment.id
     else:
         experiment_id = os.environ["EXPERIMENT_ID"]
@@ -61,9 +69,8 @@ def sigopt_runner(module_name, observation_budget=20):
             print("DEVELOPMENT MODE!!!")
             hyper.update(model_module.default_params)
 
-
         model_params = model_module.model_setup_params
-        model_params['run_id'] = module_name + "_%s_%d" % (experiment_id, run_no)
+        model_params['run_id'] = args.model_name + "_%s_%d" % (experiment_id, run_no)
 
         print("Running hyper parameters")
         for k in sorted(hyper.keys()):
@@ -79,7 +86,7 @@ def sigopt_runner(module_name, observation_budget=20):
             **model_params
         )
 
-        avg_loss, avg_edit = model.simple_managed_train_model(200001, summarize=False)
+        avg_loss, avg_edit = model.simple_managed_train_model(args.train_steps, summarize=False)
 
         conn.experiments(experiment_id).observations().create(
             suggestion=suggestion.id,

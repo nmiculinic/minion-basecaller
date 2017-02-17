@@ -639,6 +639,7 @@ class Model():
 
     def simple_managed_train_model(self, num_steps, val_every=250, save_every=5000, summarize=True, final_val_samples=26000, **kwargs):
         try:
+            self.logger.info("Training %d steps", num_steps)
             self.init_session()
             for i in range(self.restore(must_exist=False) + 1, num_steps + 1):
                 print('\r%s Step %4d, loss %7.4f batch_time %.3f bbt %.3f dequeue %.3f  ' % (self.run_id, i, self.train_minibatch(), self.batch_time, self.bbt, self.dequeue_time), end='')
