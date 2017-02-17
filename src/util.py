@@ -445,6 +445,23 @@ def read_fast5_raw_ref(fast5_path, ref_path, block_size_x, block_size_y, num_blo
     return x[block_size_x:], max(0, x_len - block_size_x), y, y_len
 
 
+def get_raw_signal(fast5_path):
+    with h5py.File(fast5_path, 'r') as h5:
+        reads = h5['Analyses/EventDetection_000/Reads']
+        target_read = list(reads.keys())[0]
+        events = np.array(reads[target_read + '/Events'])
+        start_time = events['start'][0]
+        start_pad = int(start_time - h5['Raw/Reads/' + target_read].attrs['start_time'])
+
+        signal = h5['Raw/Reads/' + target_read]['Signal'][start_pad:].astype(np.float32)
+        signal_len = h5['Raw/Reads/' + target_read].attrs['duration'] - start_pad
+        assert(len(signal) == signal_len)
+
+        signal -= 646.11133
+        signal /= 75.673653
+        return signal
+
+
 if __name__ == "__main__":
     X = tf.constant(np.array([1, 2, 3, 4, 5, 6, 7]).reshape(1, 7, 1), dtype=tf.float32)
     kernel = tf.constant(np.array([100, 10, 1]).reshape(3, 1, 1), dtype=tf.float32)

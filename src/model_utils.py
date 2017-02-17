@@ -4,7 +4,6 @@ import socket
 import tensorflow as tf
 from util import dense2d_to_sparse, decode_example, decode_sparse
 import input_readers
-import input_readers_aligned
 import multiprocessing
 from threading import Thread
 import time
@@ -18,6 +17,7 @@ from tflearn.summaries import add_gradients_summary, add_activations_summary
 import logging
 from tflearn.config import is_training, get_training_mode
 from slacker_log_handler import SlackerLogHandler
+from edlib import Edlib
 
 hostname = os.environ.get("MINION_HOSTNAME", socket.gethostname())
 repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
@@ -82,7 +82,11 @@ class Model():
 
             print("logits: ", self.logits.get_shape())
             with tf.control_dependencies([
-                tf.assert_equal(tf.shape(self.logits), [self.block_size_x // self.shrink_factor, self.batch_size_var, 9])
+                tf.cond(
+                    self.training_mode,
+                    lambda: tf.assert_equal(tf.shape(self.logits), [self.block_size_x // self.shrink_factor, self.batch_size_var, 9]),
+                    lambda: tf.no_op()
+                )
             ]):
                 self.logits = tf.identity(self.logits)
 
@@ -104,9 +108,9 @@ class Model():
 
             with tf.name_scope("prediction"):
                 predicted, prdicted_logprob = tf.nn.ctc_beam_search_decoder(self.logits, tf.div(self.X_batch_len, self.shrink_factor), merge_repeated=True, top_paths=1)
-                self.pred = tf.cast(predicted[0], tf.int32)
+                self.pred = self.__dedup_output(tf.cast(predicted[0], tf.int32))
                 self.edit_distance = tf.edit_distance(
-                    self.__dedup_output(self.pred),
+                    self.pred,
                     self.__dedup_output(self.Y_batch)
                 )
 
@@ -265,7 +269,7 @@ class Model():
                 self.Y_batch_len = tf.squeeze(tf.slice(self.Y_len, [0, self.block_idx], [self.batch_size_var, 1]), [1])
                 # TODO: migrate to batch_size_var
                 self.Y_batch = dense2d_to_sparse(tf.slice(self.Y, [0, begin_y], [self.batch_size, self.block_size_y]), self.Y_batch_len, dtype=tf.int32)
-        return net
+        return self.X_batch
 
     def __rnn_roll(self, add_fetch=[], add_feed={}, timeline_suffix=""):
         if 'sess' not in self.__dict__:
@@ -397,6 +401,66 @@ class Model():
         self.bbt_clock = time.clock()
         return avg_loss, avg_edit_distance
 
+    def run_validation_full(self, frac):
+        """
+            Runs full validation on test set with whole sequence_length
+            Args:
+                frac: fraction of test set to evaluate, or number of test cases if int
+        """
+
+        with open(os.path.join(input_readers.root_dir_default, 'test.txt')) as f:
+            fnames = np.array(list(map(lambda x: x.strip(), f.readlines())))
+        np.random.shuffle(fnames)
+        print(fnames)
+
+        if isinstance(frac, (int)):
+            fnames = fnames[:frac]
+        else:
+            fnames = fnames[:int(len(fnames) * frac)]
+        self.logger.info("Running validation on %d examples", len(fnames))
+
+        sol = np.zeros(fnames.shape, dtype=np.float32)
+        with self.g.as_default():
+            is_training(False, session=self.sess)
+            for i, fname in enumerate(fnames):
+                signal = util.get_raw_signal(os.path.join(
+                    input_readers.root_dir_default,
+                    'pass',
+                    fname + ".fast5"
+                ))
+
+                print(fname, signal, signal.shape)
+                basecalled = self.sess.run(
+                    tf.sparse_tensor_to_dense(self.pred, default_value=-1),
+                    feed_dict={
+                    self.X_batch: signal.reshape(1, -1, 1),
+                    self.X_batch_len: np.array(len(signal)).reshape([1,]),
+                    self.block_idx: 0,
+                    self.batch_size_var: 1
+                }).ravel()
+
+                bcalled = "".join(util.decode(basecalled))
+                with open(os.path.join(
+                    input_readers.root_dir_default,
+                    'ref',
+                    fname + ".ref"
+                )) as f:
+                    target = f.readlines()[-1]
+
+                bcalled = bcalled[:50]
+                target = target[:50]
+                print("Basecalled:\n", bcalled)
+                print("Target\n", target)
+
+                result = Edlib().align(bcalled, target)
+                sol[i] = result.edit_distance / len(target)
+
+
+        self.logger.info("%4d avg_edit_distance %.3f, sd %.3f", self.get_global_step(), np.mean(sol), np.std(sol))
+
+        return sol
+
+
     def summarize(self, write_example=True):
         with self.g.as_default():
             is_training(False, session=self.sess)
@@ -510,7 +574,7 @@ class Model():
             def data_thread_fn(enqueue_op, file_list):
                 return self.__queue_feeder_thread(
                     enqueue_op,
-                    input_readers_aligned.get_raw_ref_feed_yield,
+                    input_readers.get_raw_ref_feed_yield,
                     [self.logger, self.block_size_x, self.block_size_y, self.num_blocks, file_list, 10],
                     proc=proc
                 )
@@ -519,7 +583,7 @@ class Model():
             def data_thread_fn(enqueue_op, file_list):
                 return self.__queue_feeder_thread(
                     enqueue_op,
-                    input_readers_aligned.get_event_ref_feed_yield,
+                    input_readers.get_event_ref_feed_yield,
                     [self.logger, self.block_size_x, self.num_blocks, file_list, 10],
                     proc=proc
                 )
@@ -541,7 +605,7 @@ class Model():
             self.sess.run(tf.global_variables_initializer())
             self.coord = tf.train.Coordinator()
             self.threads = tf.train.start_queue_runners(sess=self.sess, coord=self.coord)
-        self.g.finalize()
+        # self.g.finalize()
         self.train_writer = tf.summary.FileWriter(os.path.join(self.log_dir, 'train'), graph=self.g)
         self.test_writer = tf.summary.FileWriter(os.path.join(self.log_dir, 'test'), graph=self.g)
         self.__start_queues(num_workers, proc)
