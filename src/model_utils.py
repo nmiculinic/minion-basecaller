@@ -7,6 +7,7 @@ import input_readers
 import multiprocessing
 from threading import Thread
 import time
+from time import monotonic
 from tensorflow.python.client import timeline
 import os
 import string
@@ -79,6 +80,7 @@ class Model():
         self.shrink_factor = shrink_factor
         if self.block_size_x % shrink_factor != 0:
             raise ValueError("shrink factor need to divide block_size_x")
+
         self.num_blocks = num_blocks
         self.batch_size = batch_size
         self.max_reach = max_reach
@@ -90,6 +92,9 @@ class Model():
             self.training_mode = get_training_mode()
             self.batch_size_var = tf.placeholder_with_default(tf.convert_to_tensor(batch_size, dtype=tf.int32), [])
             net = self.__create_train_input_objects()
+
+            self.block_size_x = tf.placeholder_with_default(self.block_size_x, [])
+
             with tf.name_scope("model"):
                 data = model_fn(
                     net,
@@ -434,17 +439,36 @@ class Model():
             self.X_batch: signal.reshape(1, -1, 1),
             self.X_batch_len: np.array(len(signal)).reshape([1,]),
             self.block_idx: 0,
-            self.batch_size_var: 1
+            self.batch_size_var: 1,
+            self.block_size_x: len(signal)
         }).ravel()
 
         return "".join(util.decode(basecalled))
 
-    def run_validation_full(self, frac):
+    def get_aligement(self, fast5_path, ref_path, verbose):
+        basecalled = self.basecall_sample(fast5_path)
+        with open(ref_path) as f:
+            target = f.readlines()[-1]
+
+        if verbose:
+            print("Basecalled:\n", basecalled)
+            print("Target\n", target)
+        self.logger.debug("fast5_path %s, ref_path %s", fast5_path, ref_path)
+        self.logger.debug("Basecalled \n%s", basecalled)
+        self.logger.debug("Target \n%s", target)
+
+        result = Edlib().align(basecalled, target)
+        self.logger.debug("Aligment", result.alignment)
+
+        return result.edit_distance / len(target)  #
+
+    def run_validation_full(self, frac, verbose=False):
         """
             Runs full validation on test set with whole sequence_length
             Args:
                 frac: fraction of test set to evaluate, or number of test cases if int
         """
+
 
         with open(os.path.join(input_readers.root_dir_default, 'test.txt')) as f:
             fnames = np.array(list(map(lambda x: x.strip(), f.readlines())))
@@ -458,32 +482,31 @@ class Model():
         self.logger.info("Running validation on %d examples", len(fnames))
 
         sol = np.zeros(fnames.shape, dtype=np.float32)
+        total_time = 0.0
         with self.g.as_default():
             is_training(False, session=self.sess)
             for i, fname in enumerate(fnames):
-                bcalled = self.basecall_sample(os.path.join(
-                    input_readers.root_dir_default,
-                    'pass',
-                    fname + ".fast5"
-                ))
+                t = monotonic()
+                sol[i] = self.get_aligement(
+                    os.path.join(
+                        input_readers.root_dir_default,
+                        'pass',
+                        fname + ".fast5"
+                    ), os.path.join(
+                        input_readers.root_dir_default,
+                        'ref',
+                        fname + ".ref"
+                    ), verbose=verbose)
+                total_time += monotonic() - t
+                mu = np.mean(sol[:i + 1])
+                std = np.std(sol[:i + 1], ddof=1 if i > 0 else 0)
+                se = std / np.sqrt(i + 1)
+                print("\r%4d/%d avg edit %.3f s %.3f CI <%.3f, %.3f> tps %.3f" % (i + 1, len(sol), mu, std, mu - 2*se, mu + 2*se, total_time/(i + 1)), end='')
 
-                with open(os.path.join(
-                    input_readers.root_dir_default,
-                    'ref',
-                    fname + ".ref"
-                )) as f:
-                    target = f.readlines()[-1]
-
-                bcalled = bcalled[:50]
-                target = target[:50]
-                print("Basecalled:\n", bcalled)
-                print("Target\n", target)
-
-                result = Edlib().align(bcalled, target)
-                sol[i] = result.edit_distance / len(target)
-
-
-        self.logger.info("%4d avg_edit_distance %.3f, sd %.3f", self.get_global_step(), np.mean(sol), np.std(sol))
+        mu = np.mean(sol[:i + 1])
+        std = np.std(sol[:i + 1], ddof=1 if i > 0 else 0)
+        se = std / np.sqrt(i + 1)
+        self.logger.info("%4d avg_edit_distance %.3f, sd %.3f CI <%.3f, %.3f> tps %.3f", self.get_global_step(), mu, std, mu - 2*se, mu + 2*se, total_time/(i + 1))
 
         return sol
 
@@ -623,7 +646,7 @@ class Model():
         for feed_thread in self.feed_threads:
             feed_thread.start()
 
-    def init_session(self, proc=True, num_workers=3):
+    def init_session(self, proc=True, num_workers=3, start_queues=True):
         with self.g.as_default():
             self.sess = tf.Session(
                 graph=self.g,
@@ -635,7 +658,10 @@ class Model():
         # self.g.finalize()
         self.train_writer = tf.summary.FileWriter(os.path.join(self.log_dir, 'train'), graph=self.g)
         self.test_writer = tf.summary.FileWriter(os.path.join(self.log_dir, 'test'), graph=self.g)
-        self.__start_queues(num_workers, proc)
+        self.feed_threads = []
+        if start_queues:
+            self.__start_queues(num_workers, proc)
+
 
     def simple_managed_train_model(self, num_steps, val_every=250, save_every=5000, summarize=True, final_val_samples=26000, **kwargs):
         try:
@@ -667,8 +693,9 @@ class Model():
 
     def close_session(self):
         self.coord.request_stop()
-        self.sess.run(self.close_queues)
         self.train_writer.flush()
+        self.test_writer.flush()
+        self.sess.run(self.close_queues)
         for feed_thread in self.feed_threads:
                 feed_thread.join()
         self.coord.join(self.threads)
