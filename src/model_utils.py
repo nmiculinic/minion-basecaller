@@ -401,6 +401,19 @@ class Model():
         self.bbt_clock = time.clock()
         return avg_loss, avg_edit_distance
 
+    def basecall_sample(self, fast5_path):
+        signal = util.get_raw_signal(fast5_path)
+        basecalled = self.sess.run(
+            tf.sparse_tensor_to_dense(self.pred, default_value=-1),
+            feed_dict={
+            self.X_batch: signal.reshape(1, -1, 1),
+            self.X_batch_len: np.array(len(signal)).reshape([1,]),
+            self.block_idx: 0,
+            self.batch_size_var: 1
+        }).ravel()
+
+        return "".join(util.decode(basecalled))
+
     def run_validation_full(self, frac):
         """
             Runs full validation on test set with whole sequence_length
@@ -423,23 +436,12 @@ class Model():
         with self.g.as_default():
             is_training(False, session=self.sess)
             for i, fname in enumerate(fnames):
-                signal = util.get_raw_signal(os.path.join(
+                bcalled = self.basecall_sample(os.path.join(
                     input_readers.root_dir_default,
                     'pass',
                     fname + ".fast5"
                 ))
 
-                print(fname, signal, signal.shape)
-                basecalled = self.sess.run(
-                    tf.sparse_tensor_to_dense(self.pred, default_value=-1),
-                    feed_dict={
-                    self.X_batch: signal.reshape(1, -1, 1),
-                    self.X_batch_len: np.array(len(signal)).reshape([1,]),
-                    self.block_idx: 0,
-                    self.batch_size_var: 1
-                }).ravel()
-
-                bcalled = "".join(util.decode(basecalled))
                 with open(os.path.join(
                     input_readers.root_dir_default,
                     'ref',
