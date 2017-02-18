@@ -22,8 +22,8 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, reuse=F
             for i, no_channel in zip([1, 4, 16], np.array([64, 64, 128])*(2**j)):
                 with tf.variable_scope("atrous_conv1d_%d" % i):
                     filter = tf.get_variable("W", shape=(3, net.get_shape()[-1], no_channel))
-                    bias = tf.get_variable("b", shape=(no_channel, ))
-                    net = tf.nn.convolution(net, filter, padding="SAME", dilation_rate=[i]) + bias
+                    net = tf.nn.convolution(net, filter, padding="SAME", dilation_rate=[i])
+                    net = batch_normalization(net, scope='bn')
                     net = tf.nn.relu(net)
             net = max_pool_1d(net, 2)
     net = central_cut(net, block_size, 8)
