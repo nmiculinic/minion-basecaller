@@ -72,7 +72,8 @@ def central_cut(net, block_size, shrink_factor):
             lambda: tf.assert_equal(
                 tf.mod(cut_size, 2), 0, name="cut_size_assert"),
             lambda: tf.no_op()
-        )
+        ),
+        tf.assert_non_negative(cut_size)
     ]
     ):
         cut_size = tf.div(cut_size, 2)
