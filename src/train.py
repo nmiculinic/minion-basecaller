@@ -16,8 +16,14 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
                         default=train_steps, help='Number of training steps')
     parser.add_argument('--budget', type=int,
                         default=observation_budget)
+    parser.add_argument('--batch_size', '-b', type=int,
+                        default=-1, help="batch_size")
+    parser.add_argument('--num_workers', type=int,
+                        default=3, help='Number of worker threads for feeding queues')
+    parser.add_argument("-s", "--summarize", help="Summarize gradient during training", action="store_true")
     parser.add_argument('--name', type=str,
                         default=module_name, help="Model name [run_id]", dest="model_name")
+
     args = parser.parse_args()
 
     model_module = importlib.import_module(module_name)
@@ -80,10 +86,13 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
         model_params['run_id'] = args.model_name + \
             "_%s_%d" % (experiment_id, run_no)
 
+        if args.batch_size != -1:
+            model_params['batch_size'] = args.batch_size
+
         start_timestamp = monotonic()
         model = model_utils.Model(**model_params)
         avg_edit, se = model.simple_managed_train_model(
-            args.train_steps, summarize=False)
+            args.train_steps, summarize=args.summarize, num_workers=args.num_workers)
 
         print("reporting to sigopt:", avg_edit, se, type(avg_edit), type(se))
         # Final reporting
