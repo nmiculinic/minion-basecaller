@@ -11,16 +11,16 @@ load_dotenv(find_dotenv())
 def load_model(module_name, model_dir):
     model_module = importlib.import_module(module_name)
     model_dir = os.path.abspath(model_dir)
-    with open(os.path.join(model_dir, 'model_params.json'), 'rb') as f:
+    with open(os.path.join(model_dir, 'model_hyperparams.json'), 'r') as f:
         hyper = json.load(f)
 
-    params = model_dir.model_setup_params(hyper)
+    params = model_module.model_setup_params(hyper)
     print(params, type(params))
     params['reuse'] = True
     params['overwrite'] = False
     params['log_dir'] = model_dir
     params['run_id'] = model_dir.split('/')[-1]
-    return model_utils.Model(g=tf.Graph(), **params)
+    return model_utils.Model(**params)
 
 
 def eval_model():
