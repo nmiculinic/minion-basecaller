@@ -66,7 +66,7 @@ class Model():
         del valargs['self']
 
         for k in sorted(valargs.keys()):
-            print("%-20s: %7s" % (k, str(valargs[k])))
+            self.logger.debug("%-20s: %7s" % (k, str(valargs[k])))
 
         fname = os.path.join(self.log_dir, 'model_hyperparams.json')
         with open(fname, 'w') as f:
@@ -217,7 +217,7 @@ class Model():
         ch.setFormatter(logging.Formatter(log_fmt))
         self.logger.addHandler(ch)
 
-        hdlr = logging.FileHandler(os.path.join(self.log_dir, str(self.run_id) + ".log"))
+        hdlr = logging.FileHandler(os.path.join(self.log_dir, "model.log"))
         file_log_fmt = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
         hdlr.setFormatter(file_log_fmt)
         hdlr.setLevel(logging.DEBUG)
@@ -681,10 +681,10 @@ class Model():
             self.__start_queues(num_workers, proc)
 
 
-    def simple_managed_train_model(self, num_steps, val_every=250, save_every=5000, summarize=True, final_val_samples=500, **kwargs):
+    def simple_managed_train_model(self, num_steps, val_every=250, save_every=5000, summarize=True, final_val_samples=500, num_workers=3, **kwargs):
         try:
             self.logger.info("Training %d steps", num_steps)
-            self.init_session()
+            self.init_session(num_workers=num_workers)
             for i in range(self.restore(must_exist=False) + 1, num_steps + 1):
                 print('\r%s Step %4d, loss %7.4f batch_time %.3f bbt %.3f dequeue %.3f  ' % (self.run_id, i, self.train_minibatch(), self.batch_time, self.bbt, self.dequeue_time), end='')
                 if i > 0 and i % val_every == 0:
