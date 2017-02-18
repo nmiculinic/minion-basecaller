@@ -85,7 +85,7 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
 
         start_timestamp = monotonic()
         model = model_utils.Model(**model_params)
-        avg_loss, avg_edit = model.simple_managed_train_model(
+        avg_edit, se = model.simple_managed_train_model(
             args.train_steps, summarize=False)
 
         # Final reporting
@@ -100,7 +100,8 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
                     'logdir': model.log_dir,
                     'average_loss_cv': avg_loss
                 }
-            )
+            ),
+            value_stddev=se
         )
 
 

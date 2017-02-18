@@ -519,14 +519,15 @@ class Model():
                 mu = np.mean(sol[:i + 1])
                 std = np.std(sol[:i + 1], ddof=1 if i > 0 else 0)
                 se = std / np.sqrt(i + 1)
-                print("\r%4d/%d avg edit %.4f s %.4f CI <%.4f, %.4f> tps %.3f" % (i + 1, len(sol), mu, std, mu - 2*se, mu + 2*se, total_time/(i + 1)), end='')
+                if i % 5 == 0 or i < 5:
+                    print("\r%4d/%d avg edit %.4f s %.4f CI <%.4f, %.4f> tps %.3f" % (i + 1, len(sol), mu, std, mu - 2*se, mu + 2*se, total_time/(i + 1)), end='')
 
-        mu = np.mean(sol[:i + 1])
-        std = np.std(sol[:i + 1], ddof=1 if i > 0 else 0)
-        se = std / np.sqrt(i + 1)
+        mu = np.mean(sol)
+        std = np.std(sol, ddof=1)
+        se = std / np.sqrt(len(sol))
         self.logger.info("%4d avg_edit_distance %.4f, sd %.4f CI <%.4f, %.4f> tps %.3f", self.get_global_step(), mu, std, mu - 2*se, mu + 2*se, total_time/(i + 1))
 
-        return sol
+        return sol, mu, std, se
 
     def summarize(self, write_example=True):
         with self.g.as_default():
@@ -695,10 +696,8 @@ class Model():
 
             self.save()
             self.logger.info("Running final validation run")
-            avg_loss, avg_edit = self.run_validation(num_batches=final_val_samples // self.batch_size)
-            self.logger.info(
-                "Average loss %7.4f, Average edit distance %7.4f", avg_loss, avg_edit)
-            return avg_loss, avg_edit
+            _, avg_edit, _, se = self.run_validation_full(num_batches=final_val_samples)
+            return avg_edit, se
 
         except:
             self.logger.error("Error happened", exc_info=1)
