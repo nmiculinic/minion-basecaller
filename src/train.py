@@ -18,10 +18,10 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
         parser.add_argument("module_name", type='str', help='Model name')
     parser.add_argument("train_steps", nargs='?', type=int,
                         default=train_steps, help='Number of training steps')
-    parser.add_argument('--budget', nargs='?', type=int,
+    parser.add_argument('--budget', type=int,
                         default=observation_budget)
-    parser.add_argument('--name', nargs='?', type=str,
-                        default=module_name, help="Model name", dest="model_name")
+    parser.add_argument('--name', type=str,
+                        default=module_name, help="Model name [run_id]", dest="model_name")
     args = parser.parse_args()
 
     model_module = importlib.import_module(module_name)
