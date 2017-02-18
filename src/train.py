@@ -1,7 +1,3 @@
-from edlib import Edlib
-import h5py
-import numpy as np
-import tensorflow as tf
 import importlib
 import os
 from sigopt import Connection
@@ -25,6 +21,7 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
     args = parser.parse_args()
 
     model_module = importlib.import_module(module_name)
+    print("Importing %s" % module_name)
     content = dir(model_module)
     conn = Connection(client_token=os.environ["SIGOPT_KEY"])
     if os.environ["EXPERIMENT_ID"] == "NEW":
