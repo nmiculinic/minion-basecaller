@@ -91,6 +91,4 @@ default_params = {
 
 
 if __name__ == "__main__":
-    # import model_utils
-    # model = model_utils.Model(**model_setup_params(default_params))
     sigopt_runner(__file__[:-3].split('/')[-1])
