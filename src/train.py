@@ -73,23 +73,16 @@ def sigopt_runner(module_name=None, observation_budget=20):
             print("DEVELOPMENT MODE!!!")
             hyper.update(model_module.default_params)
 
-        model_params = model_module.model_setup_params
-        model_params['run_id'] = args.model_name + \
-            "_%s_%d" % (experiment_id, run_no)
-
         print("Running hyper parameters")
         for k in sorted(hyper.keys()):
             print("%-20s: %7s" % (k, str(hyper[k])))
 
+        model_params = model_module.model_setup_params(hyper)
+        model_params['run_id'] = args.model_name + \
+            "_%s_%d" % (experiment_id, run_no)
+
         start_timestamp = monotonic()
-        model = model_utils.Model(
-            tf.Graph(),
-            model_fn=model_module.model_fn,
-            lr_fn=lambda global_step: tf.train.exponential_decay(
-                hyper['initial_lr'], global_step, 100000, hyper['decay_factor']),
-            hyper=hyper,
-            **model_params
-        )
+        model = model_utils.Model(**model_params)
 
         avg_loss, avg_edit = model.simple_managed_train_model(
             args.train_steps, summarize=False)

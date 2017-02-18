@@ -1,6 +1,7 @@
 import tensorflow as tf
 from tflearn.layers.conv import max_pool_1d, conv_1d
 import os
+import tflearn
 from tflearn.layers.normalization import batch_normalization
 from dotenv import load_dotenv, find_dotenv
 from tflearn.initializations import variance_scaling_initializer
@@ -24,21 +25,32 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
                     with tf.variable_scope('layer_%d' % layer):
                         res = net
                         for sublayer in [1, 2]:
-                            res = batch_normalization(res, scope='bn_%d' % sublayer)
+                            res = batch_normalization(
+                                res, scope='bn_%d' % sublayer)
                             res = tf.nn.relu(res)
                             res = conv_1d(
                                 res,
                                 64,
                                 3,
                                 scope="conv_1d_%d" % sublayer,
-                                weights_init=variance_scaling_initializer(dtype=dtype)
+                                weights_init=variance_scaling_initializer(
+                                    dtype=dtype)
                             )
-                        k = tf.get_variable("k", initializer=tf.constant_initializer(1.0), shape=[])
+                        k = tf.get_variable(
+                            "k", initializer=tf.constant_initializer(1.0), shape=[])
                         net = tf.nn.relu(k) * res + net
                 net = max_pool_1d(net, 2)
 
         cut_size = tf.shape(net)[1] - tf.div(block_size, 8)
-        with tf.control_dependencies([tf.assert_equal(tf.mod(cut_size, 2), 0)]):
+        with tf.control_dependencies([
+            tf.cond(
+                tflearn.get_training_mode(),
+                lambda: tf.assert_equal(
+                    tf.mod(cut_size, 2), 0, name="cut_size_assert"),
+                lambda: tf.no_op()
+            )
+        ]
+        ):
             cut_size = tf.div(cut_size, 2)
 
         net = tf.slice(net, [0, cut_size, 0],
@@ -67,19 +79,26 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
     }
 
 
-model_setup_params = dict(
-    block_size_x=8 * 3 * 600 // 2,
-    block_size_y=630,
-    in_data="ALIGNED_RAW",
-    num_blocks=1,
-    batch_size=16,
-    max_reach=8 * 20,  # 160
-    queue_cap=300,
-    overwrite=False,
-    reuse=False,
-    shrink_factor=8,
-    dtype=tf.float32,
-)
+def model_setup_params(hyper):
+    return dict(
+        block_size_x=8 * 3 * 600 // 2,
+        block_size_y=630,
+        in_data="ALIGNED_RAW",
+        num_blocks=1,
+        batch_size=16,
+        max_reach=8 * 20,  # 160
+        queue_cap=300,
+        overwrite=False,
+        reuse=False,
+        shrink_factor=8,
+        dtype=tf.float32,
+        tf.Graph(),
+        model_fn=model_module.model_fn,
+        lr_fn=lambda global_step: tf.train.exponential_decay(
+            hyper['initial_lr'], global_step, 100000, hyper['decay_factor']),
+        hyper=hyper,
+    )
+
 
 params = [
     dict(name='initial_lr', type='double',

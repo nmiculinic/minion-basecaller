@@ -62,10 +62,10 @@ class Model():
         for k in sorted(valargs.keys()):
             print("%-20s: %7s" % (k, str(valargs[k])))
 
-        if not reuse:
+        if not reuse or True:
             fname = os.path.join(self.log_dir, 'model_params.pickle')
             with open(fname, 'wb') as f:
-                dill.dump(valargs, f, dill.HIGHEST_PROTOCOL)
+                dill.dump(valargs, f, dill.HIGHEST_PROTOCOL, byref=True)
                 self.logger.info("Dumping model params to %s", fname)
             del fname
         else:
@@ -93,14 +93,14 @@ class Model():
             self.batch_size_var = tf.placeholder_with_default(tf.convert_to_tensor(batch_size, dtype=tf.int32), [])
             net = self.__create_train_input_objects()
 
-            self.block_size_x = tf.placeholder_with_default(self.block_size_x, [])
+            self.block_size_x_tensor = tf.placeholder_with_default(self.block_size_x, [])
 
             with tf.name_scope("model"):
                 data = model_fn(
                     net,
                     self.X_batch_len,
                     max_reach=self.max_reach,
-                    block_size=self.block_size_x,
+                    block_size=self.block_size_x_tensor,
                     out_classes=9,
                     batch_size=self.batch_size_var,
                     dtype=dtype,
@@ -114,7 +114,7 @@ class Model():
             with tf.control_dependencies([
                 tf.cond(
                     self.training_mode,
-                    lambda: tf.assert_equal(tf.shape(self.logits), [self.block_size_x // self.shrink_factor, self.batch_size_var, 9]),
+                    lambda: tf.assert_equal(tf.shape(self.logits), [self.block_size_x_tensor // self.shrink_factor, self.batch_size_var, 9]),
                     lambda: tf.no_op()
                 )
             ]):
@@ -186,8 +186,10 @@ class Model():
         return sol
 
     def __handle_logdir(self, log_dir, run_id, overwrite, reuse):
-        log_dir = log_dir or os.path.join(repo_root, 'log', hostname)
-        run_id = run_id or ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(5))
+        if log_dir is None:
+            log_dir = os.path.join(repo_root, 'log', hostname)
+        if run_id is None:
+            run_id = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(5))
 
         self.run_id = run_id
         self.log_dir = os.path.join(log_dir, self.run_id)
@@ -223,6 +225,7 @@ class Model():
             slack_handler.setFormatter(file_log_fmt)
             slack_handler.setLevel(logging.ERROR)
             self.logger.addHandler(slack_handler)
+        self.logger.info("Logdir %s", self.log_dir)
 
     def __create_train_input_objects(self):
         with tf.variable_scope("input"):
@@ -440,13 +443,15 @@ class Model():
             self.X_batch_len: np.array(len(signal)).reshape([1,]),
             self.block_idx: 0,
             self.batch_size_var: 1,
-            self.block_size_x: len(signal)
+            self.block_size_x_tensor: len(signal)
         }).ravel()
 
         return "".join(util.decode(basecalled))
 
     def get_aligement(self, fast5_path, ref_path, verbose):
+        t = monotonic()
         basecalled = self.basecall_sample(fast5_path)
+        print("basecalled time ", monotonic() - t)
         with open(ref_path) as f:
             target = f.readlines()[-1]
 
@@ -459,7 +464,7 @@ class Model():
 
         result = Edlib().align(basecalled, target)
         self.logger.debug("Aligment", result.alignment)
-
+        print("Whole time ", monotonic() - t)
         return result.edit_distance / len(target)  #
 
     def run_validation_full(self, frac, verbose=False):
@@ -471,7 +476,7 @@ class Model():
 
 
         with open(os.path.join(input_readers.root_dir_default, 'test.txt')) as f:
-            fnames = np.array(list(map(lambda x: x.strip(), f.readlines())))
+            fnames = np.array(list(map(lambda x: x.strip().split()[0], f.readlines())))
         np.random.shuffle(fnames)
         print(fnames)
 

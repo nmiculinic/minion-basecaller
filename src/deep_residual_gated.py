@@ -7,6 +7,7 @@ from tflearn.layers.normalization import batch_normalization
 from dotenv import load_dotenv, find_dotenv
 from time import monotonic
 from tflearn.initializations import variance_scaling_initializer
+import tflearn
 load_dotenv(find_dotenv())
 
 
@@ -39,13 +40,20 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
                         net = tf.nn.relu(k) * res + net
                 net = max_pool_1d(net, 2)
 
-        print("block_size", block_size // 8)
-        cut_size = int(net.get_shape()[1] - block_size // 8)
-        assert cut_size % 2 == 0
-        cut_size //= 2
-        print("after conv", net.get_shape())
+        cut_size = tf.shape(net)[1] - tf.div(block_size, 8)
+        with tf.control_dependencies([
+            tf.cond(
+                tflearn.get_training_mode(),
+                lambda: tf.assert_equal(
+                    tf.mod(cut_size, 2), 0, name="cut_size_assert"),
+                lambda: tf.no_op()
+            )
+        ]
+        ):
+            cut_size = tf.div(cut_size, 2)
+
         net = tf.slice(net, [0, cut_size, 0],
-                       [-1, block_size // 8, -1], name="Cutting")
+                       [-1, tf.div(block_size, 8), -1], name="Cutting")
         print("after slice", net.get_shape())
 
         net = tf.transpose(net, [1, 0, 2], name="Shift_to_time_major")
@@ -87,9 +95,9 @@ def model_run(run_no, experiment_id, hyper):
         model_fn=model_fn,
         queue_cap=300,
         overwrite=False,
-        reuse=False,
+        reuse=True,
         shrink_factor=8,
-        run_id="deep_residual_%s_%02d" % (experiment_id, run_no),
+        run_id="deep_residual_15757_01",
         lr_fn=lambda global_step: tf.train.exponential_decay(
             hyper['initial_lr'], global_step, 100000, hyper['decay_factor']),
         dtype=tf.float32,
