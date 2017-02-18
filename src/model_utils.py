@@ -475,7 +475,7 @@ class Model():
         self.logger.debug("Target \n%s", target)
 
         result = Edlib().align(basecalled, target)
-        self.logger.debug("Aligment", result.alignment)
+        self.logger.debug("Aligment %s", "".join(map(str, result.alignment)))
         self.logger.debug("Whole time %.3f", monotonic() - t)
 
         return result.edit_distance / len(target)  #
@@ -696,7 +696,7 @@ class Model():
 
             self.save()
             self.logger.info("Running final validation run")
-            _, avg_edit, _, se = self.run_validation_full(num_batches=final_val_samples)
+            _, avg_edit, _, se = self.run_validation_full(final_val_samples)
             return avg_edit, se
 
         except:
