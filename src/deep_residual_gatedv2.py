@@ -5,7 +5,8 @@ import tflearn
 from tflearn.layers.normalization import batch_normalization
 from dotenv import load_dotenv, find_dotenv
 from tflearn.initializations import variance_scaling_initializer
-from runners import sigopt_runner
+from train import sigopt_runner
+from ops import central_cut
 load_dotenv(find_dotenv())
 
 
@@ -17,70 +18,47 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
         logits -> Unscaled logits tensor in time_major form, (block_size, batch_size, out_classes)
     """
 
-    with tf.name_scope("model"):
-        print("model in", net.get_shape())
-        for block in range(1, 4):
-            with tf.variable_scope("block%d" % block):
-                for layer in range(1, 1 + 1):
-                    with tf.variable_scope('layer_%d' % layer):
-                        res = net
-                        for sublayer in [1, 2]:
-                            res = batch_normalization(
-                                res, scope='bn_%d' % sublayer)
-                            res = tf.nn.relu(res)
-                            res = conv_1d(
-                                res,
-                                64,
-                                3,
-                                scope="conv_1d_%d" % sublayer,
-                                weights_init=variance_scaling_initializer(
-                                    dtype=dtype)
-                            )
-                        k = tf.get_variable(
-                            "k", initializer=tf.constant_initializer(1.0), shape=[])
-                        net = tf.nn.relu(k) * res + net
-                net = max_pool_1d(net, 2)
+    print("model in", net.get_shape())
+    for block in range(1, 4):
+        with tf.variable_scope("block%d" % block):
+            for layer in range(1, 1 + 1):
+                with tf.variable_scope('layer_%d' % layer):
+                    res = net
+                    for sublayer in [1, 2]:
+                        res = batch_normalization(
+                            res, scope='bn_%d' % sublayer)
+                        res = tf.nn.relu(res)
+                        res = conv_1d(
+                            res,
+                            64,
+                            3,
+                            scope="conv_1d_%d" % sublayer,
+                            weights_init=variance_scaling_initializer(
+                                dtype=dtype)
+                        )
+                    k = tf.get_variable(
+                        "k", initializer=tf.constant_initializer(1.0), shape=[])
+                    net = tf.nn.relu(k) * res + net
+            net = max_pool_1d(net, 2)
+        net = tf.nn.relu(net)
 
-        cut_size = tf.shape(net)[1] - tf.div(block_size, 8)
-        with tf.control_dependencies([
-            tf.cond(
-                tflearn.get_training_mode(),
-                lambda: tf.assert_equal(
-                    tf.mod(cut_size, 2), 0, name="cut_size_assert"),
-                lambda: tf.no_op()
-            )
-        ]
-        ):
-            cut_size = tf.div(cut_size, 2)
-
-        net = tf.slice(net, [0, cut_size, 0],
-                       [-1, tf.div(block_size, 8), -1], name="Cutting")
-        print("after slice", net.get_shape())
-
-        net = tf.transpose(net, [1, 0, 2], name="Shift_to_time_major")
-
-        state_size = 64
-        outputs = net
-        print("outputs", outputs.get_shape())
-
-        with tf.variable_scope("Output"):
-            outputs = tf.reshape(
-                outputs, [tf.div(block_size, 8) * batch_size, state_size], name="flatten")
-            W = tf.get_variable("W", shape=[state_size, out_classes])
-            b = tf.get_variable("b", shape=[out_classes])
-            outputs = tf.matmul(outputs, W) + b
-            logits = tf.reshape(
-                outputs, [tf.div(block_size, 8), batch_size, out_classes], name="logits")
-    print("model out", logits.get_shape())
+    net = central_cut(net, block_size, 8)
+    print("after slice", net.get_shape())
+    net = tf.transpose(net, [1, 0, 2], name="Shift_to_time_major")
+    print("after transpose", net.get_shape())
+    net = conv_1d(net, 9, 1, scope='logits')
+    print("model out", net.get_shape())
     return {
-        'logits': logits,
+        'logits': net,
         'init_state': tf.constant(0),
         'final_state': tf.constant(0),
     }
 
 
 def model_setup_params(hyper):
+    print("Requesting %s hyperparams" % __file__)
     return dict(
+        g=tf.Graph(),
         block_size_x=8 * 3 * 600 // 2,
         block_size_y=630,
         in_data="ALIGNED_RAW",
@@ -92,8 +70,7 @@ def model_setup_params(hyper):
         reuse=False,
         shrink_factor=8,
         dtype=tf.float32,
-        tf.Graph(),
-        model_fn=model_module.model_fn,
+        model_fn=model_fn,
         lr_fn=lambda global_step: tf.train.exponential_decay(
             hyper['initial_lr'], global_step, 100000, hyper['decay_factor']),
         hyper=hyper,
@@ -114,4 +91,6 @@ default_params = {
 
 
 if __name__ == "__main__":
+    # import model_utils
+    # model = model_utils.Model(**model_setup_params(default_params))
     sigopt_runner(__file__[:-3].split('/')[-1])

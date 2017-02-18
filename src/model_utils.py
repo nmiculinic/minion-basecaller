@@ -20,6 +20,7 @@ from tflearn.config import is_training, get_training_mode
 from slacker_log_handler import SlackerLogHandler
 from edlib import Edlib
 import inspect
+import json
 import dill
 
 hostname = os.environ.get("MINION_HOSTNAME", socket.gethostname())
@@ -62,14 +63,10 @@ class Model():
         for k in sorted(valargs.keys()):
             print("%-20s: %7s" % (k, str(valargs[k])))
 
-        if not reuse or True:
-            fname = os.path.join(self.log_dir, 'model_params.pickle')
-            with open(fname, 'wb') as f:
-                dill.dump(valargs, f, dill.HIGHEST_PROTOCOL, byref=True)
-                self.logger.info("Dumping model params to %s", fname)
-            del fname
-        else:
-            self.logger.info("Reuse is True, not dumping model params")
+        fname = os.path.join(self.log_dir, 'model_hyperparams.json')
+        with open(fname, 'w') as f:
+            json.dump(hyper, f, sort_keys=True, indent=4)
+            self.logger.info("Dumping model hyperparams to %s", fname)
 
         del args
         del values
@@ -95,7 +92,7 @@ class Model():
 
             self.block_size_x_tensor = tf.placeholder_with_default(self.block_size_x, [])
 
-            with tf.name_scope("model"):
+            with tf.variable_scope("model"):
                 data = model_fn(
                     net,
                     self.X_batch_len,
@@ -110,6 +107,8 @@ class Model():
             for k, v in data.items():
                 self.__dict__[k] = v
 
+            if self.logits.get_shape()[2] != 9:
+                raise ValueError("Loggits must be tensor with dim 2 = 9\n%s" % str(self.logits.get_shape()))
             print("logits: ", self.logits.get_shape())
             with tf.control_dependencies([
                 tf.cond(
@@ -186,13 +185,14 @@ class Model():
         return sol
 
     def __handle_logdir(self, log_dir, run_id, overwrite, reuse):
-        if log_dir is None:
-            log_dir = os.path.join(repo_root, 'log', hostname)
         if run_id is None:
             run_id = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(5))
-
         self.run_id = run_id
-        self.log_dir = os.path.join(log_dir, self.run_id)
+
+        if log_dir is None:
+            self.log_dir = os.path.join(repo_root, 'log', hostname, self.run_id)
+        else:
+            self.log_dir = log_dir
 
         if os.path.exists(self.log_dir):
             if overwrite:
@@ -506,15 +506,14 @@ class Model():
                 mu = np.mean(sol[:i + 1])
                 std = np.std(sol[:i + 1], ddof=1 if i > 0 else 0)
                 se = std / np.sqrt(i + 1)
-                print("\r%4d/%d avg edit %.3f s %.3f CI <%.3f, %.3f> tps %.3f" % (i + 1, len(sol), mu, std, mu - 2*se, mu + 2*se, total_time/(i + 1)), end='')
+                print("\r%4d/%d avg edit %.4f s %.4f CI <%.4f, %.4f> tps %.3f" % (i + 1, len(sol), mu, std, mu - 2*se, mu + 2*se, total_time/(i + 1)), end='')
 
         mu = np.mean(sol[:i + 1])
         std = np.std(sol[:i + 1], ddof=1 if i > 0 else 0)
         se = std / np.sqrt(i + 1)
-        self.logger.info("%4d avg_edit_distance %.3f, sd %.3f CI <%.3f, %.3f> tps %.3f", self.get_global_step(), mu, std, mu - 2*se, mu + 2*se, total_time/(i + 1))
+        self.logger.info("%4d avg_edit_distance %.4f, sd %.4f CI <%.4f, %.4f> tps %.3f", self.get_global_step(), mu, std, mu - 2*se, mu + 2*se, total_time/(i + 1))
 
         return sol
-
 
     def summarize(self, write_example=True):
         with self.g.as_default():

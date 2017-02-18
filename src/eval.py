@@ -2,28 +2,30 @@ import tensorflow as tf
 import os
 from dotenv import load_dotenv, find_dotenv
 import model_utils
-import dill
+import json
 import argparse
-import deep_residual_gated
+import importlib
 load_dotenv(find_dotenv())
 
 
-def load_model(model_dir):
+def load_model(module_name, model_dir):
+    model_module = importlib.import_module(module_name)
     model_dir = os.path.abspath(model_dir)
-    with open(os.path.join(model_dir, 'model_params.pickle'), 'rb') as f:
-        params = dill.load(f)
+    with open(os.path.join(model_dir, 'model_params.json'), 'rb') as f:
+        hyper = json.load(f)
 
+    params = model_dir.model_setup_params(hyper)
     print(params, type(params))
     params['reuse'] = True
     params['overwrite'] = False
-    params['log_dir'] = os.path.abspath('/' + os.path.join(*model_dir.split('/')[:-1]))
+    params['log_dir'] = model_dir
     params['run_id'] = model_dir.split('/')[-1]
-    params['model_fn'] = deep_residual_gated.model_fn
     return model_utils.Model(g=tf.Graph(), **params)
 
 
 def eval_model():
     parser = argparse.ArgumentParser()
+    parser.add_argument("module_name", help="module name", type=str)
     parser.add_argument("model_dir", help="increase output verbosity", type=str)
     parser.add_argument("-v", "--verbose", help="increase output verbosity", action="store_true")
     parser.add_argument("-c", "--checkpoint", help="Checkpoint to restore", type=str, default=None)
@@ -31,7 +33,7 @@ def eval_model():
 
     args = parser.parse_args()
 
-    model = load_model(os.path.abspath(args.model_dir))
+    model = load_model(args.module_name, os.path.abspath(args.model_dir))
     try:
         model.init_session(start_queues=False)
         model.restore(checkpoint=args.checkpoint)

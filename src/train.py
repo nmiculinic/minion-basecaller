@@ -17,7 +17,7 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
     if module_name is None:
         parser.add_argument("module_name", type='str', help='Model name')
     parser.add_argument("train_steps", nargs='?', type=int,
-                        train_steps=100000, help='Number of training steps')
+                        default=train_steps, help='Number of training steps')
     parser.add_argument('--budget', nargs='?', type=int,
                         default=observation_budget)
     parser.add_argument('--name', nargs='?', type=str,
@@ -52,6 +52,7 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
     while True:
         run_no += 1
 
+        # Choose hyperparameters
         suggestion = conn.experiments(experiment_id).suggestions().create()
         hyper = dict(suggestion.assignments)
 
@@ -77,16 +78,17 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
         for k in sorted(hyper.keys()):
             print("%-20s: %7s" % (k, str(hyper[k])))
 
+        # Setup model
         model_params = model_module.model_setup_params(hyper)
         model_params['run_id'] = args.model_name + \
             "_%s_%d" % (experiment_id, run_no)
 
         start_timestamp = monotonic()
         model = model_utils.Model(**model_params)
-
         avg_loss, avg_edit = model.simple_managed_train_model(
             args.train_steps, summarize=False)
 
+        # Final reporting
         conn.experiments(experiment_id).observations().create(
             suggestion=suggestion.id,
             value=-avg_edit,

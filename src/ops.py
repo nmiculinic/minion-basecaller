@@ -1,5 +1,6 @@
 import tensorflow as tf
 import numpy as np
+import tflearn
 
 
 def running_mean(net, sizes, penalties, out_classes, name=None):
@@ -59,6 +60,28 @@ def __running_mean_test():
         tin = np.arange(4 * 2 * 5).reshape([4, 2, 5])
         print(tin)
         print(sess.run(net, feed_dict={x: tin}))
+
+
+def central_cut(net, block_size, shrink_factor):
+    output_shape = net.get_shape().as_list()
+    output_shape[1] = None
+    cut_size = tf.shape(net)[1] - tf.div(block_size, shrink_factor)
+    with tf.control_dependencies([
+        tf.cond(
+            tflearn.get_training_mode(),
+            lambda: tf.assert_equal(
+                tf.mod(cut_size, 2), 0, name="cut_size_assert"),
+            lambda: tf.no_op()
+        )
+    ]
+    ):
+        cut_size = tf.div(cut_size, 2)
+
+    net = tf.slice(net, [0, cut_size, 0],
+                   [-1, tf.div(block_size, shrink_factor), -1], name="Cutting")
+
+    net.set_shape(output_shape)
+    return net
 
 
 if __name__ == '__main__':
