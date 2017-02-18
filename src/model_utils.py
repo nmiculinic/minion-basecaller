@@ -23,11 +23,16 @@ import inspect
 import json
 import dill
 
+
+# UGLY UGLY HACK!
+for name, logger in logging.root.manager.loggerDict.items():
+    logger.disabled=True
+
+
 hostname = os.environ.get("MINION_HOSTNAME", socket.gethostname())
 repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 log_fmt = '\r[%(levelname)s] %(name)s: %(message)s'
-logging.basicConfig(level=logging.INFO, format=log_fmt)
-
+logging.basicConfig(level=logging.DEBUG, format=log_fmt)
 
 def default_lr_fn(global_step):
     return tf.train.exponential_decay(1e-3, global_step, 100000, 0.01)
@@ -204,14 +209,20 @@ class Model():
         os.makedirs(self.log_dir, mode=0o744, exist_ok=reuse or overwrite)
         print("Logdir = ", self.log_dir)
         self.logger = logging.getLogger(run_id)
-        self.logger.setLevel(logging.INFO)
+        self.logger.propagate = False
+        self.logger.setLevel(logging.DEBUG)
+
+        ch = logging.StreamHandler()
+        ch.setLevel(logging.INFO)
+        ch.setFormatter(logging.Formatter(log_fmt))
+        self.logger.addHandler(ch)
 
         hdlr = logging.FileHandler(os.path.join(self.log_dir, str(self.run_id) + ".log"))
         file_log_fmt = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
         hdlr.setFormatter(file_log_fmt)
         hdlr.setLevel(logging.DEBUG)
         self.logger.addHandler(hdlr)
-
+        self.logger.debug("pl")
         if "SLACK_TOKEN" in os.environ:
             self.logger.info("Adding slack logger")
             slack_handler = SlackerLogHandler(os.environ['SLACK_TOKEN'], hostname, stack_trace=True, username=hostname)
@@ -436,6 +447,7 @@ class Model():
 
     def basecall_sample(self, fast5_path):
         signal = util.get_raw_signal(fast5_path)
+        t = monotonic()
         basecalled = self.sess.run(
             tf.sparse_tensor_to_dense(self.pred, default_value=-1),
             feed_dict={
@@ -445,13 +457,13 @@ class Model():
             self.batch_size_var: 1,
             self.block_size_x_tensor: len(signal)
         }).ravel()
+        self.logger.debug("Basecalled %s in %.3f", fast5_path, monotonic() - t)
 
         return "".join(util.decode(basecalled))
 
     def get_aligement(self, fast5_path, ref_path, verbose):
         t = monotonic()
         basecalled = self.basecall_sample(fast5_path)
-        print("basecalled time ", monotonic() - t)
         with open(ref_path) as f:
             target = f.readlines()[-1]
 
@@ -464,7 +476,8 @@ class Model():
 
         result = Edlib().align(basecalled, target)
         self.logger.debug("Aligment", result.alignment)
-        print("Whole time ", monotonic() - t)
+        self.logger.debug("Whole time %.3f", monotonic() - t)
+
         return result.edit_distance / len(target)  #
 
     def run_validation_full(self, frac, verbose=False):
@@ -646,7 +659,7 @@ class Model():
             raise ValueError("in data unexpected, got: " + self.in_data)
 
         self.feed_threads = [data_thread_fn(self.enqueue_train, 'train.txt') for _ in range(num_workers)]
-        self.feed_threads.append(data_thread_fn(self.enqueue_test, 'test.txt'))
+        self.feed_threads.extend([data_thread_fn(self.enqueue_test, 'test.txt') for _ in range(num_workers)])
         for feed_thread in self.feed_threads:
             feed_thread.start()
 
@@ -667,7 +680,7 @@ class Model():
             self.__start_queues(num_workers, proc)
 
 
-    def simple_managed_train_model(self, num_steps, val_every=250, save_every=5000, summarize=True, final_val_samples=26000, **kwargs):
+    def simple_managed_train_model(self, num_steps, val_every=250, save_every=5000, summarize=True, final_val_samples=500, **kwargs):
         try:
             self.logger.info("Training %d steps", num_steps)
             self.init_session()
