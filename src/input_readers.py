@@ -58,7 +58,7 @@ def get_feed_yield_abs(logger, feed_fn, batch_size, file_list, root_dir=None, **
                     name + "_enqueue_val": np.array(arr) for name, arr in zip(names, arrs)
                 }
 
-                if total % 1000 == 0 or total in [10, 100, 200]:
+                if total % 10000 == 0 or total in [10, 100, 200, 1000]:
                     logger.info("read %d datapoints. err_short_rate %.3f other %.3f ", total, err_short / total, other_error / total)
 
 
