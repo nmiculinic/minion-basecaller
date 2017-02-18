@@ -66,7 +66,7 @@ class Model():
         del valargs['self']
 
         for k in sorted(valargs.keys()):
-            self.logger.debug("%-20s: %7s" % (k, str(valargs[k])))
+            self.logger.info("%-20s: %7s" % (k, str(valargs[k])))
 
         fname = os.path.join(self.log_dir, 'model_hyperparams.json')
         with open(fname, 'w') as f:
