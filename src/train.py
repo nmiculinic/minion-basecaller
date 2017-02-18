@@ -12,12 +12,12 @@ import argparse
 load_dotenv(find_dotenv())
 
 
-def sigopt_runner(module_name=None, observation_budget=20):
+def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
     parser = argparse.ArgumentParser()
     if module_name is None:
         parser.add_argument("module_name", type='str', help='Model name')
     parser.add_argument("train_steps", nargs='?', type=int,
-                        default=100000, help='Number of training steps')
+                        train_steps=100000, help='Number of training steps')
     parser.add_argument('--budget', nargs='?', type=int,
                         default=observation_budget)
     parser.add_argument('--name', nargs='?', type=str,
