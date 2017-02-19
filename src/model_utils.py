@@ -360,7 +360,7 @@ class Model():
     def get_global_step(self):
         return self.sess.run(self.global_step)
 
-    def train_minibatch(self, log_every=20, trace_every=10000):
+    def train_minibatch(self, log_every=50, trace_every=10000):
         """
             Trains minibatch and performs all required operations
 
