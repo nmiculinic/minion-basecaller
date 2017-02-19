@@ -8,6 +8,7 @@ import numpy as np
 load_dotenv(find_dotenv())
 
 
+# 0.2375, CI <0.2336, 0.2415> for batch_size=16, train_steps=100k
 def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, reuse=False, **kwargs):
     """
         Args:
