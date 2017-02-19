@@ -7,7 +7,7 @@ from dotenv import load_dotenv, find_dotenv
 from tflearn.initializations import variance_scaling_initializer
 from train import sigopt_runner
 from ops import central_cut
-from util import sigopt_double
+from util import sigopt_int, sigopt_double
 load_dotenv(find_dotenv())
 
 
@@ -22,7 +22,7 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
     print("model in", net.get_shape())
     for block in range(1, 4):
         with tf.variable_scope("block%d" % block):
-            for layer in range(1, 1 + 1):
+            for layer in range(1, kwargs['num_layers'] + 1):
                 with tf.variable_scope('layer_%d' % layer):
                     res = net
                     for sublayer in [1, 2]:
@@ -60,8 +60,8 @@ def model_setup_params(hyper):
     print("Requesting %s hyperparams" % __file__)
     return dict(
         g=tf.Graph(),
-        block_size_x=8 * 3 * 50 // 2,
-        block_size_y=80,
+        block_size_x=8 * 3 * 600 // 2,
+        block_size_y=630,
         in_data="ALIGNED_RAW",
         num_blocks=1,
         batch_size=32,
@@ -81,11 +81,13 @@ def model_setup_params(hyper):
 params = [
     sigopt_double('initial_lr', 1e-5, 1e-3),
     sigopt_double('decay_factor', 1e-3, 0.5),
+    sigopt_int('num_layers', 10, 20)
 ]
 
 default_params = {
     'initial_lr': 1e-4,
     'decay_factor': 0.1,
+    'num_layers': 10
 }
 
 

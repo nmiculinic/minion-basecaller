@@ -1,37 +1,6 @@
 from edlib import Edlib
 import h5py
 import numpy as np
-import tensorflow as tf
-
-
-def atrous_conv1d(value, filters, rate, padding="SAME", name=None):
-    with tf.name_scope(name, "atrous_conv1d", [value, filters]) as name:
-        value = tf.convert_to_tensor(value, name="value")
-        filters = tf.convert_to_tensor(filters, name="filters")
-
-        if rate == 1:
-            return tf.nn.conv1d(value, filters, 1, padding)
-
-        if value.get_shape().is_fully_defined():
-            value_shape = value.get_shape().as_list()
-        else:
-            value_shape = tf.shape(value)
-
-        add = (-value_shape[1] % rate + rate) % rate
-        pad = [[0, add]]
-        crop = [[0, add]]
-
-        value = tf.space_to_batch_nd(input=value,
-                                     paddings=pad,
-                                     block_shape=[rate])
-
-        value = tf.nn.conv1d(value, filters, 1, padding, name=name)
-
-        value = tf.batch_to_space_nd(input=value,
-                                     crops=crop,
-                                     block_shape=[rate])
-
-        return value
 
 
 def next_num(prev, symbol):
@@ -202,26 +171,6 @@ def decode_example(Y, Y_len, num_blocks, block_size_y, pad=None):
         pad = np.max(list(map(len, gg)))
 
     return list(map(lambda x: x.ljust(pad, ' '), gg))
-
-
-def dense2d_to_sparse(dense_input, length, name=None, dtype=None):
-    with tf.name_scope(name, "dense2d_to_sparse"):
-        num_batches = dense_input.get_shape()[0]
-        print(dense_input.get_shape())
-        print(length.get_shape())
-
-        indices = [tf.pack([tf.fill([length[x]], x), tf.range(length[x])], axis=1) for x in range(num_batches)]
-        indices = tf.concat(0, indices)
-        indices = tf.to_int64(indices)
-
-        values = [tf.squeeze(tf.slice(dense_input, [x, 0], [1, length[x]]), squeeze_dims=[0]) for x in
-                  range(num_batches)]
-        values = tf.concat(0, values)
-
-        if dtype is not None:
-            values = tf.cast(values, dtype)
-
-        return tf.SparseTensor(indices, values, tf.to_int64(tf.shape(dense_input)))
 
 
 """ Working with aligned refs """
@@ -400,10 +349,7 @@ def read_fast5_raw_ref(fast5_path, ref_path, block_size_x, block_size_y, num_blo
         x_len = min(signal_len, block_size_x * num_blocks)
         x[:x_len, 0] = signal[start_pad:start_pad + x_len]
 
-        if len(signal) != start_pad + np.sum(events['length']):
-            print(fast5_path + " failed sanity check")  # Sanity check
-            assert (len(signal) == start_pad + np.sum(events['length']))  # Sanity check
-            assert (False)
+        np.testing.assert_allclose(len(signal), start_pad + np.sum(events['length']))
 
         events_len = np.zeros([num_blocks], dtype=np.int32)
 
@@ -445,6 +391,25 @@ def read_fast5_raw_ref(fast5_path, ref_path, block_size_x, block_size_y, num_blo
     return x[block_size_x:], max(0, x_len - block_size_x), y, y_len
 
 
+def sigopt_numeric(type, name, min, max):
+    return dict(
+        name=name,
+        type=type,
+        bounds=dict(
+            min=min,
+            max=max
+        )
+    )
+
+
+def sigopt_int(name, min, max):
+    return sigopt_numeric('int', name, min, max)
+
+
+def sigopt_double(name, min, max):
+    return sigopt_numeric('double', name, min, max)
+
+
 def get_raw_signal(fast5_path):
     with h5py.File(fast5_path, 'r') as h5:
         reads = h5['Analyses/EventDetection_000/Reads']
@@ -460,13 +425,3 @@ def get_raw_signal(fast5_path):
         signal -= 646.11133
         signal /= 75.673653
         return signal
-
-
-if __name__ == "__main__":
-    X = tf.constant(np.array([1, 2, 3, 4, 5, 6, 7]).reshape(1, 7, 1), dtype=tf.float32)
-    kernel = tf.constant(np.array([100, 10, 1]).reshape(3, 1, 1), dtype=tf.float32)
-    y = atrous_conv1d(X, kernel, 2, "SAME")
-    sess = tf.Session()
-    sess.run(tf.global_variables_initializer())
-    gg = sess.run(y)
-    print(gg, gg.shape)

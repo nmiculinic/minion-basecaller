@@ -2,7 +2,8 @@ import numpy as np
 import util
 import socket
 import tensorflow as tf
-from util import dense2d_to_sparse, decode_example, decode_sparse
+from util import decode_example, decode_sparse
+from ops import dense2d_to_sparse
 import input_readers
 import multiprocessing
 from threading import Thread
@@ -141,6 +142,7 @@ class Model():
             with tf.name_scope("prediction"):
                 predicted, prdicted_logprob = tf.nn.ctc_beam_search_decoder(self.logits, tf.div(self.X_batch_len, self.shrink_factor), merge_repeated=True, top_paths=1)
                 self.pred = self.__dedup_output(tf.cast(predicted[0], tf.int32))
+                self.dense_pred = tf.sparse_tensor_to_dense(self.pred, default_value=-1)
                 self.edit_distance = tf.edit_distance(
                     self.pred,
                     self.__dedup_output(self.Y_batch)
@@ -446,7 +448,7 @@ class Model():
         signal = util.get_raw_signal(fast5_path)
         t = perf_counter()
         basecalled = self.sess.run(
-            tf.sparse_tensor_to_dense(self.pred, default_value=-1),
+            self.dense_pred,
             feed_dict={
             self.X_batch: signal.reshape(1, -1, 1),
             self.X_batch_len: np.array(len(signal)).reshape([1,]),
@@ -670,7 +672,7 @@ class Model():
             self.sess.run(tf.global_variables_initializer())
             self.coord = tf.train.Coordinator()
             self.threads = tf.train.start_queue_runners(sess=self.sess, coord=self.coord)
-        # self.g.finalize()
+        self.g.finalize()
         self.train_writer = tf.summary.FileWriter(os.path.join(self.log_dir, 'train'), graph=self.g)
         self.test_writer = tf.summary.FileWriter(os.path.join(self.log_dir, 'test'), graph=self.g)
         self.feed_threads = []
