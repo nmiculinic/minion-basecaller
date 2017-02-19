@@ -444,7 +444,7 @@ class Model():
 
     def basecall_sample(self, fast5_path):
         signal = util.get_raw_signal(fast5_path)
-        t = monotonic()
+        t = perf_counter()
         basecalled = self.sess.run(
             tf.sparse_tensor_to_dense(self.pred, default_value=-1),
             feed_dict={
@@ -454,12 +454,12 @@ class Model():
             self.batch_size_var: 1,
             self.block_size_x_tensor: len(signal)
         }).ravel()
-        self.logger.debug("Basecalled %s in %.3f", fast5_path, monotonic() - t)
+        self.logger.debug("Basecalled %s in %.3f", fast5_path, perf_counter() - t)
 
         return "".join(util.decode(basecalled))
 
     def get_aligement(self, fast5_path, ref_path, verbose):
-        t = monotonic()
+        t = perf_counter()
         basecalled = self.basecall_sample(fast5_path)
         with open(ref_path) as f:
             target = f.readlines()[-1]
@@ -473,7 +473,7 @@ class Model():
 
         result = Edlib().align(basecalled, target)
         self.logger.debug("Aligment %s", "".join(map(str, result.alignment)))
-        self.logger.debug("Whole time %.3f", monotonic() - t)
+        self.logger.debug("Whole time %.3f", perf_counter() - t)
 
         return result.edit_distance / len(target)  #
 
@@ -501,7 +501,7 @@ class Model():
         with self.g.as_default():
             is_training(False, session=self.sess)
             for i, fname in enumerate(fnames):
-                t = monotonic()
+                t = perf_counter()
                 sol[i] = self.get_aligement(
                     os.path.join(
                         input_readers.root_dir_default,
@@ -512,7 +512,7 @@ class Model():
                         'ref',
                         fname + ".ref"
                     ), verbose=verbose)
-                total_time += monotonic() - t
+                total_time += perf_counter() - t
                 mu = np.mean(sol[:i + 1])
                 std = np.std(sol[:i + 1], ddof=1 if i > 0 else 0)
                 se = std / np.sqrt(i + 1)
