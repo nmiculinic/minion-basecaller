@@ -6,8 +6,7 @@ from util import dense2d_to_sparse, decode_example, decode_sparse
 import input_readers
 import multiprocessing
 from threading import Thread
-import time
-from time import monotonic
+from time import perf_counter
 from tensorflow.python.client import timeline
 import os
 import string
@@ -21,7 +20,6 @@ from slacker_log_handler import SlackerLogHandler
 from edlib import Edlib
 import inspect
 import json
-import dill
 
 
 # UGLY UGLY HACK!
@@ -178,7 +176,7 @@ class Model():
         self.dequeue_time = 0
 
         self.bbt = 0
-        self.bbt_clock = time.clock()
+        self.bbt_clock = perf_counter()
 
     def __dedup_output(self, sparse_tensor):
         sol_values = sparse_tensor.values - 4 * tf.to_int32(sparse_tensor.values >= 4)
@@ -372,22 +370,21 @@ class Model():
         """
         with self.g.as_default():
             is_training(True, session=self.sess)
-        tt = time.clock()
+        tt = perf_counter()
         iter_step, _ = self.sess.run([self.global_step, self.load_train])
         self.sess.run([self.inc_gs])
-        self.dequeue_time = 0.9 * self.dequeue_time + 0.1 * (time.clock() - tt)
-
-        self.bbt = 0.8 * self.bbt + 0.2 * (time.clock() - self.bbt_clock)
-        tt = time.clock()
+        self.dequeue_time = 0.8 * self.dequeue_time + 0.2 * (perf_counter() - tt)
 
         if (iter_step > 0 and iter_step % trace_every == 0) or iter_step == 25:
             self.trace_level = tf.RunOptions.FULL_TRACE
 
+        self.bbt = 0.8 * (self.bbt) + 0.2 * (perf_counter() - self.bbt_clock)
+        tt = perf_counter()
         fetches = [self.train_op, self.loss, self.reg]
-        # fetches = [self.train_op]
         vals = self.__rnn_roll(add_fetch=fetches, timeline_suffix="ctc_loss")
-        self.batch_time = 0.8 * self.batch_time + 0.2 * (time.clock() - tt)
-        self.bbt_clock = time.clock()
+        self.batch_time = 0.8 * self.batch_time + 0.2 * (perf_counter() - tt)
+        self.bbt_clock = perf_counter()
+
         loss = np.sum(vals[1]).item()
         reg_loss = np.sum(vals[2]).item()
 
@@ -442,7 +439,7 @@ class Model():
             tf.Summary.Value(tag="train/edit_distance", simple_value=avg_edit_distance),
         ]), global_step=iter_step)
         self.logger.info("%4d validation loss %6.3f edit_distance %.3f" % (iter_step, avg_loss, avg_edit_distance))
-        self.bbt_clock = time.clock()
+        self.bbt_clock = perf_counter()
         return avg_loss, avg_edit_distance
 
     def basecall_sample(self, fast5_path):
