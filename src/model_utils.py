@@ -348,10 +348,10 @@ class Model():
                         sol[i].append(val)
                     return sol
             except Exception as ex:
-                self.logger.error('\r=== ERROR RNN ROLL, retrying %d ===\n', retry, exc_info=True)
                 if isinstance(ex, KeyboardInterrupt):
                     raise
                 else:
+                    self.logger.error('\r=== ERROR RNN ROLL, retrying %d ===\n', retry, exc_info=True)
                     continue
 
     def __inc_gs(self):
@@ -696,8 +696,9 @@ class Model():
             _, avg_edit, _, se = self.run_validation_full(final_val_samples)
             return avg_edit, se
 
-        except:
-            self.logger.error("Error happened", exc_info=1)
+        except Exception as ex:
+            if not isinstance(ex, KeyboardInterrupt):
+                self.logger.error("Error happened", exc_info=1)
             raise
         finally:
             self.train_writer.flush()
