@@ -82,12 +82,12 @@ def get_raw_ref_feed_yield(logger, block_size_x, block_size_y, num_blocks, file_
     return get_feed_yield_abs(logger, load_f, batch_size=batch_size, file_list=file_list, root_dir=root_dir)
 
 
-def get_event_feed_yield(block_size, num_blocks, file_list, batch_size=10, warn_if_short=False, root_dir=None):
-    return get_feed_yield_abs(lambda filename: util.read_fast5(filename, block_size, num_blocks, warn_if_short), batch_size, file_list, root_dir=root_dir)
+def get_event_feed_yield(logger, block_size, num_blocks, file_list, batch_size=10, warn_if_short=False, root_dir=None):
+    return get_feed_yield_abs(logger, lambda filename, _: util.read_fast5(filename, block_size, num_blocks, warn_if_short), batch_size, file_list, root_dir=root_dir)
 
 
-def get_raw_feed_yield(block_size_x, block_size_y, num_blocks, file_list, batch_size=10, warn_if_short=False, root_dir=None):
-    return get_feed_yield_abs(lambda filename: util.read_fast5_raw(
+def get_raw_feed_yield(logger, block_size_x, block_size_y, num_blocks, file_list, batch_size=10, warn_if_short=False, root_dir=None):
+    return get_feed_yield_abs(logger, lambda filename, _: util.read_fast5_raw(
         filename,
         block_size_x=block_size_x,
         block_size_y=block_size_y,
