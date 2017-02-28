@@ -121,13 +121,13 @@ def dense2d_to_sparse(dense_input, length, name=None, dtype=None):
         print(dense_input.get_shape())
         print(length.get_shape())
 
-        indices = [tf.pack([tf.fill([length[x]], x), tf.range(length[x])], axis=1) for x in range(num_batches)]
-        indices = tf.concat(0, indices)
+        indices = [tf.stack([tf.fill([length[x]], x), tf.range(length[x])], axis=1) for x in range(num_batches)]
+        indices = tf.concat(axis=0, values=indices)
         indices = tf.to_int64(indices)
 
-        values = [tf.squeeze(tf.slice(dense_input, [x, 0], [1, length[x]]), squeeze_dims=[0]) for x in
+        values = [tf.squeeze(tf.slice(dense_input, [x, 0], [1, length[x]]), axis=[0]) for x in
                   range(num_batches)]
-        values = tf.concat(0, values)
+        values = tf.concat(axis=0, values=values)
 
         if dtype is not None:
             values = tf.cast(values, dtype)

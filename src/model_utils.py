@@ -185,7 +185,7 @@ class Model():
         sol = tf.SparseTensor(
             sparse_tensor.indices,
             tf.Print(sol_values, [sol_values, sparse_tensor.values], first_n=5, message="__dedup", summarize=20),
-            sparse_tensor.shape
+            sparse_tensor.dense_shape
         )
         return sol
 
@@ -241,10 +241,30 @@ class Model():
     def __create_train_input_objects(self):
         with tf.variable_scope("input"):
             input_vars = [
-                tf.get_variable("X", initializer=tf.zeros_initializer([self.batch_size, self.block_size_x * self.num_blocks, self.data_in_dim], self.dtype), dtype=self.dtype, trainable=False),
-                tf.get_variable("X_len", initializer=tf.zeros_initializer([self.batch_size], tf.int32), trainable=False),
-                tf.get_variable("Y", initializer=tf.zeros_initializer([self.batch_size, self.block_size_y * self.num_blocks], tf.uint8), trainable=False),
-                tf.get_variable("Y_len", initializer=tf.zeros_initializer([self.batch_size, self.num_blocks], tf.int32), trainable=False),
+                tf.get_variable("X",
+                                shape=[self.batch_size, self.block_size_x * self.num_blocks, self.data_in_dim],
+                                initializer=tf.zeros_initializer(),
+                                dtype=self.dtype,
+                                trainable=False
+                                ),
+                tf.get_variable("X_len",
+                                shape=[self.batch_size],
+                                initializer=tf.zeros_initializer(),
+                                dtype=tf.int32,
+                                trainable=False
+                                ),
+                tf.get_variable("Y",
+                                initializer=tf.zeros_initializer(),
+                                dtype=tf.uint8,
+                                shape=[self.batch_size, self.block_size_y * self.num_blocks],
+                                trainable=False
+                                ),
+                tf.get_variable("Y_len",
+                                shape=[self.batch_size, self.num_blocks],
+                                initializer=tf.zeros_initializer(),
+                                dtype=tf.int32,
+                                trainable=False
+                                ),
             ]
             names = [x.name[6:-2] for x in input_vars]  # TODO, hacky
             shapes = [x.get_shape()[1:] for x in input_vars]
