@@ -477,7 +477,9 @@ class Model():
         self.logger.debug("Aligment %s", "".join(map(str, result.alignment)))
         self.logger.debug("Whole time %.3f", perf_counter() - t)
 
-        return result.edit_distance / len(target)  #
+        acc = np.sum(result.alignment == Edlib().EDLIB_EDOP_MATCH) / len(result.alignment)
+        nedit = result.edit_distance / len(target)
+        return nedit, acc
 
     def run_validation_full(self, frac, verbose=False):
         """
@@ -490,7 +492,6 @@ class Model():
         with open(os.path.join(input_readers.root_dir_default, 'test.txt')) as f:
             fnames = np.array(list(map(lambda x: x.strip().split()[0], f.readlines())))
         np.random.shuffle(fnames)
-        print(fnames)
 
         if isinstance(frac, (int)):
             fnames = fnames[:frac]
@@ -498,13 +499,15 @@ class Model():
             fnames = fnames[:int(len(fnames) * frac)]
         self.logger.info("Running validation on %d examples", len(fnames))
 
-        sol = np.zeros(fnames.shape, dtype=np.float32)
+        nedit = np.zeros(fnames.shape, dtype=np.float32)
+        acc = np.zeros(fnames.shape, dtype=np.float32)
+        n = len(acc)
         total_time = 0.0
         with self.g.as_default():
             is_training(False, session=self.sess)
             for i, fname in enumerate(fnames):
                 t = perf_counter()
-                sol[i] = self.get_aligement(
+                nedit[i], acc[i] = self.get_aligement(
                     os.path.join(
                         input_readers.root_dir_default,
                         'pass',
@@ -515,18 +518,28 @@ class Model():
                         fname + ".ref"
                     ), verbose=verbose)
                 total_time += perf_counter() - t
-                mu = np.mean(sol[:i + 1])
-                std = np.std(sol[:i + 1], ddof=1 if i > 0 else 0)
-                se = std / np.sqrt(i + 1)
+                mu_edit, mu_acc = np.mean(nedit[:i + 1]), np.mean(acc[:i + 1])
+                std_edit, std_acc = np.std(nedit[:i + 1]), np.std(acc[:i + 1])
+                se_edit, se_acc = std_edit / np.sqrt(i + 1), std_acc / np.sqrt(i + 1)
                 if i % 5 == 0 or i < 5:
-                    print("\r%4d/%d avg edit %.4f s %.4f CI <%.4f, %.4f> tps %.3f" % (i + 1, len(sol), mu, std, mu - 2*se, mu + 2*se, total_time/(i + 1)), end='')
+                    print("\r%4d/%d avg edit %.4f s %.4f CI <%.4f, %.4f> avg_acc %.4f s %.4f CI <%.4f, %.4f> tps %.3f" % (i + 1, n, mu_edit, std_edit, mu_edit - 2*se_edit, mu_edit + 2*se_edit, mu_acc, std_acc, mu_acc - 2*se_acc, mu_acc + 2*se_acc, total_time/(i + 1)), end='')
 
-        mu = np.mean(sol)
-        std = np.std(sol, ddof=1)
-        se = std / np.sqrt(len(sol))
-        self.logger.info("%4d avg_edit_distance %.4f, sd %.4f CI <%.4f, %.4f> tps %.3f", self.get_global_step(), mu, std, mu - 2*se, mu + 2*se, total_time/(i + 1))
+        mu_edit, mu_acc = np.mean(nedit), np.mean(acc)
+        std_edit, std_acc = np.std(nedit), np.std(acc)
+        se_edit, se_acc = std_edit / np.sqrt(i + 1), std_acc / np.sqrt(i + 1)
 
-        return sol, mu, std, se
+        self.logger.info("step: %d [samples %d] avg edit %.4f s %.4f CI <%.4f, %.4f> avg_acc %.4f s %.4f CI <%.4f, %.4f> tps %.3f", self.get_global_step(), n, mu_edit, std_edit, mu_edit - 2*se_edit, mu_edit + 2*se_edit, mu_acc, std_acc, mu_acc - 2*se_acc, mu_acc + 2*se_acc, total_time/n)
+
+        return {
+            'edit': {
+                'mu': mu_edit.item(),
+                'std': std_edit.item()
+            },
+            'accuracy': {
+                'mu': mu_acc.item(),
+                'std': std_acc.item()
+            }
+        }
 
     def summarize(self, write_example=True):
         with self.g.as_default():
@@ -695,8 +708,7 @@ class Model():
 
             self.save()
             self.logger.info("Running final validation run")
-            _, avg_edit, _, se = self.run_validation_full(final_val_samples)
-            return avg_edit, se
+            return self.run_validation_full(final_val_samples)
 
         except Exception as ex:
             if not isinstance(ex, KeyboardInterrupt):

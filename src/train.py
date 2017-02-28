@@ -76,6 +76,8 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
         if os.environ['SIGOPT_KEY'].startswith("TJEAVRLBP"):
             print("DEVELOPMENT MODE!!!")
             hyper.update(model_module.default_params)
+        else:
+            print("PRODUCTION MODE!!!")
 
         print("Running hyper parameters")
         for k in sorted(hyper.keys()):
@@ -91,23 +93,26 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
 
         start_timestamp = monotonic()
         model = model_utils.Model(**model_params)
-        avg_edit, se = model.simple_managed_train_model(
+        result = model.simple_managed_train_model(
             args.train_steps, summarize=args.summarize, num_workers=args.num_workers)
 
+        avg_edit = result['edit']['mu']
+        se = result['edit']['std']
         print("reporting to sigopt:", avg_edit, se, type(avg_edit), type(se))
         # Final reporting
         conn.experiments(experiment_id).observations().create(
             suggestion=suggestion.id,
-            value=-avg_edit.item(),
+            value=-avg_edit,
             metadata=dict(
                 hostname=model_utils.hostname,
                 run_no=run_no,
                 **{
                     'time[h]': (monotonic() - start_timestamp) / 3600.0,
                     'logdir': model.log_dir,
-                }
+                },
+                **result['accuracy']
             ),
-            value_stddev=se.item()
+            value_stddev=se
         )
 
 
