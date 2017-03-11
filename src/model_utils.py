@@ -497,7 +497,7 @@ class Model():
         self.logger.debug("Aligment %s", "".join(map(str, result.alignment)))
         self.logger.debug("Whole time %.3f", perf_counter() - t)
 
-        acc = np.sum(result.alignment == Edlib().EDLIB_EDOP_MATCH) / len(result.alignment)
+        acc = np.sum(np.array(result.alignment) == Edlib().EDLIB_EDOP_MATCH) / len(result.alignment)
         nedit = result.edit_distance / len(target)
         return nedit, acc
 

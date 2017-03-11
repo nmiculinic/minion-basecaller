@@ -384,7 +384,7 @@ def read_fast5_raw_ref(fast5_path, ref_path, block_size_x, block_size_y, num_blo
         y = y[block_size_y:]
         if any(y_len > block_size_y):
             print("Too many events in block!")
-            return None
+            raise AligmentError()
 
     x -= 646.11133
     x /= 75.673653
