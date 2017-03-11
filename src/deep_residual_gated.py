@@ -10,6 +10,7 @@ from tflearn.initializations import variance_scaling_initializer
 import tflearn
 load_dotenv(find_dotenv())
 
+# ~0.225 +- 0.001 tested on 500 samples from
 
 def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, **kwargs):
     """

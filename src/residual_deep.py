@@ -22,10 +22,10 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
     print("model in", net.get_shape())
     for block in range(1, 4):
         with tf.variable_scope("block%d" % block):
-            for layer in range(1, kwargs['num_layers'] + 1):
+            for layer in range(kwargs['num_layers']):
                 with tf.variable_scope('layer_%d' % layer):
                     res = net
-                    for sublayer in [1, 2]:
+                    for sublayer in range(kwargs['num_sub_layers']):
                         res = batch_normalization(
                             res, scope='bn_%d' % sublayer)
                         res = tf.nn.relu(res)
@@ -63,9 +63,9 @@ def model_setup_params(hyper):
         block_size_x=8 * 3 * 600 // 2,
         block_size_y=630,
         in_data="ALIGNED_RAW",
-        num_blocks=1,
-        batch_size=32,
-        max_reach=8 * 20,  # 160
+        num_blocks=3,
+        batch_size=16,
+        max_reach=8 * 20,  # 240
         queue_cap=300,
         overwrite=False,
         reuse=False,
@@ -81,13 +81,15 @@ def model_setup_params(hyper):
 params = [
     sigopt_double('initial_lr', 1e-5, 1e-3),
     sigopt_double('decay_factor', 1e-3, 0.5),
-    sigopt_int('num_layers', 10, 20)
+    sigopt_int('num_layers', 10, 20),
+    sigopt_int('num_sub_layers', 1, 2),
 ]
 
 default_params = {
     'initial_lr': 1e-4,
     'decay_factor': 0.1,
-    'num_layers': 10
+    'num_layers': 20,
+    'num_sub_layers': 2
 }
 
 
