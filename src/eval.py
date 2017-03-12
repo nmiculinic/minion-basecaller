@@ -1,4 +1,3 @@
-import tensorflow as tf
 import os
 from dotenv import load_dotenv, find_dotenv
 import model_utils
