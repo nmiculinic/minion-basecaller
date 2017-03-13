@@ -23,7 +23,8 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
     parser.add_argument("-s", "--summarize", help="Summarize gradient during training", action="store_true")
     parser.add_argument('--name', type=str,
                         default=module_name, help="Model name [run_id]", dest="model_name")
-
+    parser.add_argument('--run_no', '-r', type=int,
+                        default=0, help='Starting [-1] number for run_no')
     args = parser.parse_args()
 
     model_module = importlib.import_module(module_name)
@@ -43,7 +44,7 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
         experiment_id = os.environ["EXPERIMENT_ID"]
         print("Using experiment: https://sigopt.com/experiment/" + experiment_id)
 
-    run_no = 0
+    run_no = args.run_no
 
     if "verify_hyper" in content:
         print("Using module verify_hyper")
