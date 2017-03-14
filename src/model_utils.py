@@ -224,14 +224,15 @@ class Model():
         self.logger.addHandler(hdlr)
         self.logger.debug("pl")
         if "SLACK_TOKEN" in os.environ:
+            username = "%s@%s" % (run_id, hostname)
             self.logger.info("Adding slack logger")
-            slack_handler = SlackerLogHandler(os.environ['SLACK_TOKEN'], hostname, stack_trace=True, username=hostname)
+            slack_handler = SlackerLogHandler(os.environ['SLACK_TOKEN'], hostname, stack_trace=True, username=username)
 
             slack_handler.setFormatter(file_log_fmt)
             slack_handler.setLevel(logging.INFO)
             self.logger.addHandler(slack_handler)
 
-            slack_handler = SlackerLogHandler(os.environ['SLACK_TOKEN'], 'error', username=hostname)
+            slack_handler = SlackerLogHandler(os.environ['SLACK_TOKEN'], 'error', username=username)
 
             slack_handler.setFormatter(file_log_fmt)
             slack_handler.setLevel(logging.ERROR)
