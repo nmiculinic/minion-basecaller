@@ -647,6 +647,7 @@ class Model():
                 try:
                     self.sess.run(enqueue_op, feed_dict=feed)
                 except tf.errors.CancelledError:
+                    print("closing queue_feeder")
                     break
             if proc:
                 p.terminate()
@@ -745,6 +746,9 @@ class Model():
         self.test_writer.flush()
         self.sess.run(self.close_queues)
         for feed_thread in self.feed_threads:
-                feed_thread.join()
+            feed_thread.join(5)
+            if feed_thread.is_alive():
+                self.logger.error("Thread is still alive!" + str(feed_thread))
+
         self.coord.join(self.threads)
         self.sess.close()
