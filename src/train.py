@@ -97,13 +97,13 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
         result = model.simple_managed_train_model(
             args.train_steps, summarize=args.summarize, num_workers=args.num_workers)
 
-        avg_edit = result['accuracy']['mu']
+        avg_acc = result['accuracy']['mu']
         se = result['accuracy']['std']
-        print("reporting to sigopt:", avg_edit, se, type(avg_edit), type(se))
+        print("reporting to sigopt:", avg_acc, se, type(avg_acc), type(se))
         # Final reporting
         conn.experiments(experiment_id).observations().create(
             suggestion=suggestion.id,
-            value=-avg_edit,
+            value=avg_acc,
             metadata=dict(
                 hostname=model_utils.hostname,
                 run_no=run_no,
