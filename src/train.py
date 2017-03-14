@@ -98,7 +98,7 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
             args.train_steps, summarize=args.summarize, num_workers=args.num_workers)
 
         avg_acc = result['accuracy']['mu']
-        se = result['accuracy']['std']
+        se = result['accuracy']['se']
         print("reporting to sigopt:", avg_acc, se, type(avg_acc), type(se))
         # Final reporting
         conn.experiments(experiment_id).observations().create(

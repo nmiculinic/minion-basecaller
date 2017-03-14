@@ -554,11 +554,13 @@ class Model():
         return {
             'edit': {
                 'mu': mu_edit.item(),
-                'std': std_edit.item()
+                'std': std_edit.item(),
+                'se': se_edit.item()
             },
             'accuracy': {
                 'mu': mu_acc.item(),
-                'std': std_acc.item()
+                'std': std_acc.item(),
+                'se': se_acc.item()
             }
         }
 
