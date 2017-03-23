@@ -5,8 +5,12 @@ from dotenv import load_dotenv, find_dotenv
 from time import monotonic
 import model_utils
 import argparse
+import json
+
 load_dotenv(find_dotenv())
 
+recovery_file = os.path.join(model_utils.repo_root, 'log', 'recovery.json')
+print(recovery_file)
 
 def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
     parser = argparse.ArgumentParser()
@@ -23,8 +27,6 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
     parser.add_argument("-s", "--summarize", help="Summarize gradient during training", action="store_true")
     parser.add_argument('--name', type=str,
                         default=module_name, help="Model name [run_id]", dest="model_name")
-    parser.add_argument('--run_no', '-r', type=int,
-                        default=0, help='Starting [-1] number for run_no')
     args = parser.parse_args()
 
     model_module = importlib.import_module(module_name)
@@ -44,8 +46,6 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
         experiment_id = os.environ["EXPERIMENT_ID"]
         print("Using experiment: https://sigopt.com/experiment/" + experiment_id)
 
-    run_no = args.run_no
-
     if "verify_hyper" in content:
         print("Using module verify_hyper")
         verify_hyper = model_module.verify_hyper
@@ -54,31 +54,39 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
         verify_hyper = lambda x: True
 
     while True:
-        run_no += 1
-
-        # Choose hyperparameters
-        suggestion = conn.experiments(experiment_id).suggestions().create()
-        hyper = dict(suggestion.assignments)
-
-        while not verify_hyper(hyper):
-            print("Rejecting suggestion:")
-            for k in sorted(hyper.keys()):
-                print("%-20s: %7s" % (k, str(hyper[k])))
-            conn.experiments(experiment_id).observations().create(
-                suggestion=suggestion.id,
-                metadata=dict(
-                    hostname=model_utils.hostname,
-                ),
-                failed=True
-            )
+        if os.path.exists(recovery_file):
+            with open(recovery_file, 'r') as f:
+                print("Reloading EXISTING model params!!!")
+                params = json.load(f)
+                hyper = params['hyper']
+                suggestion_id = params['suggestion_id']
+                reuse = True
+        else:
+            # Choose hyperparameters
             suggestion = conn.experiments(experiment_id).suggestions().create()
             hyper = dict(suggestion.assignments)
 
-        if os.environ['SIGOPT_KEY'].startswith("TJEAVRLBP"):
-            print("DEVELOPMENT MODE!!!")
-            hyper.update(model_module.default_params)
-        else:
-            print("PRODUCTION MODE!!!")
+            while not verify_hyper(hyper):
+                print("Rejecting suggestion:")
+                for k in sorted(hyper.keys()):
+                    print("%-20s: %7s" % (k, str(hyper[k])))
+                conn.experiments(experiment_id).observations().create(
+                    suggestion=suggestion.id,
+                    metadata=dict(
+                        hostname=model_utils.hostname,
+                    ),
+                    failed=True
+                )
+                suggestion = conn.experiments(experiment_id).suggestions().create()
+                hyper = dict(suggestion.assignments)
+            suggestion_id = suggestion.id
+            reuse = False
+
+            if os.environ['SIGOPT_KEY'].startswith("TJEAVRLBP"):
+                print("DEVELOPMENT MODE!!!")
+                hyper.update(model_module.default_params)
+            else:
+                print("PRODUCTION MODE!!!")
 
         print("Running hyper parameters")
         for k in sorted(hyper.keys()):
@@ -87,13 +95,21 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
         # Setup model
         model_params = model_module.model_setup_params(hyper)
         model_params['run_id'] = args.model_name + \
-            "_%s_%d" % (experiment_id, run_no)
+            "_%s_%s" % (experiment_id, suggestion_id)
 
         if args.batch_size != -1:
             model_params['batch_size'] = args.batch_size
+        model_params['reuse'] = reuse
 
+        with open(recovery_file, 'w') as f:
+            json.dump({
+                'hyper': hyper,
+                'suggestion_id': suggestion_id,
+            }, f, sort_keys=True, indent=4)
         start_timestamp = monotonic()
         model = model_utils.Model(**model_params)
+        if reuse:
+            model.logger.info("Reusing model for earlier crash")
         result = model.simple_managed_train_model(
             args.train_steps, summarize=args.summarize, num_workers=args.num_workers)
 
@@ -102,11 +118,11 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
         print("reporting to sigopt:", avg_acc, se, type(avg_acc), type(se))
         # Final reporting
         conn.experiments(experiment_id).observations().create(
-            suggestion=suggestion.id,
+            suggestion=suggestion_id,
             value=avg_acc,
             metadata=dict(
                 hostname=model_utils.hostname,
-                run_no=run_no,
+                suggestion_id=suggestion_id,
                 result=str(result),
                 **{
                     'time[h]': (monotonic() - start_timestamp) / 3600.0,
@@ -115,6 +131,7 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
             ),
             value_stddev=se
         )
+        os.remove(recovery_file)
 
 
 if __name__ == "__main__":
