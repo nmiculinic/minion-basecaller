@@ -9,7 +9,7 @@ import json
 
 load_dotenv(find_dotenv())
 
-recovery_file = os.path.join(model_utils.repo_root, 'log', 'recovery.json')
+recovery_file = os.path.join(model_utils.repo_root, 'log', 'recovery_%s.json' % model_utils.hostname)
 print(recovery_file)
 
 
