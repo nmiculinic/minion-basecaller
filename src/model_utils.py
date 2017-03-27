@@ -637,7 +637,7 @@ class Model():
         """ Proc = True is GIL workaround """
         def thread_fn():
             if proc:
-                q = multiprocessing.Queue()
+                q = multiprocessing.Queue(5)
                 p = multiprocessing.Process(target=input_readers.proc_wrapper, args=(q, fun, *args))
                 p.start()
                 gen_next = lambda: q.get()
