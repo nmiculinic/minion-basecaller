@@ -28,6 +28,8 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
     parser.add_argument("-s", "--summarize", help="Summarize gradient during training", action="store_true")
     parser.add_argument('--name', type=str,
                         default=module_name, help="Model name [run_id]", dest="model_name")
+    parser.add_argument('--trace_every', '-t', type=int,
+                        default=10000, help="Each x steps to run profile trace. Negative number (e.g. -1) to disable")
     args = parser.parse_args()
 
     model_module = importlib.import_module(module_name)
@@ -112,7 +114,7 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
         if reuse:
             model.logger.info("Reusing model for earlier crash")
         result = model.simple_managed_train_model(
-            args.train_steps, summarize=args.summarize, num_workers=args.num_workers)
+            args.train_steps, summarize=args.summarize, num_workers=args.num_workers, trace_every=args.trace_every)
 
         avg_acc = result['accuracy']['mu']
         se = result['accuracy']['se']

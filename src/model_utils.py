@@ -230,7 +230,8 @@ class Model():
 
             slack_handler.setFormatter(file_log_fmt)
             slack_handler.setLevel(logging.INFO)
-            self.logger.addHandler(slack_handler)
+            print("Ignoring Slack INFO handler")
+            # self.logger.addHandler(slack_handler)
 
             slack_handler = SlackerLogHandler(os.environ['SLACK_TOKEN'], 'error', username=username)
 
@@ -398,8 +399,9 @@ class Model():
         self.sess.run([self.inc_gs])
         self.dequeue_time = 0.8 * self.dequeue_time + 0.2 * (perf_counter() - tt)
 
-        if (iter_step > 0 and iter_step % trace_every == 0) or iter_step == 25:
-            self.trace_level = tf.RunOptions.FULL_TRACE
+        if trace_every > 0:
+            if (iter_step > 0 and iter_step % trace_every == 0) or iter_step == 25:
+                self.trace_level = tf.RunOptions.FULL_TRACE
 
         self.bbt = 0.8 * (self.bbt) + 0.2 * (perf_counter() - self.bbt_clock)
         tt = perf_counter()
@@ -717,12 +719,14 @@ class Model():
             self.__start_queues(num_workers, proc)
 
 
-    def simple_managed_train_model(self, num_steps, val_every=250, save_every=5000, summarize=True, final_val_samples=500, num_workers=3, **kwargs):
+    def simple_managed_train_model(self, num_steps, val_every=250, save_every=5000, summarize=True, final_val_samples=500, num_workers=3, trace_every=10000, **kwargs):
         try:
             self.logger.info("Training %d steps", num_steps)
+            if trace_every < 0:
+                self.logger.warn("Profiling tracing is disabled!!!")
             self.init_session(num_workers=num_workers)
             for i in range(self.restore(must_exist=False) + 1, num_steps + 1):
-                print('\r%s Step %4d, loss %7.4f batch_time %.3f bbt %.3f dequeue %.3f  ' % (self.run_id, i, self.train_minibatch(), self.batch_time, self.bbt, self.dequeue_time), end='')
+                print('\r%s Step %4d, loss %7.4f batch_time %.3f bbt %.3f dequeue %.3f  ' % (self.run_id, i, self.train_minibatch(trace_every=trace_every), self.batch_time, self.bbt, self.dequeue_time), end='')
                 if i > 0 and i % val_every == 0:
                     self.run_validation()
                     if summarize:
