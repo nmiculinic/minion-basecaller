@@ -38,12 +38,13 @@ def default_lr_fn(global_step):
 
 
 class Model():
-    def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size=None, block_size_x=None, block_size_y=None, log_dir=None, run_id=None, overwrite=False, reuse=False, queue_cap=None, shrink_factor=1, test_queue_cap=None, in_data=input_readers.AlignedRaw(), lr_fn=None, dtype=tf.float32, hyper={}):
+    def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size=None, block_size_x=None, block_size_y=None, log_dir=None, run_id=None, overwrite=False, reuse=False, queue_cap=None, shrink_factor=1, test_queue_cap=None, in_data=input_readers.AlignedRaw(), lr_fn=None, dtype=tf.float32, hyper={}, clip_grad=2.0):
         """
             Args:
                 max_reach: int, size of contextual window for convolutions etc.
                 model_fn: function accepting (batch_size, 2*max_reach + block_size, 3) -> (block_size, batch_size, out_classes). Notice shift to time major as well as reduction in time dimension.
                 hyper: dictionary of hyperparameters passed to the model function as **hyper
+                clip_grad: Maximum gradient_clipping value, None to disable
         """
 
         if isinstance(in_data, input_readers.InputReader.__class__):
@@ -88,108 +89,124 @@ class Model():
         self.test_queue_cap = test_queue_cap or self.train_queue_cap
         self.dtype = dtype
         self.g = g
+        self.clip_grad = clip_grad
         self.__setup_graph(model_fn, hyper)
 
     def __setup_graph(self, model_fn, hyper):
+        self.__setup_graph_pre()
         with self.g.as_default():
-            self.training_mode = get_training_mode()
-            self.batch_size_var = tf.placeholder_with_default(tf.convert_to_tensor(self.batch_size, dtype=tf.int32), [])
-            net = self.__create_train_input_objects()
+            data = self.__setup_logits(model_fn, hyper)
+            self.logits = data['logits']
+            self.init_state = data['init_state']
+            self.final_state = data['final_state']
+            self.reg = data.get('reg', tf.constant(0))
+            self.loss = self.__setup_loss(self.logits)
 
-            self.block_size_x_tensor = tf.placeholder_with_default(self.block_size_x, [])
-
-            with tf.variable_scope("model"):
-                data = model_fn(
-                    net,
-                    self.X_batch_len,
-                    max_reach=self.max_reach,
-                    block_size=self.block_size_x_tensor,
-                    out_classes=9,
-                    batch_size=self.batch_size_var,
-                    dtype=self.dtype,
-                    **hyper
-                )
-
-            for k, v in data.items():
-                self.__dict__[k] = v
-
-            if self.logits.get_shape()[2] != 9:
-                raise ValueError("Loggits must be tensor with dim 2 = 9\n%s" % str(self.logits.get_shape()))
-            print("logits: ", self.logits.get_shape())
-            with tf.control_dependencies([
-                tf.cond(
-                    self.training_mode,
-                    lambda: tf.assert_equal(tf.shape(self.logits), [self.block_size_x_tensor // self.shrink_factor, self.batch_size_var, 9]),
-                    lambda: tf.no_op()
-                )
-            ]):
-                self.logits = tf.identity(self.logits)
-
-            with tf.name_scope("loss"):
-                loss = warpctc_tensorflow.ctc(
-                    self.logits,
-                    self.Y_batch.values,
-                    self.Y_batch_len,
-                    tf.div(self.X_batch_len, self.shrink_factor),
-                    blank_label=8
-                )
-
-                self.loss = tf.reduce_mean(loss)
-                if 'reg' in self.__dict__:
-                    self.logger.info("Adding regularization loss")
-                    self.loss = self.loss + self.reg
-                else:
-                    self.reg = tf.constant(0)
-
-            with tf.name_scope("prediction"):
-                predicted, prdicted_logprob = tf.nn.ctc_beam_search_decoder(self.logits, tf.div(self.X_batch_len, self.shrink_factor), merge_repeated=True, top_paths=1)
-                self.pred = self.__dedup_output(tf.cast(predicted[0], tf.int32))
-                self.dense_pred = tf.sparse_tensor_to_dense(self.pred, default_value=-1)
-                self.edit_distance = tf.edit_distance(
-                    self.pred,
-                    self.__dedup_output(self.Y_batch)
-                )
-
-            self.global_step = tf.Variable(0, name='global_step', trainable=False)
-            self.inc_gs = tf.assign_add(self.global_step, 1)
-            self.lr = self.lr_fn(self.global_step)
-            optimizer = tf.train.AdamOptimizer(self.lr)
-            self.grads = optimizer.compute_gradients(loss)
-            with tf.name_scope("gradient_clipping"):
-                self.grads = [(tf.clip_by_value(grad, -2., 2.), var) for grad, var in self.grads]
-
-            self.train_op = optimizer.apply_gradients(self.grads)
-
-            self.grad_summ = tf.summary.merge(add_gradients_summary(self.grads))
-            self.activation_summ = tf.summary.merge(
-                add_activations_summary(self.g.get_collection("activations")))
-
-            self.train_summ = tf.summary.merge([
-                self.train_queue_size,
-                tf.summary.scalar("train/learning_rate", self.lr)
-            ])
+            self.__setup_prediction()
+            self.__setup_train()
 
             self.saver = tf.train.Saver(
                 keep_checkpoint_every_n_hours=1,
             )
 
-        self.trace_level = tf.RunOptions.NO_TRACE
+    def __setup_graph_pre(self):
+        """
+            Sets up everything before requirnig model_fn parametirzing model.
+        """
 
-        self.batch_time = 0
-        self.dequeue_time = 0
+        with self.g.as_default():
+            self.training_mode = get_training_mode()
+            self.batch_size_var = tf.placeholder_with_default(tf.convert_to_tensor(self.batch_size, dtype=tf.int32), [])
+            self.__create_train_input_objects()
+            self.block_size_x_tensor = tf.placeholder_with_default(self.block_size_x, [])
 
-        self.bbt = 0
-        self.bbt_clock = perf_counter()
+            self.global_step = tf.Variable(0, name='global_step', trainable=False)
+            self.inc_gs = tf.assign_add(self.global_step, 1)
+            self.lr = self.lr_fn(self.global_step)
 
+    def __setup_logits(self, model_fn, hyper):
+        """
+            Setup logits function. Returns dict containing logits, init_state, final_state and optionally regularization
+        """
+        with tf.variable_scope("model"):
+            data = model_fn(
+                self.X_batch,
+                self.X_batch_len,
+                max_reach=self.max_reach,
+                block_size=self.block_size_x_tensor,
+                out_classes=9,
+                batch_size=self.batch_size_var,
+                dtype=self.dtype,
+                **hyper
+            )
 
-    def __dedup_output(self, sparse_tensor):
-        sol_values = sparse_tensor.values - 4 * tf.to_int32(sparse_tensor.values >= 4)
-        sol = tf.SparseTensor(
-            sparse_tensor.indices,
-            tf.Print(sol_values, [sol_values, sparse_tensor.values], first_n=5, message="__dedup", summarize=20),
-            sparse_tensor.dense_shape
-        )
-        return sol
+        if data['logits'].get_shape()[2] != 9:
+            raise ValueError("Loggits must be tensor with dim 2 = 9\n%s" % str(data['logits'].get_shape()))
+        with tf.control_dependencies([
+            tf.cond(
+                self.training_mode,
+                lambda: tf.assert_equal(tf.shape(data['logits']), [self.block_size_x_tensor // self.shrink_factor, self.batch_size_var, 9]),
+                lambda: tf.no_op()
+            )
+        ]):
+            data['logits'] = tf.identity(data['logits'])
+        return data
+
+    def __setup_loss(self, logits):
+        """
+            Function returning loss.
+        """
+        with tf.name_scope("loss"):
+            loss = warpctc_tensorflow.ctc(
+                self.logits,
+                self.Y_batch.values,
+                self.Y_batch_len,
+                tf.div(self.X_batch_len, self.shrink_factor),
+                blank_label=8
+            )
+            return tf.reduce_mean(loss)
+
+    def __setup_prediction(self):
+        """
+            Sets up pred, dense_pred and edit_distance in self
+        """
+        def dedup_output(sparse_tensor):
+            sol_values = sparse_tensor.values - 4 * tf.to_int32(sparse_tensor.values >= 4)
+            sol = tf.SparseTensor(
+                sparse_tensor.indices,
+                tf.Print(sol_values, [sol_values, sparse_tensor.values], first_n=5, message="__dedup", summarize=20),
+                sparse_tensor.dense_shape
+            )
+            return sol
+
+        with tf.name_scope("prediction"):
+            predicted, prdicted_logprob = tf.nn.ctc_beam_search_decoder(self.logits, tf.div(self.X_batch_len, self.shrink_factor), merge_repeated=True, top_paths=1)
+            self.pred = dedup_output(tf.cast(predicted[0], tf.int32))
+            self.dense_pred = tf.sparse_tensor_to_dense(self.pred, default_value=-1)
+            self.edit_distance = tf.edit_distance(
+                self.pred,
+                dedup_output(self.Y_batch)
+            )
+
+    def __setup_train(self):
+        """
+            Sets up rest of training. Assumes self.lr and self.loss are defined
+        """
+        optimizer = tf.train.AdamOptimizer(self.lr)
+        self.grads = optimizer.compute_gradients(self.loss)
+        with tf.name_scope("gradient_clipping"):
+            self.grads = [(tf.clip_by_value(grad, -2., 2.), var) for grad, var in self.grads]
+
+        self.train_op = optimizer.apply_gradients(self.grads)
+
+        self.grad_summ = tf.summary.merge(add_gradients_summary(self.grads))
+        self.activation_summ = tf.summary.merge(
+            add_activations_summary(self.g.get_collection("activations")))
+
+        self.train_summ = tf.summary.merge([
+            self.train_queue_size,
+            tf.summary.scalar("train/learning_rate", self.lr)
+        ])
 
     def __handle_logdir(self, log_dir, run_id, overwrite, reuse):
         if run_id is None:
@@ -677,6 +694,12 @@ class Model():
             feed_thread.start()
 
     def init_session(self, proc=True, num_workers=3, start_queues=True):
+        self.trace_level = tf.RunOptions.NO_TRACE
+        self.batch_time = 0
+        self.dequeue_time = 0
+        self.bbt = 0
+        self.bbt_clock = perf_counter()
+
         with self.g.as_default():
             self.sess = tf.Session(
                 graph=self.g,
@@ -691,7 +714,6 @@ class Model():
         self.feed_threads = []
         if start_queues:
             self.__start_queues(num_workers, proc)
-
 
     def simple_managed_train_model(self, num_steps, val_every=250, save_every=5000, summarize=True, final_val_samples=500, num_workers=3, trace_every=10000, **kwargs):
         try:
@@ -733,3 +755,8 @@ class Model():
 
         self.coord.join(self.threads)
         self.sess.close()
+
+
+class TeacherStudentModel(Model):
+    def __init__(self, **kwargs):
+        pass
