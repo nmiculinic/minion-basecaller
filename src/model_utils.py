@@ -207,7 +207,7 @@ class Model():
             Sets up rest of training. Assumes self.lr and self.loss are defined
         """
         optimizer = tf.train.AdamOptimizer(self.lr)
-        self.grads = optimizer.compute_gradients(self.loss)
+        self.grads = optimizer.compute_gradients(self.loss, self.g.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='model'))
         if self.clip_grad is not None:
             with tf.name_scope("gradient_clipping"):
                 self.grads = [(tf.clip_by_value(grad, -2., 2.), var) for grad, var in self.grads]
