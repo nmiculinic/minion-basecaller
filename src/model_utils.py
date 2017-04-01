@@ -784,7 +784,7 @@ class TeacherStudentModel(Model):
         self.ctc_scale = hyper['ctc_scale']
         super().__init__(model_fn=model_fn, hyper=hyper, **kwargs)
 
-    def _setup_loss(self, logits):
+    def _get_ensamble(self):
         ensamble = []
         for i, teacher_params in enumerate(self.teacher_params):
             with tf.variable_scope("teacher%d" % i):
@@ -792,8 +792,11 @@ class TeacherStudentModel(Model):
                 ensamble.append(tf.nn.softmax(alt_logits))
 
         ensamble = tf.add_n(ensamble) / len(self.teacher_params)
-        self.ctc_loss = super()._setup_loss(logits)
+        return ensamble
 
+    def _setup_loss(self, logits):
+        self.ctc_loss = super()._setup_loss(logits)
+        ensamble = self._get_ensamble()
         with tf.name_scope("loss"):
             self.ce_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=ensamble, logits=logits))
             return self.ce_loss + self.ctc_scale * self.ctc_loss
@@ -813,7 +816,7 @@ class TeacherStudentModel(Model):
             checkpoint = tf.train.latest_checkpoint(teacher_param['log_dir'])
             if checkpoint is None:
                 raise ValueError("Teacher checkpoint must exist!")
-            self.logger.info("Loading teacher%d weights from %s", checkpoint)
+            self.logger.info("Loading teacher%d weights from %s", i, checkpoint)
             saver.restore(self.sess, checkpoint)
 
         self.print_k()
@@ -821,4 +824,26 @@ class TeacherStudentModel(Model):
     def print_k(self):
         for i in range(len(self.teacher_params)):
             for v in self.g.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'teacher%d' % i):
-                print(v.op.name, self.sess.run(v).ravel()[:5])
+                if '/k' in v.op.name:
+                    print(v.op.name, self.sess.run(v).ravel()[:5])
+
+
+class Ensamble(TeacherStudentModel):
+    def __init__(self, teacher_names, teacher_dirs):
+        from model_small import default_params, model_setup_params
+        params = model_setup_params(default_params)
+        params['hyper']['ctc_scale'] = 0.0
+        super().__init__(teacher_names, teacher_dirs, **params)
+
+    def train_minibatch(self, *args, **kwargs):
+        raise NotImplementedError()
+
+    def _setup_loss(self, logits):
+        pass
+
+    def _setup_train(self, *args, **kwargs):
+        pass
+
+    def _predict_from_logits(self):
+        predicted, _ = tf.nn.ctc_greedy_decoder(self._get_ensamble(), tf.div(self.X_batch_len, self.shrink_factor), merge_repeated=True)
+        return predicted
