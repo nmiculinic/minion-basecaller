@@ -72,13 +72,11 @@ class Model():
         if overwrite and reuse:
             raise ValueError("Cannot overwrite and reuse logdit and checkpoints")
 
-        self.__handle_logdir(log_dir, run_id, overwrite, reuse)
+        self._handle_logdir(log_dir, run_id, overwrite, reuse)
 
         frame = inspect.currentframe()
         args, _, _, values = inspect.getargvalues(frame)
         valargs = {arg: values[arg] for arg in args}
-        del valargs['g']
-        del valargs['self']
 
         for k in sorted(valargs.keys()):
             self.logger.info("%-20s: %7s" % (k, str(valargs[k])))
@@ -106,41 +104,40 @@ class Model():
         self.dtype = dtype
         self.g = g
         self.clip_grad = clip_grad
-        self.__setup_graph(model_fn, hyper)
+        self._setup_graph(model_fn, hyper)
 
-    def __setup_graph(self, model_fn, hyper):
-        self.__setup_graph_pre()
+    def _setup_graph(self, model_fn, hyper):
+        self._setup_graph_pre()
         with self.g.as_default():
-            data = self.__setup_logits(model_fn, hyper)
+            data = self._setup_logits(model_fn, hyper)
             self.logits = data['logits']
             self.init_state = data['init_state']
             self.final_state = data['final_state']
             self.reg = data.get('reg', tf.constant(0))
-            self.loss = self.__setup_loss(self.logits)
+            self.loss = self._setup_loss(self.logits)
 
-            self.__setup_prediction()
-            self.__setup_train()
+            self._setup_prediction()
+            self._setup_train()
 
             self.saver = tf.train.Saver(
                 keep_checkpoint_every_n_hours=1,
             )
 
-    def __setup_graph_pre(self):
+    def _setup_graph_pre(self):
         """
             Sets up everything before requirnig model_fn parametirzing model.
         """
-
         with self.g.as_default():
             self.training_mode = get_training_mode()
             self.batch_size_var = tf.placeholder_with_default(tf.convert_to_tensor(self.batch_size, dtype=tf.int32), [])
-            self.__create_train_input_objects()
+            self._create_train_input_objects()
             self.block_size_x_tensor = tf.placeholder_with_default(self.block_size_x, [])
 
             self.global_step = tf.Variable(0, name='global_step', trainable=False)
             self.inc_gs = tf.assign_add(self.global_step, 1)
             self.lr = self.lr_fn(self.global_step)
 
-    def __setup_logits(self, model_fn, hyper):
+    def _setup_logits(self, model_fn, hyper):
         """
             Setup logits function. Returns dict containing logits, init_state, final_state and optionally regularization
         """
@@ -168,10 +165,11 @@ class Model():
             data['logits'] = tf.identity(data['logits'])
         return data
 
-    def __setup_loss(self, logits):
+    def _setup_loss(self, logits):
         """
             Function returning loss.
         """
+        print("Model _setup_loss")
         with tf.name_scope("loss"):
             loss = warpctc_tensorflow.ctc(
                 self.logits,
@@ -182,7 +180,7 @@ class Model():
             )
             return tf.reduce_mean(loss)
 
-    def __setup_prediction(self):
+    def _setup_prediction(self):
         """
             Sets up pred, dense_pred and edit_distance in self
         """
@@ -204,7 +202,7 @@ class Model():
                 dedup_output(self.Y_batch)
             )
 
-    def __setup_train(self):
+    def _setup_train(self):
         """
             Sets up rest of training. Assumes self.lr and self.loss are defined
         """
@@ -225,7 +223,7 @@ class Model():
             tf.summary.scalar("train/learning_rate", self.lr)
         ])
 
-    def __handle_logdir(self, log_dir, run_id, overwrite, reuse):
+    def _handle_logdir(self, log_dir, run_id, overwrite, reuse):
         if run_id is None:
             run_id = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(5))
         self.run_id = run_id
@@ -276,7 +274,7 @@ class Model():
             self.logger.addHandler(slack_handler)
         self.logger.info("Logdir %s", self.log_dir)
 
-    def __create_train_input_objects(self):
+    def _create_train_input_objects(self):
         with tf.variable_scope("input"):
             input_vars = [
                 tf.get_variable("X",
@@ -373,7 +371,7 @@ class Model():
                 self.Y_batch = dense2d_to_sparse(tf.slice(self.Y, [0, begin_y], [self.batch_size, self.block_size_y]), self.Y_batch_len, dtype=tf.int32)
         return self.X_batch
 
-    def __rnn_roll(self, add_fetch=[], add_feed={}, timeline_suffix=""):
+    def _rnn_roll(self, add_fetch=[], add_feed={}, timeline_suffix=""):
         if 'sess' not in self.__dict__:
             raise ValueError("session not initialized")
 
@@ -414,7 +412,7 @@ class Model():
                     self.logger.error('\r=== ERROR RNN ROLL, retrying %d ===\n', retry, exc_info=True)
                     continue
 
-    def __inc_gs(self):
+    def _inc_gs(self):
         self.sess.run(self.inc_gs)
 
     def get_global_step(self):
@@ -442,14 +440,14 @@ class Model():
         self.bbt = 0.8 * (self.bbt) + 0.2 * (perf_counter() - self.bbt_clock)
         tt = perf_counter()
         fetches = [self.train_op, self.loss, self.reg]
-        vals = self.__rnn_roll(add_fetch=fetches, timeline_suffix="ctc_loss")
+        vals = self._rnn_roll(add_fetch=fetches, timeline_suffix="ctc_loss")
         self.batch_time = 0.8 * self.batch_time + 0.2 * (perf_counter() - tt)
         self.bbt_clock = perf_counter()
 
         loss = np.sum(vals[1]).item()
         reg_loss = np.sum(vals[2]).item()
 
-        if iter_step % log_every == 0:
+        if iter_step % log_every == 0 or True:
             self.train_writer.add_summary(tf.Summary(value=[
                 tf.Summary.Value(tag="train/loss", simple_value=loss),
                 tf.Summary.Value(tag="train/reg_loss", simple_value=reg_loss),
@@ -484,7 +482,7 @@ class Model():
         for _ in range(num_batches):
             _, iter_step, summ = self.sess.run([self.load_test, self.global_step, self.test_queue_size])
             self.test_writer.add_summary(summ, global_step=iter_step)
-            loss, reg_loss, edit_distance = self.__rnn_roll(
+            loss, reg_loss, edit_distance = self._rnn_roll(
                 add_fetch=[self.loss, self.reg, self.edit_distance],
                 timeline_suffix="ctc_val_loss"
             )
@@ -608,7 +606,7 @@ class Model():
         fetches = [self.loss, self.grad_summ, self.activation_summ, self.edit_distance]
         if write_example:
             fetches.append(self.pred)
-        vals = self.__rnn_roll(fetches)
+        vals = self._rnn_roll(fetches)
 
         edit_distance = np.mean(vals[3]).item()
         summaries = [x[0] for x in vals[1:3]]
@@ -642,7 +640,7 @@ class Model():
             self.X_len: X_len
         }
 
-        vals = self.__rnn_roll([self.pred], feed, timeline_suffix="eval_x")
+        vals = self._rnn_roll([self.pred], feed, timeline_suffix="eval_x")
         return np.array([decode_sparse(ff) for ff in vals]).T
 
     def save(self):
@@ -671,7 +669,7 @@ class Model():
         return iter_step
 
 
-    def __start_queues(self, num_workers, proc):
+    def _start_queues(self, num_workers, proc):
         self.logger.info("Using %s reading class", type(self.in_data).__name__)
 
         def __queue_feeder_thread(enqueue_op, fun, args, proc):
@@ -730,7 +728,7 @@ class Model():
         self.test_writer = tf.summary.FileWriter(os.path.join(self.log_dir, 'test'), graph=self.g)
         self.feed_threads = []
         if start_queues:
-            self.__start_queues(num_workers, proc)
+            self._start_queues(num_workers, proc)
 
     def simple_managed_train_model(self, num_steps, val_every=250, save_every=5000, summarize=True, final_val_samples=500, num_workers=3, trace_every=10000, **kwargs):
         try:
@@ -774,6 +772,18 @@ class Model():
         self.sess.close()
 
 
+#  RNN based teacher not supported
 class TeacherStudentModel(Model):
-    def __init__(self, **kwargs):
-        super().__init__(self, **kwargs)
+    def __init__(self, teacher_name, teacher_dir, model_fn, hyper, **kwargs):
+        self.teacher_param = load_model_parms(teacher_name, teacher_dir)
+        print("dirself", dir(self))
+        super().__init__(model_fn=model_fn, hyper=hyper, **kwargs)
+
+    def _setup_loss(self, logits):
+        print("TeacherStudentModel _setup_loss")
+        with tf.variable_scope("teacher"):
+            alt_logits = self._setup_logits(self.teacher_param['model_fn'], self.teacher_param['hyper'])
+
+        with tf.name_scope("loss"):
+            loss = tf.square(logits - alt_logits['logits'])
+            return tf.reduce_mean(loss)
