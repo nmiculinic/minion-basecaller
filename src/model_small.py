@@ -62,7 +62,6 @@ def model_setup_params(hyper):
         g=tf.Graph(),
         block_size_x=8 * 3 * 50 // 2,
         block_size_y=80,
-        in_data="ALIGNED_RAW",
         num_blocks=1,
         batch_size=32,
         max_reach=8 * 20,  # 160

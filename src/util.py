@@ -328,69 +328,6 @@ def read_fast5_ref(fast5_path, ref_path, block_size, num_blocks, warn_if_short=F
 
     return x, x_len, y, y_len
 
-
-def read_fast5_raw_ref(fast5_path, ref_path, block_size_x, block_size_y, num_blocks, warn_if_short=False):
-
-    num_blocks += 1
-    with h5py.File(fast5_path, 'r') as h5, open(ref_path, 'r') as ref_file:
-        reads = h5['Analyses/EventDetection_000/Reads']
-        target_read = list(reads.keys())[0]
-        events = np.array(reads[target_read + '/Events'])
-        start_time = events['start'][0]
-        start_pad = int(start_time - h5['Raw/Reads/' + target_read].attrs['start_time'])
-
-        basecalled_events = h5['/Analyses/Basecall_1D_000/BaseCalled_template/Events']
-        basecalled = np.array(basecalled_events.value[['mean', 'stdv', 'model_state', 'move', 'start', 'length']])
-
-        signal = h5['Raw/Reads/' + target_read]['Signal']
-        signal_len = h5['Raw/Reads/' + target_read].attrs['duration'] - start_pad
-
-        x = np.zeros([block_size_x * num_blocks, 1], dtype=np.float32)
-        x_len = min(signal_len, block_size_x * num_blocks)
-        x[:x_len, 0] = signal[start_pad:start_pad + x_len]
-
-        np.testing.assert_allclose(len(signal), start_pad + np.sum(events['length']))
-
-        events_len = np.zeros([num_blocks], dtype=np.int32)
-
-        bcall_idx = 0
-        prev, curr_sec = "N", 0
-        for e in events:
-            if (e['start'] - start_time) // block_size_x > curr_sec:
-                prev, curr_sec = "N", (e['start'] - start_time) // block_size_x
-            if curr_sec >= num_blocks:
-                break
-
-            if bcall_idx < basecalled.shape[0]:
-                b = basecalled[bcall_idx]
-
-                if b[0] == e[2] and b[1] == e[3]:  # mean == mean and stdv == stdv
-                    added_bases = 0
-
-                    if bcall_idx == 0:
-                        added_bases = 5
-                        assert len(list(b[2].decode("ASCII"))) == 5
-
-                    bcall_idx += 1
-                    assert 0 <= b[3] <= 2
-                    added_bases += b[3]
-                    events_len[curr_sec] += added_bases
-
-        ref_seq = ref_file.readlines()[3].strip()
-        called_seq = get_basecalled_sequence(basecalled_events)
-        y, y_len = extract_blocks(ref_seq, called_seq, events_len, block_size_y, num_blocks)
-
-        y_len = y_len[1:]
-        y = y[block_size_y:]
-        if any(y_len > block_size_y):
-            print("Too many events in block!")
-            raise AligmentError()
-
-    x -= 646.11133
-    x /= 75.673653
-    return x[block_size_x:], max(0, x_len - block_size_x), y, y_len
-
-
 def sigopt_numeric(type, name, min, max):
     return dict(
         name=name,
@@ -411,6 +348,9 @@ def sigopt_double(name, min, max):
 
 
 def get_raw_signal(fast5_path):
+    """
+        Return 1D raw signal from fast5_path
+    """
     with h5py.File(fast5_path, 'r') as h5:
         reads = h5['Analyses/EventDetection_000/Reads']
         target_read = list(reads.keys())[0]

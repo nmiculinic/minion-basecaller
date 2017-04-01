@@ -4,12 +4,109 @@ from random import shuffle
 
 import numpy as np
 import util
+import h5py
 
 root_dir_map = {
     'karla': '/hgst8TB/fjurisic/ecoli',
     'protagonist': '/home/lpp/Downloads/minion'
 }
 root_dir_default = root_dir_map.get(socket.gethostname(), '/data')
+
+
+class InputReader():
+    def input_fn(self):
+        raise NotImplemented
+
+    def fn_args(self, model):
+        raise NotImplemented
+
+
+class AlignedRaw(InputReader):
+
+    @staticmethod
+    def preprocessSignal(signal):
+        return (signal - 646.11133) / 75.673653
+
+    def read_fast5_raw_ref(self, fast5_path, ref_path, block_size_x, block_size_y, num_blocks, warn_if_short=False):
+        num_blocks += 1
+        with h5py.File(fast5_path, 'r') as h5, open(ref_path, 'r') as ref_file:
+            reads = h5['Analyses/EventDetection_000/Reads']
+            target_read = list(reads.keys())[0]
+            events = np.array(reads[target_read + '/Events'])
+            start_time = events['start'][0]
+            start_pad = int(start_time - h5['Raw/Reads/' + target_read].attrs['start_time'])
+
+            basecalled_events = h5['/Analyses/Basecall_1D_000/BaseCalled_template/Events']
+            basecalled = np.array(basecalled_events.value[['mean', 'stdv', 'model_state', 'move', 'start', 'length']])
+
+            signal = h5['Raw/Reads/' + target_read]['Signal']
+            signal_len = h5['Raw/Reads/' + target_read].attrs['duration'] - start_pad
+
+            x = np.zeros([block_size_x * num_blocks, 1], dtype=np.float32)
+            x_len = min(signal_len, block_size_x * num_blocks)
+            x[:x_len, 0] = signal[start_pad:start_pad + x_len]
+
+            np.testing.assert_allclose(len(signal), start_pad + np.sum(events['length']))
+
+            events_len = np.zeros([num_blocks], dtype=np.int32)
+
+            bcall_idx = 0
+            prev, curr_sec = "N", 0
+            for e in events:
+                if (e['start'] - start_time) // block_size_x > curr_sec:
+                    prev, curr_sec = "N", (e['start'] - start_time) // block_size_x
+                if curr_sec >= num_blocks:
+                    break
+
+                if bcall_idx < basecalled.shape[0]:
+                    b = basecalled[bcall_idx]
+
+                    if b[0] == e[2] and b[1] == e[3]:  # mean == mean and stdv == stdv
+                        added_bases = 0
+
+                        if bcall_idx == 0:
+                            added_bases = 5
+                            assert len(list(b[2].decode("ASCII"))) == 5
+
+                        bcall_idx += 1
+                        assert 0 <= b[3] <= 2
+                        added_bases += b[3]
+                        events_len[curr_sec] += added_bases
+
+            ref_seq = ref_file.readlines()[3].strip()
+            called_seq = util.get_basecalled_sequence(basecalled_events)
+            y, y_len = util.extract_blocks(ref_seq, called_seq, events_len, block_size_y, num_blocks)
+
+            y_len = y_len[1:]
+            y = y[block_size_y:]
+            if any(y_len > block_size_y):
+                raise util.AligmentError()
+
+        x = self.preprocessSignal(x)
+        return x[block_size_x:], max(0, x_len - block_size_x), y, y_len
+
+    def input_fn(self):
+        def fn(logger, block_size_x, block_size_y, num_blocks, file_list, batch_size=10, warn_if_short=False,
+               root_dir=None):
+            def load_f(fast5_path, ref_path):
+                return self.read_fast5_raw_ref(fast5_path, ref_path,
+                                               block_size_x=block_size_x,
+                                               block_size_y=block_size_y,
+                                               num_blocks=num_blocks,
+                                               warn_if_short=warn_if_short)
+
+            return get_feed_yield_abs(logger, load_f, batch_size=batch_size, file_list=file_list, root_dir=root_dir)
+        return fn
+
+    def fn_args(self, model, file_list):
+        return [model.logger, model.block_size_x, model.block_size_y, model.num_blocks, file_list, 10]
+
+    in_dim = 1
+
+    def get_signal(self, fast5_path):
+        signal = util.get_raw_signal(fast5_path)
+        signal = self.preprocessSignal(signal)
+        return signal.reshape(1, -1, 1)
 
 
 def sanitize_input_line(fname):
@@ -62,47 +159,6 @@ def get_feed_yield_abs(logger, feed_fn, batch_size, file_list, root_dir=None, **
                     logger.info("read %d datapoints. err_short_rate %.3f other %.3f ", total, err_short / total, other_error / total)
 
 
-
-def get_event_ref_feed_yield(logger, block_size, num_blocks, file_list, batch_size=10, warn_if_short=False, root_dir=None):
-    def load_f(fast5_path, ref_path):
-        return util.read_fast5_ref(fast5_path, ref_path, block_size, num_blocks, warn_if_short)
-
-    return get_feed_yield_abs(logger, load_f, batch_size, file_list, root_dir=root_dir)
-
-
-def get_raw_ref_feed_yield(logger, block_size_x, block_size_y, num_blocks, file_list, batch_size=10, warn_if_short=False,
-                       root_dir=None):
-    def load_f(fast5_path, ref_path):
-        return util.read_fast5_raw_ref(fast5_path, ref_path,
-                                   block_size_x=block_size_x,
-                                   block_size_y=block_size_y,
-                                   num_blocks=num_blocks,
-                                   warn_if_short=warn_if_short)
-
-    return get_feed_yield_abs(logger, load_f, batch_size=batch_size, file_list=file_list, root_dir=root_dir)
-
-
-def get_event_feed_yield(logger, block_size, num_blocks, file_list, batch_size=10, warn_if_short=False, root_dir=None):
-    return get_feed_yield_abs(logger, lambda filename, _: util.read_fast5(filename, block_size, num_blocks, warn_if_short), batch_size, file_list, root_dir=root_dir)
-
-
-def get_raw_feed_yield(logger, block_size_x, block_size_y, num_blocks, file_list, batch_size=10, warn_if_short=False, root_dir=None):
-    return get_feed_yield_abs(logger, lambda filename, _: util.read_fast5_raw(
-        filename,
-        block_size_x=block_size_x,
-        block_size_y=block_size_y,
-        num_blocks=num_blocks,
-        warn_if_short=warn_if_short),
-        batch_size=batch_size, file_list=file_list, root_dir=root_dir)
-
-
 def proc_wrapper(q, fun, *args):
     for feed in fun(*args):
         q.put(feed)
-
-
-if __name__ == "__main__":
-    print("usao")
-    for x in get_feed_yield2(10, 1):
-        print(x)
-    print("izasao")

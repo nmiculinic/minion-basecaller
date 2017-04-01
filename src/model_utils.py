@@ -38,7 +38,7 @@ def default_lr_fn(global_step):
 
 
 class Model():
-    def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size=None, block_size_x=None, block_size_y=None, log_dir=None, run_id=None, overwrite=False, reuse=False, queue_cap=None, shrink_factor=1, test_queue_cap=None, in_data="EVENTS", lr_fn=None, dtype=tf.float32, hyper={}):
+    def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size=None, block_size_x=None, block_size_y=None, log_dir=None, run_id=None, overwrite=False, reuse=False, queue_cap=None, shrink_factor=1, test_queue_cap=None, in_data=input_readers.AlignedRaw(), lr_fn=None, dtype=tf.float32, hyper={}):
         """
             Args:
                 max_reach: int, size of contextual window for convolutions etc.
@@ -46,11 +46,10 @@ class Model():
                 hyper: dictionary of hyperparameters passed to the model function as **hyper
         """
 
-        if in_data not in ["RAW", "EVENTS", "ALIGNED_RAW", "ALIGNED_EVENTS"]:
-            raise ValueError("in_data must be one of two types")
+        if isinstance(in_data, input_readers.InputReader.__class__):
+            raise ValueError("in_data must instance of InputReader")
 
         self.in_data = in_data
-        self.data_in_dim = 1 if in_data == "RAW" or in_data == "ALIGNED_RAW" else 3
         self.lr_fn = lr_fn or default_lr_fn
 
         if overwrite and reuse:
@@ -244,7 +243,7 @@ class Model():
         with tf.variable_scope("input"):
             input_vars = [
                 tf.get_variable("X",
-                                shape=[self.batch_size, self.block_size_x * self.num_blocks, self.data_in_dim],
+                                shape=[self.batch_size, self.block_size_x * self.num_blocks, self.in_data.in_dim],
                                 initializer=tf.zeros_initializer(),
                                 dtype=self.dtype,
                                 trainable=False
@@ -327,9 +326,9 @@ class Model():
                 ]
                 padding = tf.convert_to_tensor(padding)
                 net = tf.pad(net, padding)
-                net.set_shape([None, 2 * self.max_reach + self.block_size_x, self.data_in_dim])
+                net.set_shape([None, 2 * self.max_reach + self.block_size_x, self.in_data.in_dim])
                 print(net.get_shape())
-                self.X_batch = tf.placeholder_with_default(net, (None, None, self.data_in_dim))
+                self.X_batch = tf.placeholder_with_default(net, (None, None, self.in_data.in_dim))
 
             with tf.name_scope("Y_batch"):
                 self.Y_batch_len = tf.squeeze(tf.slice(self.Y_len, [0, self.block_idx], [self.batch_size_var, 1]), [1])
@@ -468,16 +467,16 @@ class Model():
         return avg_loss, avg_edit_distance
 
     def basecall_sample(self, fast5_path):
-        signal = util.get_raw_signal(fast5_path)
+        signal = self.in_data.get_signal(fast5_path)
         t = perf_counter()
         basecalled = self.sess.run(
             self.dense_pred,
             feed_dict={
-            self.X_batch: signal.reshape(1, -1, 1),
-            self.X_batch_len: np.array(len(signal)).reshape([1,]),
+            self.X_batch: signal,
+            self.X_batch_len: np.array(signal.shape[1]).reshape([1,]),
             self.block_idx: 0,
             self.batch_size_var: 1,
-            self.block_size_x_tensor: len(signal)
+            self.block_size_x_tensor: signal.shape[1]
         }).ravel()
         self.logger.debug("Basecalled %s in %.3f", fast5_path, perf_counter() - t)
 
@@ -510,7 +509,6 @@ class Model():
             Args:
                 frac: fraction of test set to evaluate, or number of test cases if int
         """
-
 
         with open(os.path.join(input_readers.root_dir_default, 'test.txt')) as f:
             fnames = np.array(list(map(lambda x: x.strip().split()[0], f.readlines())))
@@ -635,67 +633,40 @@ class Model():
             self.logger.info("%4d Restored to checkpoint %s" % (iter_step, checkpoint))
         return iter_step
 
-    def __queue_feeder_thread(self, enqueue_op, fun, args, proc):
-        """ Proc = True is GIL workaround """
-        def thread_fn():
-            if proc:
-                q = multiprocessing.Queue(5)
-                p = multiprocessing.Process(target=input_readers.proc_wrapper, args=(q, fun, *args))
-                p.start()
-                gen_next = lambda: q.get()
-            else:
-                gen_fn = fun(*args)
-                gen_next = lambda: next(gen_fn)
-            while not self.coord.should_stop():
-                feed = gen_next()
-                feed = {self.__dict__[k]: v for k, v in feed.items()}
-                try:
-                    self.sess.run(enqueue_op, feed_dict=feed)
-                except tf.errors.CancelledError:
-                    print("closing queue_feeder")
-                    break
-            if proc:
-                p.terminate()
-        return Thread(target=thread_fn, daemon=True)
 
     def __start_queues(self, num_workers, proc):
-        if self.in_data == "EVENTS":
-            def data_thread_fn(enqueue_op, file_list):
-                return self.__queue_feeder_thread(
-                    enqueue_op,
-                    input_readers.get_event_feed_yield,
-                    [self.block_size_x, self.num_blocks, file_list, 10],
-                    proc=proc
-                )
-        elif self.in_data == "RAW":
-            def data_thread_fn(enqueue_op, file_list):
-                return self.__queue_feeder_thread(
-                    enqueue_op,
-                    input_readers.get_raw_feed_yield,
-                    [self.block_size_x, self.block_size_y, self.num_blocks, file_list, 10],
-                    proc=proc
-                )
+        self.logger.info("Using %s reading class", type(self.in_data).__name__)
 
-        elif self.in_data == "ALIGNED_RAW":
-            def data_thread_fn(enqueue_op, file_list):
-                return self.__queue_feeder_thread(
-                    enqueue_op,
-                    input_readers.get_raw_ref_feed_yield,
-                    [self.logger, self.block_size_x, self.block_size_y, self.num_blocks, file_list, 10],
-                    proc=proc
-                )
+        def __queue_feeder_thread(enqueue_op, fun, args, proc):
+            """ Proc = True is GIL workaround """
+            def thread_fn():
+                if proc:
+                    q = multiprocessing.Queue(5)
+                    p = multiprocessing.Process(target=input_readers.proc_wrapper, args=(q, fun, *args))
+                    p.start()
+                    gen_next = lambda: q.get()
+                else:
+                    gen_fn = fun(*args)
+                    gen_next = lambda: next(gen_fn)
+                while not self.coord.should_stop():
+                    feed = gen_next()
+                    feed = {self.__dict__[k]: v for k, v in feed.items()}
+                    try:
+                        self.sess.run(enqueue_op, feed_dict=feed)
+                    except tf.errors.CancelledError:
+                        print("closing queue_feeder")
+                        break
+                if proc:
+                    p.terminate()
+            return Thread(target=thread_fn, daemon=True)
 
-        elif self.in_data == "ALIGNED_EVENTS":
-            def data_thread_fn(enqueue_op, file_list):
-                return self.__queue_feeder_thread(
-                    enqueue_op,
-                    input_readers.get_event_ref_feed_yield,
-                    [self.logger, self.block_size_x, self.num_blocks, file_list, 10],
-                    proc=proc
-                )
-
-        else:
-            raise ValueError("in data unexpected, got: " + self.in_data)
+        def data_thread_fn(enqueue_op, file_list):
+            return __queue_feeder_thread(
+                enqueue_op,
+                self.in_data.input_fn(),
+                self.in_data.fn_args(self, file_list),
+                proc=proc
+            )
 
         self.feed_threads = [data_thread_fn(self.enqueue_train, 'train.txt') for _ in range(num_workers)]
         self.feed_threads.extend([data_thread_fn(self.enqueue_test, 'test.txt') for _ in range(num_workers)])
