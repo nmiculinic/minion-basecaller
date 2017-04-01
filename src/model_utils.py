@@ -21,6 +21,7 @@ from slacker_log_handler import SlackerLogHandler
 from edlib import Edlib
 import inspect
 import json
+import importlib
 
 
 # UGLY UGLY HACK!
@@ -35,6 +36,21 @@ logging.basicConfig(level=logging.DEBUG, format=log_fmt)
 
 def default_lr_fn(global_step):
     return tf.train.exponential_decay(1e-3, global_step, 100000, 0.01)
+
+
+def load_model_parms(module_name, model_dir):
+    model_module = importlib.import_module(module_name)
+    model_dir = os.path.abspath(model_dir)
+    with open(os.path.join(model_dir, 'model_hyperparams.json'), 'r') as f:
+        hyper = json.load(f)
+
+    params = model_module.model_setup_params(hyper)
+    print(params, type(params))
+    params['reuse'] = True
+    params['overwrite'] = False
+    params['log_dir'] = model_dir
+    params['run_id'] = model_dir.split('/')[-1]
+    return params
 
 
 class Model():
