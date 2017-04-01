@@ -87,10 +87,13 @@ class Model():
         self.train_queue_cap = queue_cap or 5 * self.batch_size
         self.test_queue_cap = test_queue_cap or self.train_queue_cap
         self.dtype = dtype
+        self.g = g
+        self.__setup_graph(model_fn, hyper)
 
-        with g.as_default():
+    def __setup_graph(self, model_fn, hyper):
+        with self.g.as_default():
             self.training_mode = get_training_mode()
-            self.batch_size_var = tf.placeholder_with_default(tf.convert_to_tensor(batch_size, dtype=tf.int32), [])
+            self.batch_size_var = tf.placeholder_with_default(tf.convert_to_tensor(self.batch_size, dtype=tf.int32), [])
             net = self.__create_train_input_objects()
 
             self.block_size_x_tensor = tf.placeholder_with_default(self.block_size_x, [])
@@ -103,7 +106,7 @@ class Model():
                     block_size=self.block_size_x_tensor,
                     out_classes=9,
                     batch_size=self.batch_size_var,
-                    dtype=dtype,
+                    dtype=self.dtype,
                     **hyper
                 )
 
@@ -159,7 +162,7 @@ class Model():
 
             self.grad_summ = tf.summary.merge(add_gradients_summary(self.grads))
             self.activation_summ = tf.summary.merge(
-                add_activations_summary(g.get_collection("activations")))
+                add_activations_summary(self.g.get_collection("activations")))
 
             self.train_summ = tf.summary.merge([
                 self.train_queue_size,
@@ -170,7 +173,6 @@ class Model():
                 keep_checkpoint_every_n_hours=1,
             )
 
-        self.g = g
         self.trace_level = tf.RunOptions.NO_TRACE
 
         self.batch_time = 0
@@ -178,6 +180,7 @@ class Model():
 
         self.bbt = 0
         self.bbt_clock = perf_counter()
+
 
     def __dedup_output(self, sparse_tensor):
         sol_values = sparse_tensor.values - 4 * tf.to_int32(sparse_tensor.values >= 4)
