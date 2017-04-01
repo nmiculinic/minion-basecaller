@@ -775,39 +775,46 @@ class Model():
 
 #  RNN based teacher not supported
 class TeacherStudentModel(Model):
-    def __init__(self, teacher_name, teacher_dir, model_fn, hyper, **kwargs):
-        self.teacher_param = load_model_parms(teacher_name, teacher_dir)
-        print("dirself", dir(self))
+    def __init__(self, teacher_names, teacher_dirs, model_fn, hyper, **kwargs):
+        self.teacher_params = [load_model_parms(teacher_name, teacher_dir) for teacher_name, teacher_dir in zip(teacher_names, teacher_dirs)]
+        self.ctc_scale = hyper['ctc_scale']
         super().__init__(model_fn=model_fn, hyper=hyper, **kwargs)
 
     def _setup_loss(self, logits):
-        print("TeacherStudentModel _setup_loss")
-        with tf.variable_scope("teacher"):
-            alt_logits = self._setup_logits(self.teacher_param['model_fn'], self.teacher_param['hyper'])
+        ensamble = []
+        for i, teacher_params in enumerate(self.teacher_params):
+            with tf.variable_scope("teacher%d" % i):
+                alt_logits = self._setup_logits(teacher_params['model_fn'], teacher_params['hyper'])['logits']
+                ensamble.append(tf.nn.softmax(alt_logits))
+
+        ensamble = tf.add_n(ensamble) / len(self.teacher_params)
+        self.ctc_loss = super()._setup_loss(logits)
 
         with tf.name_scope("loss"):
-            loss = tf.square(logits - alt_logits['logits'])
-            return tf.reduce_mean(loss)
+            self.ce_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=ensamble, logits=logits))
+            return self.ce_loss + self.ctc_scale * self.ctc_loss
 
     def _setup_saver(self):
         super()._setup_saver()
-        mapping = {'/'.join(v.op.name.split('/')[1:]): v for v in self.g.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'teacher')
-        }
-        self.teacher_saver = tf.train.Saver(
-            mapping
-        )
+        self.teacher_savers = []
+        for i in range(len(self.teacher_params)):
+            mapping = {'/'.join(v.op.name.split('/')[1:]): v for v in self.g.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'teacher%d' % i)
+            }
+            self.teacher_savers.append(tf.train.Saver(mapping))
 
     def init_session(self, *args, **kwargs):
         super().init_session(*args, **kwargs)
         self.print_k()
-        checkpoint = tf.train.latest_checkpoint(self.teacher_param['log_dir'])
-        if checkpoint is None:
-            raise ValueError("Teacher checkpoint must exist!")
-        self.logger.info("Loading teacher weights from %s", checkpoint)
-        self.teacher_saver.restore(self.sess, checkpoint)
-        print("AFTER")
+        for i, (saver, teacher_param) in enumerate(zip(self.teacher_savers, self.teacher_params)):
+            checkpoint = tf.train.latest_checkpoint(teacher_param['log_dir'])
+            if checkpoint is None:
+                raise ValueError("Teacher checkpoint must exist!")
+            self.logger.info("Loading teacher%d weights from %s", checkpoint)
+            saver.restore(self.sess, checkpoint)
+
         self.print_k()
 
     def print_k(self):
-        for v in self.g.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'teacher'):
-            print(v.op.name, self.sess.run(v).ravel()[:5])
+        for i in range(len(self.teacher_params)):
+            for v in self.g.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'teacher%d' % i):
+                print(v.op.name, self.sess.run(v).ravel()[:5])

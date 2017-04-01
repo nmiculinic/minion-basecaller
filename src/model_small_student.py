@@ -85,14 +85,15 @@ params = [
 default_params = {
     'initial_lr': 1e-4,
     'decay_factor': 0.1,
+    'ctc_scale': 1e-4
 }
 
 
 if __name__ == "__main__":
     print(model_setup_params(default_params))
     model = model_utils.TeacherStudentModel(
-        'model_small',
-        os.path.join(model_utils.repo_root, 'log', 'protagonist', 'model_small_18071_9943114'),
+        ['model_small'],
+        [os.path.join(model_utils.repo_root, 'log', 'protagonist', 'model_small_18071_9943114')],
         **model_setup_params(default_params)
     )
 
