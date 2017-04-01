@@ -38,7 +38,7 @@ def default_lr_fn(global_step):
 
 
 class Model():
-    def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size=None, block_size_x=None, block_size_y=None, log_dir=None, run_id=None, overwrite=False, reuse=False, queue_cap=None, shrink_factor=1, test_queue_cap=None, in_data=input_readers.AlignedRaw(), lr_fn=None, dtype=tf.float32, hyper={}, clip_grad=2.0):
+    def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size_x, block_size_y, lr_fn=default_lr_fn, log_dir=None, run_id=None, overwrite=False, reuse=False, queue_cap=None, shrink_factor=1, test_queue_cap=None, in_data=input_readers.AlignedRaw(), dtype=tf.float32, hyper={}, clip_grad=2.0):
         """
             Args:
                 max_reach: int, size of contextual window for convolutions etc.
@@ -76,8 +76,8 @@ class Model():
         del values
         del valargs
 
-        self.block_size_y = block_size_y or block_size
-        self.block_size_x = block_size_x or block_size
+        self.block_size_y = block_size_y
+        self.block_size_x = block_size_x
         self.shrink_factor = shrink_factor
         if self.block_size_x % shrink_factor != 0:
             raise ValueError("shrink factor need to divide block_size_x")
@@ -194,8 +194,9 @@ class Model():
         """
         optimizer = tf.train.AdamOptimizer(self.lr)
         self.grads = optimizer.compute_gradients(self.loss)
-        with tf.name_scope("gradient_clipping"):
-            self.grads = [(tf.clip_by_value(grad, -2., 2.), var) for grad, var in self.grads]
+        if self.clip_grad is not None:
+            with tf.name_scope("gradient_clipping"):
+                self.grads = [(tf.clip_by_value(grad, -2., 2.), var) for grad, var in self.grads]
 
         self.train_op = optimizer.apply_gradients(self.grads)
 
@@ -759,4 +760,4 @@ class Model():
 
 class TeacherStudentModel(Model):
     def __init__(self, **kwargs):
-        pass
+        super().__init__(self, **kwargs)
