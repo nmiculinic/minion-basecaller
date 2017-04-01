@@ -420,7 +420,7 @@ class Model():
     def get_global_step(self):
         return self.sess.run(self.global_step)
 
-    def train_minibatch(self, log_every=50, trace_every=10000):
+    def train_minibatch(self, log_every=20, trace_every=10000):
         """
             Trains minibatch and performs all required operations
 
@@ -449,15 +449,15 @@ class Model():
         loss = np.sum(vals[1]).item()
         reg_loss = np.sum(vals[2]).item()
 
-        if iter_step % log_every == 0 or True:
-            self.train_writer.add_summary(tf.Summary(value=[
-                tf.Summary.Value(tag="train/loss", simple_value=loss),
-                tf.Summary.Value(tag="train/reg_loss", simple_value=reg_loss),
-                tf.Summary.Value(tag="input/batch_time", simple_value=self.batch_time),
-                tf.Summary.Value(tag="input/dequeue_time", simple_value=self.dequeue_time),
-                tf.Summary.Value(tag="input/between_batch_time", simple_value=self.bbt),
-            ]), global_step=iter_step)
+        self.train_writer.add_summary(tf.Summary(value=[
+            tf.Summary.Value(tag="train/loss", simple_value=loss),
+            tf.Summary.Value(tag="train/reg_loss", simple_value=reg_loss),
+            tf.Summary.Value(tag="input/batch_time", simple_value=self.batch_time),
+            tf.Summary.Value(tag="input/dequeue_time", simple_value=self.dequeue_time),
+            tf.Summary.Value(tag="input/between_batch_time", simple_value=self.bbt),
+        ]), global_step=iter_step)
 
+        if iter_step % log_every == 0:
             train_summ, y_len = self.sess.run([self.train_summ, self.Y_len])
             self.train_writer.add_summary(train_summ, global_step=iter_step)
 
@@ -750,7 +750,6 @@ class Model():
             self.save()
             self.logger.info("Running final validation run")
             return self.run_validation_full(final_val_samples)
-            # self.print_k()  # TODO REMOVE!!!
         except Exception as ex:
             if not isinstance(ex, KeyboardInterrupt):
                 self.logger.error("Error happened", exc_info=1)

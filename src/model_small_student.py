@@ -1,13 +1,12 @@
 import tensorflow as tf
 from tflearn.layers.conv import max_pool_1d, conv_1d
-import os
-import tflearn
 from tflearn.layers.normalization import batch_normalization
 from dotenv import load_dotenv, find_dotenv
 from tflearn.initializations import variance_scaling_initializer
-from train import sigopt_runner
 from ops import central_cut
 from util import sigopt_double
+import model_utils
+import os
 load_dotenv(find_dotenv())
 
 
@@ -66,11 +65,12 @@ def model_setup_params(hyper):
         batch_size=32,
         max_reach=8 * 20,  # 160
         queue_cap=300,
-        overwrite=False,
+        overwrite=True,
         reuse=False,
         shrink_factor=8,
         dtype=tf.float32,
         model_fn=model_fn,
+        run_id="TEST",
         lr_fn=lambda global_step: tf.train.exponential_decay(
             hyper['initial_lr'], global_step, 100000, hyper['decay_factor']),
         hyper=hyper,
@@ -83,10 +83,17 @@ params = [
 ]
 
 default_params = {
-    'initial_lr': 1e-3,
+    'initial_lr': 1e-4,
     'decay_factor': 0.1,
 }
 
 
 if __name__ == "__main__":
-    sigopt_runner(__file__[:-3].split('/')[-1])
+    print(model_setup_params(default_params))
+    model = model_utils.TeacherStudentModel(
+        'model_small',
+        os.path.join(model_utils.repo_root, 'log', 'protagonist', 'model_small_18071_9943114'),
+        **model_setup_params(default_params)
+    )
+
+    model.simple_managed_train_model(3000)
