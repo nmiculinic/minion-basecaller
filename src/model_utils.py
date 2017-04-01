@@ -196,13 +196,17 @@ class Model():
             return sol
 
         with tf.name_scope("prediction"):
-            predicted, prdicted_logprob = tf.nn.ctc_beam_search_decoder(self.logits, tf.div(self.X_batch_len, self.shrink_factor), merge_repeated=True, top_paths=1)
+            predicted = self._predict_from_logits()
             self.pred = dedup_output(tf.cast(predicted[0], tf.int32))
             self.dense_pred = tf.sparse_tensor_to_dense(self.pred, default_value=-1)
             self.edit_distance = tf.edit_distance(
                 self.pred,
                 dedup_output(self.Y_batch)
             )
+
+    def _predict_from_logits(self):
+        predicted, _ = tf.nn.ctc_beam_search_decoder(self.logits, tf.div(self.X_batch_len, self.shrink_factor), merge_repeated=True, top_paths=1)
+        return predicted
 
     def _setup_train(self):
         """
