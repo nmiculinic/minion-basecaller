@@ -1,7 +1,6 @@
 import tensorflow as tf
 from tflearn.layers.conv import max_pool_1d, conv_1d
-import os
-import tflearn
+import input_readers
 from tflearn.layers.normalization import batch_normalization
 from dotenv import load_dotenv, find_dotenv
 from tflearn.initializations import variance_scaling_initializer
@@ -62,7 +61,7 @@ def model_setup_params(hyper):
         g=tf.Graph(),
         block_size_x=8 * 3 * 600 // 2,
         block_size_y=630,
-        in_data="ALIGNED_RAW",
+        in_data=input_readers.AlignedRaw(),
         num_blocks=3,
         batch_size=16,
         max_reach=8 * 20,  # 240
