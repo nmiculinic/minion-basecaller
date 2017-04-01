@@ -86,9 +86,9 @@ params = [
 ]
 
 default_params = {
-    'initial_lr': 1e-4,
-    'decay_factor': 0.1,
-    'num_layers': 20,
+    'initial_lr': 0.0014691078293764034,
+    'decay_factor': 0.001341733349277896,
+    'num_layers': 17,
     'num_sub_layers': 2
 }
 
