@@ -118,10 +118,12 @@ class Model():
 
             self._setup_prediction()
             self._setup_train()
+            self._setup_saver()
 
-            self.saver = tf.train.Saver(
-                keep_checkpoint_every_n_hours=1,
-            )
+    def _setup_saver(self):
+        self.saver = tf.train.Saver(
+            keep_checkpoint_every_n_hours=1,
+        )
 
     def _setup_graph_pre(self):
         """
@@ -748,7 +750,7 @@ class Model():
             self.save()
             self.logger.info("Running final validation run")
             return self.run_validation_full(final_val_samples)
-
+            # self.print_k()  # TODO REMOVE!!!
         except Exception as ex:
             if not isinstance(ex, KeyboardInterrupt):
                 self.logger.error("Error happened", exc_info=1)
@@ -787,3 +789,26 @@ class TeacherStudentModel(Model):
         with tf.name_scope("loss"):
             loss = tf.square(logits - alt_logits['logits'])
             return tf.reduce_mean(loss)
+
+    def _setup_saver(self):
+        super()._setup_saver()
+        mapping = {'/'.join(v.op.name.split('/')[1:]): v for v in self.g.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'teacher')
+        }
+        self.teacher_saver = tf.train.Saver(
+            mapping
+        )
+
+    def init_session(self, *args, **kwargs):
+        super().init_session(*args, **kwargs)
+        self.print_k()
+        checkpoint = tf.train.latest_checkpoint(self.teacher_param['log_dir'])
+        if checkpoint is None:
+            raise ValueError("Teacher checkpoint must exist!")
+        self.logger.info("Loading teacher weights from %s", checkpoint)
+        self.teacher_saver.restore(self.sess, checkpoint)
+        print("AFTER")
+        self.print_k()
+
+    def print_k(self):
+        for v in self.g.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'teacher'):
+            print(v.op.name, self.sess.run(v).ravel()[:5])
