@@ -349,7 +349,7 @@ def sigopt_double(name, min, max):
 
 def get_raw_signal(fast5_path):
     """
-        Return 1D raw signal from fast5_path
+        Return 1D raw signal from fast5_path. No preprocessing
     """
     with h5py.File(fast5_path, 'r') as h5:
         reads = h5['Analyses/EventDetection_000/Reads']
@@ -361,7 +361,4 @@ def get_raw_signal(fast5_path):
         signal = h5['Raw/Reads/' + target_read]['Signal'][start_pad:].astype(np.float32)
         signal_len = h5['Raw/Reads/' + target_read].attrs['duration'] - start_pad
         assert(len(signal) == signal_len)
-
-        signal -= 646.11133
-        signal /= 75.673653
         return signal
