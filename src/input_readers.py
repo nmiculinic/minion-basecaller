@@ -1,6 +1,7 @@
 import os
 import socket
 from random import shuffle
+from scipy.signal import medfilt
 
 import numpy as np
 import util
@@ -23,8 +24,7 @@ class InputReader():
 
 class AlignedRaw(InputReader):
 
-    @staticmethod
-    def preprocessSignal(signal):
+    def preprocessSignal(self, signal):
         return (signal - 646.11133) / 75.673653
 
     def read_fast5_raw_ref(self, fast5_path, ref_path, block_size_x, block_size_y, num_blocks, warn_if_short=False):
@@ -107,6 +107,11 @@ class AlignedRaw(InputReader):
         signal = util.get_raw_signal(fast5_path)
         signal = self.preprocessSignal(signal)
         return signal.reshape(1, -1, 1)
+
+
+class RollingMedianAlignedRaw(AlignedRaw):
+    def preprocessSignal(self, signal):
+        return super().preprocessSignal(medfilt(signal, kernel_size=5))
 
 
 def sanitize_input_line(fname):
