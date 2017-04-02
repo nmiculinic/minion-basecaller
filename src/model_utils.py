@@ -841,9 +841,10 @@ class TeacherStudentModel(Model):
 
     def print_k(self):
         for i in range(len(self.teacher_params)):
-            for v in self.g.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'teacher%d' % i):
-                if '/k' in v.op.name:
-                    print(v.op.name, self.sess.run(v).ravel()[:5])
+            vars = [v for v in self.g.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'teacher%d' % i) if '/k' in v.op.name]
+            vals = self.sess.run(vars)
+            for var, val in zip(vars, vals):
+                print(var.op.name, val.ravel()[:5])
 
 
 class Ensamble(TeacherStudentModel):
