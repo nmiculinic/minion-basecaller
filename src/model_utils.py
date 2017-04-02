@@ -508,6 +508,8 @@ class Model():
         return avg_loss, avg_edit_distance
 
     def basecall_sample(self, fast5_path):
+        with self.g.as_default():
+            is_training(False, session=self.sess)
         signal = self.in_data.get_signal(fast5_path)
         t = perf_counter()
         basecalled = self.sess.run(
@@ -522,6 +524,13 @@ class Model():
         self.logger.debug("Basecalled %s in %.3f", fast5_path, perf_counter() - t)
 
         return "".join(util.decode(basecalled))
+
+    def skim_trainables(self):
+        vars = self.g.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
+        vals = self.sess.run(vars)
+        for var, val in zip(vars, vals):
+            print(var.op.name, val.ravel()[:5])
+
 
     def get_aligement(self, fast5_path, ref_path, verbose):
         t = perf_counter()
@@ -792,9 +801,11 @@ class TeacherStudentModel(Model):
             with tf.variable_scope("teacher%d" % i):
                 teacher = super()._setup_logits(teacher_params['model_fn'], teacher_params['hyper'])
 
-            mapping = {'/'.join(v.op.name.split('/')[1:]): v for v in self.g.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'teacher%d' % i)
+            mapping = {'/'.join(v.op.name.split('/')[1:]): v for v in self.g.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, 'teacher%d' % i)
             }
-            print(mapping.keys())
+            self.logger.debug("Teacher %d uses following varibles", i)
+            for k in mapping.keys():
+                self.logger.debug(k)
             teacher['saver'] = tf.train.Saver(mapping)
             teacher['log_dir'] = teacher_params['log_dir']
             self.teachers.append(teacher)
@@ -812,9 +823,6 @@ class TeacherStudentModel(Model):
         with tf.name_scope("loss"):
             self.ce_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=ensamble, logits=logits))
             return self.ce_loss + self.ctc_scale * self.ctc_loss
-
-    # def _setup_saver(self):
-        # super()._setup_saver()
 
     def _restore_teachers(self):
         self.print_k()
