@@ -1,10 +1,11 @@
 import tensorflow as tf
 import numpy as np
-from util import atrous_conv1d
-import os
+from ops import atrous_conv1d
 import model_utils
 from tflearn.layers.conv import max_pool_1d
-import logging
+from util import sigopt_int, sigopt_double
+import input_readers
+
 
 def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, reuse=False, **kwargs):
     """
@@ -50,47 +51,45 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, reuse=F
     }
 
 
-if __name__ == "__main__":
-    model = model_utils.Model(
-        tf.get_default_graph(),
-        block_size_x=8 * 50,
-        block_size_y=50,
-        in_data="RAW",
-        num_blocks=10,
-        batch_size=32,
-        max_reach=98,
-        model_fn=model_fn,
+def model_setup_params(hyper):
+    print("Requesting %s hyperparams" % __file__)
+    return dict(
+        g=tf.Graph(),
+        block_size_x=8 * 3 * 600 // 2,
+        block_size_y=630,
+        in_data=input_readers.AlignedRaw(),
+        num_blocks=3,
+        batch_size=16,
+        max_reach=8 * 20,  # 240
         queue_cap=300,
         overwrite=False,
         reuse=True,
         shrink_factor=8,
-        run_id=__file__[:-3],
+        dtype=tf.float32,
+        model_fn=model_fn,
+        lr_fn=lambda global_step: tf.train.exponential_decay(
+            hyper['initial_lr'], global_step, 100000, hyper['decay_factor']),
+        hyper=hyper,
     )
 
-    lr_schedule = {
-        0: 1e-3,
-        50000: 5e-4,
-        100000: 3e-4,
-        125000: 1e-4,
-        150000: 5e-5,
-    }
+
+params = [
+    sigopt_double('initial_lr', 1e-5, 1e-3),
+    sigopt_double('decay_factor', 1e-3, 0.5),
+]
+
+default_params = {
+    'initial_lr': 0.000965352400196344,
+    'decay_factor': 0.0017387361908150767,
+}
+
+
+if __name__ == "__main__":
+    params = default_params
+    model = model_utils.Model(
+        **model_setup_params(params)
+    )
 
     model.init_session()
-    iter_step = 0
-    iter_step = model.restore()
-    lr = 1e-3
-    for k, v in lr_schedule.items():
-        if iter_step > k:
-            lr = min(v, lr)
-    model.set_lr(lr)
-
-    for i in range(iter_step + 1, 200001):
-        if i in lr_schedule:
-            model.set_lr(lr_schedule[i])
-        model.train_minibatch(i)
-        if i % 200 == 0:
-            model.run_validation(i)
-            model.summarize(i, write_example=False)
-        if i % 2000 == 0:
-            model.save(i)
+    model.simple_managed_train_model(25000)
     model.close_session()
