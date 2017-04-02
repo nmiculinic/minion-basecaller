@@ -34,6 +34,7 @@ repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 log_fmt = '\r[%(levelname)s] %(name)s: %(message)s'
 logging.basicConfig(level=logging.DEBUG, format=log_fmt)
 
+
 def default_lr_fn(global_step):
     return tf.train.exponential_decay(1e-3, global_step, 100000, 0.01)
 
@@ -672,6 +673,7 @@ class Model():
                 checkpoint: filename to restore, default to last checkpoint
         """
         checkpoint = checkpoint or tf.train.latest_checkpoint(self.log_dir)
+        self.logger.info("Checkpoint %s", checkpoint)
         if checkpoint is None:
             if must_exist:
                 raise ValueError("No checkpoints found")
@@ -814,8 +816,19 @@ class TeacherStudentModel(Model):
     def _get_ensamble(self):
         self._setup_teachers()
         ensamble = [tf.nn.softmax(teacher['logits']) for teacher in self.teachers]
-        ensamble = tf.stack(ensamble)
-        ensamble = tf.reduce_mean(ensamble, axis=0)
+        max_len = tf.reduce_max(tf.stack([tf.shape(x)[0] for x in ensamble]))
+        min_len = tf.reduce_min(tf.stack([tf.shape(x)[0] for x in ensamble]))
+
+        with tf.control_dependencies([
+            tf.assert_less_equal(max_len - min_len, 1, message="Maximum padding limit exceeded")
+        ]):
+            ensamble = [tf.pad(x, [
+                [0, max_len - tf.shape(x)[0]],
+                [0, 0],
+                [0, 0]
+                ]) for x in ensamble]
+            ensamble = tf.stack(ensamble)
+            ensamble = tf.reduce_mean(ensamble, axis=0)
         return ensamble
 
     def _setup_loss(self, logits):
@@ -844,7 +857,7 @@ class TeacherStudentModel(Model):
             vars = [v for v in self.g.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'teacher%d' % i) if '/k' in v.op.name]
             vals = self.sess.run(vars)
             for var, val in zip(vars, vals):
-                print(var.op.name, val.ravel()[:5])
+                self.logger.debug("%s: %s", var.op.name, val.ravel()[:5])
 
 
 class Ensamble(TeacherStudentModel):
