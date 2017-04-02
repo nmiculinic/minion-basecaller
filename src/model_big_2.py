@@ -3,7 +3,7 @@ import numpy as np
 from ops import atrous_conv1d
 import model_utils
 from tflearn.layers.conv import max_pool_1d
-from util import sigopt_int, sigopt_double
+from util import sigopt_double
 import input_readers
 
 
@@ -23,9 +23,8 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, reuse=F
                     with tf.variable_scope("atrous_conv1d_%d" % i):
                         filter = tf.get_variable("W", shape=(5, net.get_shape()[-1], no_channel))
                         bias = tf.get_variable("b", shape=(no_channel,))
-                        net = atrous_conv1d(net, filter, i, padding="VALID") + bias
+                        net = atrous_conv1d(net, filter, i, padding="SAME") + bias
                         net = tf.nn.relu(net)
-                net = tf.Print(net, [tf.shape(net)], first_n=5, message="net, pre_pool")
                 net = max_pool_1d(net, 2)
         print("after conv", net.get_shape())
         net = tf.transpose(net, [1, 0, 2], name="Shift_to_time_major")
@@ -35,14 +34,12 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, reuse=F
         init_state = tf.constant(0.1, dtype=tf.float32)
         final_state = tf.constant(0.1, dtype=tf.float32)
 
-        outputs = tf.Print(outputs, [tf.shape(outputs)], first_n=1, message="outputs_pre_w")
         print("outputs", outputs.get_shape())
         with tf.variable_scope("Output"):
-            outputs = tf.reshape(outputs, [-1, state_size])
             W = tf.get_variable("W", shape=[state_size, out_classes])
             b = tf.get_variable("b", shape=[out_classes])
-            outputs = tf.matmul(outputs, W) + b
-            logits = tf.reshape(outputs, [block_size // 8, batch_size, out_classes])
+            logits = tf.nn.conv1d(outputs, tf.reshape(W, (1, state_size, out_classes)), 1, padding='SAME')
+            logits += b
     print("model out", logits.get_shape())
     return {
         'logits': logits,
@@ -60,7 +57,7 @@ def model_setup_params(hyper):
         in_data=input_readers.AlignedRaw(),
         num_blocks=3,
         batch_size=16,
-        max_reach=8 * 20,  # 240
+        max_reach=98,  # 240
         queue_cap=300,
         overwrite=False,
         reuse=True,
