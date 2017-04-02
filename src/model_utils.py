@@ -808,6 +808,7 @@ class TeacherStudentModel(Model):
                 self.logger.debug(k)
             teacher['saver'] = tf.train.Saver(mapping)
             teacher['log_dir'] = teacher_params['log_dir']
+            self.logger.info("Configured teacher%d, logdir %s", i, teacher['log_dir'])
             self.teachers.append(teacher)
 
     def _get_ensamble(self):
@@ -862,9 +863,13 @@ class Ensamble(TeacherStudentModel):
         pass
 
     def _setup_logits(self, *args):
-        self._setup_teachers()
-        return self.teachers[0]
+        return {
+            'logits': None,
+            'init_state': tf.constant(0.0),
+            'final_state': tf.constant(0.0)
+        }
 
-    # def _predict_from_logits(self):
-        # predicted, _ = tf.nn.ctc_beam_search_decoder(self._get_ensamble(), tf.div(self.X_batch_len, self.shrink_factor), merge_repeated=True)
-        # return predicted
+    def _predict_from_logits(self):
+        ens = self._get_ensamble()
+        self.logits = tf.log(ens)
+        return super()._predict_from_logits()
