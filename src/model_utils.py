@@ -784,14 +784,26 @@ class TeacherStudentModel(Model):
         self.ctc_scale = hyper['ctc_scale']
         super().__init__(model_fn=model_fn, hyper=hyper, **kwargs)
 
-    def _get_ensamble(self):
-        ensamble = []
+    def _setup_teachers(self):
+        if hasattr(self, 'teachers'):
+            self.logger.warn("_setup_teachers CALLED MORE THAN ONCE")
+        self.teachers = []
         for i, teacher_params in enumerate(self.teacher_params):
             with tf.variable_scope("teacher%d" % i):
-                alt_logits = self._setup_logits(teacher_params['model_fn'], teacher_params['hyper'])['logits']
-                ensamble.append(tf.nn.softmax(alt_logits))
+                teacher = super()._setup_logits(teacher_params['model_fn'], teacher_params['hyper'])
 
-        ensamble = tf.add_n(ensamble) / len(self.teacher_params)
+            mapping = {'/'.join(v.op.name.split('/')[1:]): v for v in self.g.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'teacher%d' % i)
+            }
+            print(mapping.keys())
+            teacher['saver'] = tf.train.Saver(mapping)
+            teacher['log_dir'] = teacher_params['log_dir']
+            self.teachers.append(teacher)
+
+    def _get_ensamble(self):
+        self._setup_teachers()
+        ensamble = [tf.nn.softmax(teacher['logits']) for teacher in self.teachers]
+        ensamble = tf.stack(ensamble)
+        ensamble = tf.reduce_mean(ensamble, axis=0)
         return ensamble
 
     def _setup_loss(self, logits):
@@ -801,25 +813,22 @@ class TeacherStudentModel(Model):
             self.ce_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=ensamble, logits=logits))
             return self.ce_loss + self.ctc_scale * self.ctc_loss
 
-    def _setup_saver(self):
-        super()._setup_saver()
-        self.teacher_savers = []
-        for i in range(len(self.teacher_params)):
-            mapping = {'/'.join(v.op.name.split('/')[1:]): v for v in self.g.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'teacher%d' % i)
-            }
-            self.teacher_savers.append(tf.train.Saver(mapping))
+    # def _setup_saver(self):
+        # super()._setup_saver()
 
-    def init_session(self, *args, **kwargs):
-        super().init_session(*args, **kwargs)
+    def _restore_teachers(self):
         self.print_k()
-        for i, (saver, teacher_param) in enumerate(zip(self.teacher_savers, self.teacher_params)):
-            checkpoint = tf.train.latest_checkpoint(teacher_param['log_dir'])
+        for i, teacher in enumerate(self.teachers):
+            checkpoint = tf.train.latest_checkpoint(teacher['log_dir'])
             if checkpoint is None:
                 raise ValueError("Teacher checkpoint must exist!")
             self.logger.info("Loading teacher%d weights from %s", i, checkpoint)
-            saver.restore(self.sess, checkpoint)
-
+            teacher['saver'].restore(self.sess, checkpoint)
         self.print_k()
+
+    def init_session(self, *args, **kwargs):
+        super().init_session(*args, **kwargs)
+        self._restore_teachers()
 
     def print_k(self):
         for i in range(len(self.teacher_params)):
@@ -844,6 +853,10 @@ class Ensamble(TeacherStudentModel):
     def _setup_train(self, *args, **kwargs):
         pass
 
-    def _predict_from_logits(self):
-        predicted, _ = tf.nn.ctc_greedy_decoder(self._get_ensamble(), tf.div(self.X_batch_len, self.shrink_factor), merge_repeated=True)
-        return predicted
+    def _setup_logits(self, *args):
+        self._setup_teachers()
+        return self.teachers[0]
+
+    # def _predict_from_logits(self):
+        # predicted, _ = tf.nn.ctc_beam_search_decoder(self._get_ensamble(), tf.div(self.X_batch_len, self.shrink_factor), merge_repeated=True)
+        # return predicted
