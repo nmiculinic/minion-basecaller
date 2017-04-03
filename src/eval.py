@@ -16,6 +16,7 @@ def eval_model():
     parser.add_argument("-v", "--verbose", help="increase output verbosity", action="store_true")
     parser.add_argument("-c", "--checkpoint", help="Checkpoint to restore", type=str, default=None)
     parser.add_argument("count", nargs='?', type=int, default=-1, help='Number of evaluation count from test set. Default -1 meaning whole test set')
+    parser.add_argument("--fasta_out", "-o", type=str, default=None, help='Directory for output fasta files from processed fast5 files')
 
     args = parser.parse_args()
 
@@ -26,7 +27,7 @@ def eval_model():
         count = args.count
         if count == -1:
             count = 1.0
-        model.run_validation_full(frac=count, verbose=args.verbose)
+        model.run_validation_full(frac=count, verbose=args.verbose, fasta_out_dir=args.fasta_out)
     finally:
         model.close_session()
 

@@ -22,6 +22,7 @@ from edlib import Edlib
 import inspect
 import json
 import importlib
+import subprocess
 
 
 # UGLY UGLY HACK!
@@ -508,7 +509,7 @@ class Model():
         self.bbt_clock = perf_counter()
         return avg_loss, avg_edit_distance
 
-    def basecall_sample(self, fast5_path):
+    def basecall_sample(self, fast5_path, fasta_out=None):
         with self.g.as_default():
             is_training(False, session=self.sess)
         signal = self.in_data.get_signal(fast5_path)
@@ -524,7 +525,15 @@ class Model():
         }).ravel()
         self.logger.debug("Basecalled %s in %.3f", fast5_path, perf_counter() - t)
 
-        return "".join(util.decode(basecalled))
+        basecalled = "".join(util.decode(basecalled))
+        if fasta_out is not None:
+            with open(fasta_out, 'w') as f:
+                print("> " + fast5_path, file=f)
+                n = 80
+                for i in range(0, len(basecalled), n):
+                    print(basecalled[i:i+n], file=f)
+            self.logger.info("Saved basecalled %s to %s", fast5_path, fasta_out)
+        return basecalled
 
     def skim_trainables(self):
         vars = self.g.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
@@ -533,9 +542,12 @@ class Model():
             print(var.op.name, val.ravel()[:5])
 
 
-    def get_aligement(self, fast5_path, ref_path, verbose):
+    def get_aligement(self, fast5_path, ref_path, verbose, fasta_out_dir=None):
         t = perf_counter()
-        basecalled = self.basecall_sample(fast5_path)
+        fasta_out = None
+        if fasta_out_dir is not None:
+            fasta_out = os.path.join(fasta_out_dir, os.path.splitext(fast5_path)[0].split('/')[-1] + ".fasta")
+        basecalled = self.basecall_sample(fast5_path, fasta_out=fasta_out)
         with open(ref_path) as f:
             target = f.readlines()[-1]
 
@@ -554,7 +566,7 @@ class Model():
         nedit = result.edit_distance / len(target)
         return nedit, acc
 
-    def run_validation_full(self, frac, verbose=False):
+    def run_validation_full(self, frac, verbose=False, fasta_out_dir=None):
         """
             Runs full validation on test set with whole sequence_length
             Args:
@@ -588,7 +600,7 @@ class Model():
                         input_readers.root_dir_default,
                         'ref',
                         fname + ".ref"
-                    ), verbose=verbose)
+                    ), verbose=verbose, fasta_out_dir=fasta_out_dir)
                 total_time += perf_counter() - t
                 mu_edit, mu_acc = np.mean(nedit[:i + 1]), np.mean(acc[:i + 1])
                 std_edit, std_acc = np.std(nedit[:i + 1]), np.std(acc[:i + 1])
@@ -764,7 +776,10 @@ class Model():
 
             self.save()
             self.logger.info("Running final validation run")
-            return self.run_validation_full(final_val_samples)
+            fasta_out_dir = os.path.join(self.log_dir, 'fasta')
+            os.path.makedirs(fasta_out_dir)
+            self.logger.info("FASTA files in %s", fasta_out_dir)
+            return self.run_validation_full(final_val_samples, fasta_out_dir=fasta_out_dir)
         except Exception as ex:
             if not isinstance(ex, KeyboardInterrupt):
                 self.logger.error("Error happened", exc_info=1)
