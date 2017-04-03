@@ -36,6 +36,16 @@ log_fmt = '\r[%(levelname)s] %(name)s: %(message)s'
 logging.basicConfig(level=logging.DEBUG, format=log_fmt)
 
 
+error_rates_lookup = [
+    r"/opt/samscripts/src/errorrates.py",
+    r"/home/lpp/Downloads/git/samscripts/src/errorrates.py",
+]
+
+error_rates = None
+for path in error_rates_lookup:
+    if os.path.isfile(path):
+        error_rates = path
+
 def default_lr_fn(global_step):
     return tf.train.exponential_decay(1e-3, global_step, 100000, 0.01)
 
@@ -619,6 +629,20 @@ class Model():
 
         self.logger.info("step: %d [samples %d] avg edit %.4f s %.4f CI <%.4f, %.4f> avg_acc %.4f s %.4f CI <%.4f, %.4f> tps %.3f", self.get_global_step(), n, mu_edit, std_edit, mu_edit - 2*se_edit, mu_edit + 2*se_edit, mu_acc, std_acc, mu_acc - 2*se_acc, mu_acc + 2*se_acc, total_time/n)
 
+        if ref is not None and fasta_out_dir is not None:
+            if error_rates_lookup is None:
+                self.logger.error("Cannot find errorrates.py")
+            else:
+                os.chdir(fasta_out_dir)
+                with open('all.sam', 'w') as f:
+                    subprocess.call(['cat', "*.sam"], stdout=f)
+                with open('report.log', 'w') as f:
+                    subprocess.call(['python2', error_rates, "base", ref, "all.sam"], stdout=f, stderr=subprocess.STDOUT)
+                with open('report.log', 'r') as f:
+                    for line in f.readlines():
+                        self.logger.info(line.strip())
+        else:
+            self.logger.warn("Reference or FASTA out dir None, skipping full report")
         return {
             'edit': {
                 'mu': mu_edit.item(),
