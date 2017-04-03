@@ -509,7 +509,7 @@ class Model():
         self.bbt_clock = perf_counter()
         return avg_loss, avg_edit_distance
 
-    def basecall_sample(self, fast5_path, fasta_out=None):
+    def basecall_sample(self, fast5_path, fasta_out=None, ref=None):
         with self.g.as_default():
             is_training(False, session=self.sess)
         signal = self.in_data.get_signal(fast5_path)
@@ -533,6 +533,11 @@ class Model():
                 for i in range(0, len(basecalled), n):
                     print(basecalled[i:i+n], file=f)
             self.logger.info("Saved basecalled %s to %s", fast5_path, fasta_out)
+            if ref is not None:
+                sam_out = os.path.splitext(fasta_out)[0] + ".sam"
+                self.logger.info("Sam out %s", sam_out)
+                subprocess.Popen(["graphmap", "align", "-r", ref, "-d", fasta_out, "-o", sam_out , "--extcigar"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
         return basecalled
 
     def skim_trainables(self):
@@ -542,12 +547,12 @@ class Model():
             print(var.op.name, val.ravel()[:5])
 
 
-    def get_aligement(self, fast5_path, ref_path, verbose, fasta_out_dir=None):
+    def get_aligement(self, fast5_path, ref_path, verbose, fasta_out_dir=None, ref=None):
         t = perf_counter()
         fasta_out = None
         if fasta_out_dir is not None:
             fasta_out = os.path.join(fasta_out_dir, os.path.splitext(fast5_path)[0].split('/')[-1] + ".fasta")
-        basecalled = self.basecall_sample(fast5_path, fasta_out=fasta_out)
+        basecalled = self.basecall_sample(fast5_path, fasta_out=fasta_out, ref=ref)
         with open(ref_path) as f:
             target = f.readlines()[-1]
 
@@ -566,7 +571,7 @@ class Model():
         nedit = result.edit_distance / len(target)
         return nedit, acc
 
-    def run_validation_full(self, frac, verbose=False, fasta_out_dir=None):
+    def run_validation_full(self, frac, verbose=False, fasta_out_dir=None, ref=None):
         """
             Runs full validation on test set with whole sequence_length
             Args:
@@ -600,7 +605,7 @@ class Model():
                         input_readers.root_dir_default,
                         'ref',
                         fname + ".ref"
-                    ), verbose=verbose, fasta_out_dir=fasta_out_dir)
+                    ), verbose=verbose, fasta_out_dir=fasta_out_dir, ref=ref)
                 total_time += perf_counter() - t
                 mu_edit, mu_acc = np.mean(nedit[:i + 1]), np.mean(acc[:i + 1])
                 std_edit, std_acc = np.std(nedit[:i + 1]), np.std(acc[:i + 1])
@@ -759,7 +764,7 @@ class Model():
         if start_queues:
             self._start_queues(num_workers, proc)
 
-    def simple_managed_train_model(self, num_steps, val_every=250, save_every=5000, summarize=True, final_val_samples=500, num_workers=3, trace_every=10000, **kwargs):
+    def simple_managed_train_model(self, num_steps, val_every=250, save_every=5000, summarize=True, final_val_samples=500, num_workers=3, trace_every=10000, ref=None, **kwargs):
         try:
             self.logger.info("Training %d steps", num_steps)
             if trace_every < 0:
@@ -777,9 +782,9 @@ class Model():
             self.save()
             self.logger.info("Running final validation run")
             fasta_out_dir = os.path.join(self.log_dir, 'fasta')
-            os.path.makedirs(fasta_out_dir)
+            os.makedirs(fasta_out_dir, exist_ok=True)
             self.logger.info("FASTA files in %s", fasta_out_dir)
-            return self.run_validation_full(final_val_samples, fasta_out_dir=fasta_out_dir)
+            return self.run_validation_full(final_val_samples, fasta_out_dir=fasta_out_dir, ref=ref)
         except Exception as ex:
             if not isinstance(ex, KeyboardInterrupt):
                 self.logger.error("Error happened", exc_info=1)

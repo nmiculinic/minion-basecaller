@@ -17,6 +17,7 @@ def eval_model():
     parser.add_argument("-c", "--checkpoint", help="Checkpoint to restore", type=str, default=None)
     parser.add_argument("count", nargs='?', type=int, default=-1, help='Number of evaluation count from test set. Default -1 meaning whole test set')
     parser.add_argument("--fasta_out", "-o", type=str, default=None, help='Directory for output fasta files from processed fast5 files')
+    parser.add_argument("--ref", type=str, default=None, help='Path to reference string')
 
     args = parser.parse_args()
 
@@ -27,7 +28,11 @@ def eval_model():
         count = args.count
         if count == -1:
             count = 1.0
-        model.run_validation_full(frac=count, verbose=args.verbose, fasta_out_dir=args.fasta_out)
+
+        if args.fasta_out is None and args.ref is not None:
+            args.fasta_out = os.path.join(model.log_dir, 'fasta')
+            os.makedirs(args.fasta_out, exist_ok=True)
+        model.run_validation_full(frac=count, verbose=args.verbose, fasta_out_dir=args.fasta_out, ref=args.ref)
     finally:
         model.close_session()
 

@@ -30,6 +30,7 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
                         default=module_name, help="Model name [run_id]", dest="model_name")
     parser.add_argument('--trace_every', '-t', type=int,
                         default=10000, help="Each x steps to run profile trace. Negative number (e.g. -1) to disable")
+    parser.add_argument("--ref", type=str, default=None, help='Path to reference string')
     args = parser.parse_args()
 
     model_module = importlib.import_module(module_name)
@@ -114,7 +115,7 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
         if reuse:
             model.logger.info("Reusing model for earlier crash")
         result = model.simple_managed_train_model(
-            args.train_steps, summarize=args.summarize, num_workers=args.num_workers, trace_every=args.trace_every)
+            args.train_steps, summarize=args.summarize, num_workers=args.num_workers, trace_every=args.trace_every, ref=args.ref)
 
         avg_acc = result['accuracy']['mu']
         se = result['accuracy']['se']

@@ -17,6 +17,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-numpy \
         python3-scipy \
         python3-sklearn \
+        python \
+        python-pip \
+        python-numpy \
+        python-matplotlib \
         rsync \
         software-properties-common \
         unzip \
@@ -29,8 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 # --build-arg tf=tensorflow for CPU only tensorflow
-ARG tf=tensorflow-gpu
-RUN pip3 --no-cache-dir install $tf git+https://github.com/tflearn/tflearn.git Pillow h5py python-dotenv sigopt
+RUN pip3 --no-cache-dir install tensorflow-gpu git+https://github.com/tflearn/tflearn.git Pillow h5py python-dotenv sigopt git+https://github.com/nmiculinic/edlib-python.git slacker-log-handler dill
 
 WORKDIR /opt
 ENV TENSORFLOW_SRC_PATH=/opt/tensorflow
@@ -39,6 +42,11 @@ ENV CUDA_HOME=/usr/local/cuda
 
 RUN git clone https://github.com/tensorflow/tensorflow.git tensorflow
 RUN git clone https://github.com/nmiculinic/warp-ctc.git warp-ctc
+RUN git clone https://github.com/isovic/graphmap.git
+RUN git clone https://github.com/isovic/samscripts.git
+
+WORKDIR /opt/graphmap
+RUN make modules && make && make install
 
 WORKDIR /opt/warp-ctc
 RUN mkdir build
@@ -49,8 +57,6 @@ RUN python3 setup.py install
 
 # For CUDA profiling, TensorFlow requires CUPTI.
 ENV LD_LIBRARY_PATH /opt/warp-ctc/build:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
-
-RUN pip3 --no-cache-dir install git+https://github.com/nmiculinic/edlib-python.git slacker-log-handler dill
 
 RUN mkdir /code
 RUN mkdir /data
