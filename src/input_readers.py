@@ -29,6 +29,7 @@ class AlignedRaw(InputReader):
 
     def read_fast5_raw_ref(self, fast5_path, ref_path, block_size_x, block_size_y, num_blocks, warn_if_short=False):
         num_blocks += 1
+        ref_ext = os.path.splitext(ref_path)[1]
         with h5py.File(fast5_path, 'r') as h5, open(ref_path, 'r') as ref_file:
             reads = h5['Analyses/EventDetection_000/Reads']
             target_read = list(reads.keys())[0]
@@ -73,7 +74,13 @@ class AlignedRaw(InputReader):
                         added_bases += b[3]
                         events_len[curr_sec] += added_bases
 
-            ref_seq = ref_file.readlines()[3].strip()
+            if ref_ext == ".ref":
+                ref_seq = ref_file.readlines()[3].strip()
+            elif ref_ext == ".fasta":
+                ref_seq = util.read_fasta(ref_file)
+            else:
+                raise ValueError("extension not recognized %s" % ref_ext)
+
             called_seq = util.get_basecalled_sequence(basecalled_events)
             y, y_len = util.extract_blocks(ref_seq, called_seq, events_len, block_size_y, num_blocks)
 

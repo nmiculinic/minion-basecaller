@@ -16,6 +16,16 @@ def next_num(prev, symbol):
         return symbol, val
 
 
+def read_fasta(fp):
+    def rr(f):
+        return "".join(line.strip() for line in f.readlines() if ">" not in line)
+
+    if not hasattr(fp, 'readlines'):
+        with open(fp, 'r') as f:
+            return rr(f)
+    else:
+        return rr(fp)
+
 def read_fast5(filename, block_size, num_blocks, warn_if_short=False):
     'Read fast5 file.'
     with h5py.File(filename, 'r') as h5:
