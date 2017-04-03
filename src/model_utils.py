@@ -542,7 +542,7 @@ class Model():
                 n = 80
                 for i in range(0, len(basecalled), n):
                     print(basecalled[i:i+n], file=f)
-            self.logger.info("Saved basecalled %s to %s", fast5_path, fasta_out)
+            self.logger.info("Saved basecalled %s to %s in %.3f ms/bp", fast5_path, fasta_out, (perf_counter() - t)*1000.0/len(basecalled))
             if ref is not None:
                 sam_out = os.path.splitext(fasta_out)[0] + ".sam"
                 self.logger.info("Sam out %s", sam_out)
