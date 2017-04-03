@@ -21,6 +21,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python-pip \
         python-numpy \
         python-matplotlib \
+        python-setuptools \
+        python-dev \
         rsync \
         software-properties-common \
         unzip \
@@ -35,6 +37,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # --build-arg tf=tensorflow for CPU only tensorflow
 RUN pip3 --no-cache-dir install tensorflow-gpu git+https://github.com/tflearn/tflearn.git Pillow h5py python-dotenv sigopt git+https://github.com/nmiculinic/edlib-python.git slacker-log-handler dill
 
+RUN pip --no-cache-dir install -U matplotlib
+
 WORKDIR /opt
 ENV TENSORFLOW_SRC_PATH=/opt/tensorflow
 ENV WARP_CTC_PATH=/opt/warp-ctc/build
@@ -42,11 +46,11 @@ ENV CUDA_HOME=/usr/local/cuda
 
 RUN git clone https://github.com/tensorflow/tensorflow.git tensorflow
 RUN git clone https://github.com/nmiculinic/warp-ctc.git warp-ctc
-RUN git clone https://github.com/isovic/graphmap.git
-RUN git clone https://github.com/isovic/samscripts.git
+RUN git clone https://github.com/isovic/graphmap.git graphmap --recursive
+RUN git clone https://github.com/isovic/samscripts.git samscripts
 
 WORKDIR /opt/graphmap
-RUN make modules && make && make install
+RUN make && make install
 
 WORKDIR /opt/warp-ctc
 RUN mkdir build
