@@ -6,6 +6,7 @@ from time import monotonic
 import model_utils
 import argparse
 import json
+import input_readers
 
 load_dotenv(find_dotenv())
 
@@ -32,6 +33,15 @@ def sigopt_runner(module_name=None, observation_budget=20, train_steps=100000):
                         default=10000, help="Each x steps to run profile trace. Negative number (e.g. -1) to disable")
     parser.add_argument("--ref", type=str, default=None, help='Path to reference string')
     args = parser.parse_args()
+
+    if args.ref is None:
+        suggested_ref = os.path.join(input_readers.root_dir_default, 'reference2.fasta')
+
+        if os.path.isfile(suggested_ref):
+            args.ref = suggested_ref
+            print("Using %s for reference" % args.ref)
+        else:
+            print("Cannot find default reference at %s, ignoring Graphmap etc." % suggested_ref)
 
     model_module = importlib.import_module(module_name)
     print("Importing %s" % module_name)
