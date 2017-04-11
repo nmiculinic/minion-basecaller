@@ -11,3 +11,14 @@ archivePrefix = "arXiv",
    adsurl = {http://adsabs.harvard.edu/abs/2016arXiv160309195B},
   adsnote = {Provided by the SAO/NASA Astrophysics Data System}
 }
+@article {nanocall,
+	author = {David, Matei and Dursi, Lewis Jonathan and Yao, Delia and Boutros, Paul C and Simpson, Jared T},
+	title = {Nanocall: An Open Source Basecaller for Oxford Nanopore Sequencing Data},
+	year = {2016},
+	doi = {10.1101/046086},
+	publisher = {Cold Spring Harbor Labs Journals},
+	abstract = {Motivation: The highly portable Oxford Nanopore MinION sequencer has enabled new applications of genome sequencing directly in the field. However, the MinION currently relies on a cloud computing platform, Metrichor (metrichor.com), for translating locally generated sequencing data into basecalls. Results: To allow offline and private analysis of MinION data, we created Nanocall. Nanocall is the first freely-available, open-source basecaller for Oxford Nanopore sequencing data and does not require an internet connection. On two ecoli and two human samples, with natural as well as PCR-amplified DNA, Nanocall reads have ~68\% identity, directly comparable to Metrichor "1D" data. Further, Nanocall is efficient, processing ~500Kbp of sequence per core hour, and fully parallelized. Using 8 cores, Nanocall could basecall a MinION sequencing run in real time. Metrichor provides the ability to integrate the "1D" sequencing of template and complement strands of a single DNA molecule, and create a "2D" read. Nanocall does not currently integrate this technology, and addition of this capability will be an important future development. In summary, Nanocall is the first open-source, freely available, off-line basecaller for Oxford Nanopore sequencing data. Availability: Nanocall is available at github.com/mateidavid/nanocall, released under the MIT license. Contact: matei.david at oicr.on.ca},
+	URL = {http://biorxiv.org/content/early/2016/03/28/046086},
+	eprint = {http://biorxiv.org/content/early/2016/03/28/046086.full.pdf},
+	journal = {bioRxiv}
+}
