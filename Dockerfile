@@ -30,12 +30,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         git \
         cmake \
         sshfs \
+        autoconf \ 
+        libbz2-dev \
+        liblzma-dev \
+        libncurses5-dev \
         && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# --build-arg tf=tensorflow for CPU only tensorflow
-RUN pip3 --no-cache-dir install tensorflow-gpu git+https://github.com/tflearn/tflearn.git Pillow h5py python-dotenv sigopt git+https://github.com/nmiculinic/edlib-python.git slacker-log-handler dill
+# -gpu for gpu build
+RUN pip3 --no-cache-dir install tensorflow git+https://github.com/tflearn/tflearn.git Pillow \
+        h5py python-dotenv sigopt git+https://github.com/nmiculinic/edlib-python.git \
+        slacker-log-handler dill pysam
 
 RUN pip --no-cache-dir install -U matplotlib
 
@@ -48,9 +54,17 @@ RUN git clone https://github.com/tensorflow/tensorflow.git tensorflow
 RUN git clone https://github.com/nmiculinic/warp-ctc.git warp-ctc
 RUN git clone https://github.com/isovic/graphmap.git graphmap --recursive
 RUN git clone https://github.com/isovic/samscripts.git samscripts
+RUN git clone https://github.com/samtools/samtools
+RUN git clone https://github.com/samtools/htslib
 
 WORKDIR /opt/graphmap
 RUN make && make install
+
+WORKDIR /opt/htslib
+RUN autoheader && autoconf && ./configure 
+RUN make && make install
+WORKDIR /opt/samtools
+RUN autoconf -Wno-syntax  && ./configure && make && make install
 
 WORKDIR /opt/warp-ctc
 RUN mkdir build
