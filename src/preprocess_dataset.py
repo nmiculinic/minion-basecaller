@@ -5,7 +5,7 @@ import shutil
 import subprocess
 import tempfile
 import sys
-
+import time
 import h5py
 import pysam
 from tqdm import tqdm
@@ -45,7 +45,7 @@ def _preprocess_batch(files_in_batch, generate_sam_f, ref_starts, out_root):
     tmp_work_dir = tempfile.mkdtemp()
     tmp_sam_path = os.path.join(tmp_work_dir, 'tmp.sam')
     tmp_fastq_path = os.path.join(tmp_work_dir, 'tmp.fastq')
-
+    s_load = time.time()
     with open(tmp_fastq_path, 'wb') as fq_file:
         for f in files_in_batch:
             with h5py.File(f, 'r') as h5:
@@ -57,13 +57,17 @@ def _preprocess_batch(files_in_batch, generate_sam_f, ref_starts, out_root):
 
                 fq_file.write(fastq)
                 fq_file.write(b'\n')
-
+        print("load fq", time.time() - s_load)
+        s_sam = time.time()
         generate_sam_f(tmp_fastq_path, tmp_sam_path)
+        print("generate sam", time.time() - s_sam)
+        s_dict = time.time()
         result_dict = get_target_sequences(tmp_sam_path)
+        print("result_dict", time.time() - s_dict)
 
-    # cleanup
+          # cleanup
     shutil.rmtree(tmp_work_dir)
-
+    s_dump_files = time.time()
     for name, (target, ref_name, start_position, length, cigar) in result_dict.items():
         basename, ext = os.path.splitext(name_to_file[name])
         ref_out_name = basename + '.ref'
@@ -72,28 +76,15 @@ def _preprocess_batch(files_in_batch, generate_sam_f, ref_starts, out_root):
         abs_start_pos = ref_starts[ref_name] + start_position
 
         with open(out_ref_path, 'w') as fout:
-            fout.write('%s\t%s' % (name, ref_name))
+            fout.write('%s\t%s\n' % (name, ref_name))
             fout.write('%d\t%d\t%d\n' % (abs_start_pos, start_position, length))
             fout.write(cigar + '\n')
             fout.write(target + '\n')
+    print("dump_all", time.time() - s_dump_files)
+    print("total", time.time() - s_load)
 
 
-def preprocess(fast5_in, out_dir, generate_sam_f, ref_path, batch_size):
-    if os.path.isfile(fast5_in):
-        file_list = [fast5_in]
-    elif os.path.isdir(fast5_in):
-        file_list = glob.glob(os.path.join(fast5_in, '*.fast5'))
-    else:
-        logging.error("Invalid fastin - expected file or dir %s, exiting!!!" % fast5_in)
-        return
 
-    n_files = len(file_list)
-    os.makedirs(out_dir, exist_ok=True)
-    ref_starts = get_ref_starts_dict(ref_path)
-
-    for i in tqdm(range(0, n_files, batch_size)):
-        files_in_batch = file_list[i:i + batch_size]
-        _preprocess_batch(files_in_batch, generate_sam_f, ref_starts, out_dir)
 
 
 
@@ -123,7 +114,7 @@ def reads_train_test_split(ref_root, test_size, ref_path):
     reference_len = len(read_fasta(ref_path))
     train_size = 1 - test_size
 
-    files = glob(os.path.join(ref_root, '*.ref'))
+    files = glob.glob(os.path.join(ref_root, '*.ref'))
     train_path = os.path.join(ref_root, 'train.txt')
     test_path = os.path.join(ref_root, 'test.txt')
 
@@ -148,10 +139,28 @@ def reads_train_test_split(ref_root, test_size, ref_path):
                     logging.info('Skipping ref, overlaps train and test')
 
 
+def preprocess(fast5_in, out_dir, generate_sam_f, ref_path, batch_size):
+    if os.path.isfile(fast5_in):
+        file_list = [fast5_in]
+    elif os.path.isdir(fast5_in):
+        file_list = glob.glob(os.path.join(fast5_in, '*.fast5'))
+    else:
+        logging.error("Invalid fastin - expected file or dir %s, exiting!!!" % fast5_in)
+        return
+
+    n_files = len(file_list)
+    os.makedirs(out_dir, exist_ok=True)
+    ref_starts = get_ref_starts_dict(ref_path)
+
+    for i in tqdm(range(0, n_files, batch_size)):
+        files_in_batch = file_list[i:i + batch_size]
+        _preprocess_batch(files_in_batch, generate_sam_f, ref_starts, out_dir)
+
+
 def preprocess_all_ref(dataset_conf_path):
     dataset_config = ConfigParser()
     dataset_config.read(dataset_conf_path)
-    batch_size = dataset_config['DEFAULT']['batch_size']
+    batch_size = int(dataset_config['DEFAULT']['batch_size'])
 
     for section in dataset_config.sections():
         config = dataset_config[section]
@@ -165,7 +174,7 @@ def preprocess_all_ref(dataset_conf_path):
         logging.info("Started %s" % section)
         generate_sam_f = generate_sam(ref_path, is_circular)
         logging.info("Started aligning")
-        preprocess(fast5_root, ref_root, generate_sam_f, batch_size)
+        preprocess(fast5_root, ref_root, generate_sam_f, ref_path, batch_size)
         logging.info("Started train-test split")
         reads_train_test_split(ref_root, test_size, ref_path)
 

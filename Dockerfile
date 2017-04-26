@@ -41,7 +41,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # -gpu for gpu build
 RUN pip3 --no-cache-dir install tensorflow git+https://github.com/tflearn/tflearn.git Pillow \
         h5py python-dotenv sigopt git+https://github.com/nmiculinic/edlib-python.git \
-        slacker-log-handler dill pysam
+        slacker-log-handler dill pysam tqdm
 
 RUN pip --no-cache-dir install -U matplotlib
 
