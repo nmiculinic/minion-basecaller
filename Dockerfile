@@ -56,6 +56,7 @@ RUN git clone https://github.com/isovic/graphmap.git graphmap --recursive
 RUN git clone https://github.com/isovic/samscripts.git samscripts
 RUN git clone https://github.com/samtools/samtools
 RUN git clone https://github.com/samtools/htslib
+RUN git clone https://github.com/samtools/bcftools
 
 WORKDIR /opt/graphmap
 RUN make && make install
@@ -65,6 +66,9 @@ RUN autoheader && autoconf && ./configure
 RUN make && make install
 WORKDIR /opt/samtools
 RUN autoconf -Wno-syntax  && ./configure && make && make install
+WORKDIR /opt/bcftools
+RUN make && make install
+
 
 WORKDIR /opt/warp-ctc
 RUN mkdir build
