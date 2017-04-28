@@ -44,15 +44,17 @@ In the MinION device, single-stranded DNA fragments move through nanopores, whic
 
 A MinION device typically yields reads several thousand bases long; reads as long as 100,000 bp have been reported. 1D read have usually error rate about   30\%. After parameter training, base calling can be performed by running the Viterbi algorithm, which will result in the sequence of states with the highest likelihood.
 
-\chapter{Related work}
+\chapter{Background}
 
 Official MinION basecaller is
 
 Note that neural networks were previously used for base calling Sanger sequencing reads (Tibbetts et al., 1994; Mohammed et al., 2013), though the nature of MinION data is rather different. Several tools for processing nanopore sequencing data were already published, including read mappers (Jain et al., 2015; Sovic et al., 2015), and error correction tools using short Illumina reads (Goodwin et al., 2015). Most closes related to our work are Nanopolish (Loman et al., 2015b) and PoreSeq (Szalay and Golovchenko, 2015). Both of these tools create a consensus sequence by combining information from multiple overlapping reads, considering not only the final base calls from Metrichor, but also the sequence of events. They analyze the events by hidden Markov models with emission probabilities provided by Metrichor. In contrast, our base caller does not require read overlaps, it processes reads individually and
 
-\chapter{Model description}
+\chapter{Method}
+
 Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
-\chapter{Experimental results}
+\chapter{Results}
+
 Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
 \chapter{Conclusion and further work}
 Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
