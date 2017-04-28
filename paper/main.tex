@@ -31,14 +31,13 @@ TODO
 \end{sazetak}
 
 \begin{abstract}
-    The MinION device by Oxford Nanopore is the first portable sequencing device. MinION is able to produce very long reads (reads over 100 kBp were reported), however it suffers from high sequencing error rate. In this paper, we show novel model reducing the error rate can be reduced by improving the base calling process using gated residual convolutional neural networks (CNN) combined with Connectionist Temporal Classification (CTC) learning approach.
+    The MinION device by Oxford Nanopore is the first portable sequencing device. MinION is able to produce very long reads (reads over 100 kBp were reported), however it suffers from high sequencing error rate. In this paper, we show novel model reducing the error rate can be reduced by improving the base calling process on 1D reads using gated residual convolutional neural networks (CNN) combined with Connectionist Temporal Classification (CTC) learning approach.
 \keywords{procurement planning, dynamic lot sizing model, stochastic demands}
 \end{abstract}
 
 \chapter{Introduction}
 
-In this paper, we introduce the base caller for the MinION nanopore sequencing platform (Mikheyev and Tin, 2014).
-The MinION device by Oxford Nanopore, weighing only 90 grams, is currently the smallest high-throughput DNA sequencer. Thanks to its low capital costs, small size and the possibility of analyzing the data in real time as they are produced, MinION is very promising for clinical applications, such as monitoring infectious disease outbreaks (Judge et al., 2015; Quick et al., 2015, 2016), and characterizing structural variants in cancer (Norris et al., 2016). Although MinION is able to produce long reads, they have a high sequencing error rate. In this paper, we show that this error rate can be reduced by replacing the default base caller provided by the manufacturer with a properly trained neural network model.
+In this paper, we introduce the base caller for the MinION nanopore sequencing platform~\cite{mikheyev2014first}.The MinION device by Oxford Nanopore, weighing only 90 grams, is currently the smallest high-throughput DNA sequencer. Thanks to its low capital costs, small size and the possibility of analyzing the data in real time as they are produced, MinION is very promising for clinical applications, such as monitoring infectious disease outbreaks (Judge et al., 2015; Quick et al., 2015, 2016), and characterizing structural variants in cancer (Norris et al., 2016). Although MinION is able to produce long reads, they have a high sequencing error rate. In this paper, we show that this error rate can be reduced by replacing the default base caller provided by the manufacturer with a properly trained neural network model.
 
 In the MinION device, single-stranded DNA fragments move through nanopores, which causes drops in the electric current. The electric current is measured at each pore several thousand times per second. The electric current depends mostly on the context of several DNA bases passing through the pore at the time of measurement. As the DNA moves through the pore, the context shifts and the electric current changes.
 
