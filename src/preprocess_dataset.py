@@ -12,7 +12,7 @@ import h5py
 import pysam
 from tqdm import tqdm
 
-from bioinf_utils import reverse_complement, cigar_pairs_to_str, read_fasta
+from bioinf_utils import reverse_complement, decompress_cigar_pairs, read_fasta
 
 
 def get_target_sequences(sam_out):
@@ -40,7 +40,7 @@ def get_target_sequences(sam_out):
                 target = reverse_complement(target)
                 cigar_pairs = list(reversed(cigar_pairs))
 
-            cigar_str = cigar_pairs_to_str(cigar_pairs)
+            cigar_str = decompress_cigar_pairs(cigar_pairs, mode='ints')
             result_dict[name] = [target, ref_name, start_pos, length, cigar_str]
     return result_dict
 
@@ -192,6 +192,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     preprocess_all_ref(args.dataset_conf_path, args.split, generate_sam_graphmap)
-    
+
 
 

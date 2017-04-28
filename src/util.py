@@ -1,7 +1,7 @@
-from edlib import Edlib
+import edlib
 import h5py
 import numpy as np
-
+import bioinf_utils
 
 def next_num(prev, symbol):
     val = {
@@ -202,22 +202,21 @@ def get_basecalled_sequence(basecalled_events):
         seq.extend(add_chr)
     return ''.join(seq)
 
-
-def init_aligment_end_struct(ref_seq, called_seq, aligment_seq):
+def init_aligment_end_struct(ref_seq, called_seq, full_cigar):
     # called_seq[i] alignes up to aligned_upto[i] index in ref_seq
 
     aligned_upto = []
     ref_idx = 0
 
-    for c in aligment_seq:
-        if c == Edlib.EDLIB_EDOP_MATCH or c == Edlib.EDLIB_EDOP_MISMATCH:
+    for c in full_cigar:
+        if c in bioinf_utils.CIGAR_MATCH_MISSMATCH:
             aligned_upto.append(ref_idx)
             ref_idx += 1
 
-        elif c == Edlib.EDLIB_EDOP_INSERT:
+        elif c in bioinf_utils.CIGAR_INSERTION:
             aligned_upto.append(max(0, ref_idx - 1))
 
-        elif c == Edlib.EDLIB_EDOP_DELETE:
+        elif c in bioinf_utils.CIGAR_DELETION:
             ref_idx += 1
 
     aligned_upto.append(aligned_upto[-1])
@@ -237,11 +236,13 @@ class AligmentError(Exception):
     pass
 
 
-def extract_blocks(ref_seq, called_seq, events_len, block_size, num_blocks, skip_first=True):
-    aligner = Edlib()
-    result = aligner.align(called_seq, ref_seq)
-    aligment_seq = result.alignment
-    aligment_end = init_aligment_end_struct(ref_seq, called_seq, aligment_seq)
+def extract_blocks(ref_seq, called_seq, events_len, block_size, num_blocks, cigar=None, skip_first=True):
+    if cigar is None:
+        result = edlib.align(called_seq, ref_seq, mode="NW", task="path")
+        aligment_cigar = result['cigar']
+        cigar = bioinf_utils.decompress_cigar(aligment_cigar)
+
+    aligment_end = init_aligment_end_struct(ref_seq, called_seq, cigar)
     ref_seq = np.fromstring(ref_seq, np.int8)
 
     y = np.zeros([num_blocks * block_size], dtype=np.uint8)
@@ -317,9 +318,11 @@ def read_fast5_ref(fast5_path, ref_path, block_size, num_blocks, warn_if_short=F
                     added_bases += b[3]
                     events_len[curr_sec] += added_bases
 
-        ref_seq = ref_file.readlines()[3].strip()
+        lines = ref_file.readlines()
+        ref_seq = lines[3].strip()
+        cigar = lines[2].strip()
         called_seq = get_basecalled_sequence(basecalled_events)
-        y, y_len = extract_blocks(ref_seq, called_seq, events_len, block_size, num_blocks)
+        y, y_len = extract_blocks(ref_seq, called_seq, events_len, block_size, num_blocks, cigar)
 
         if any(y_len > block_size):
             print("Too many events in block!")

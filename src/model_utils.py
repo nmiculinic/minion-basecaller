@@ -18,12 +18,13 @@ from tflearn.summaries import add_gradients_summary, add_activations_summary
 import logging
 from tflearn.config import is_training, get_training_mode
 from slacker_log_handler import SlackerLogHandler
-from edlib import Edlib
+import edlib
 import inspect
 import json
 import importlib
 import subprocess
 
+import bioinf_utils
 
 # UGLY UGLY HACK!
 for name, logger in logging.root.manager.loggerDict.items():
@@ -573,13 +574,15 @@ class Model():
         self.logger.debug("Basecalled \n%s", basecalled)
         self.logger.debug("Target \n%s", target)
 
-        result = Edlib().align(basecalled, target)
-        self.logger.debug("Aligment %s", "".join(map(str, result.alignment)))
+        result = edlib.align(basecalled, target)
+        cigar = bioinf_utils.decompress_cigar(result['cigar'])
+
+        self.logger.debug("Aligment %s", cigar)
         self.logger.debug("Whole time %.3f", perf_counter() - t)
 
-        acc = np.sum(np.array(result.alignment) == Edlib().EDLIB_EDOP_MATCH) / len(result.alignment)
-        nedit = result.edit_distance / len(target)
-        return nedit, acc
+        error_rate, match_rate, missmatch_rate, ins_rate, del_rate = bioinf_utils.error_rates_from_cigar(cigar)
+        nedit = result["editDistance"] / len(target)
+        return nedit, match_rate
 
     def run_validation_full(self, frac, verbose=False, fasta_out_dir=None, ref=None):
         """
