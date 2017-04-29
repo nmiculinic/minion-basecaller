@@ -26,67 +26,6 @@ def read_fasta(fp):
     else:
         return rr(fp)
 
-def read_fast5(filename, block_size, num_blocks, warn_if_short=False):
-    'Read fast5 file.'
-    with h5py.File(filename, 'r') as h5:
-        reads = h5['Analyses/EventDetection_000/Reads']
-        events = np.array(reads[list(reads.keys())[0] + '/Events'])
-
-        basecalled_events = h5['/Analyses/Basecall_1D_000/BaseCalled_template/Events']
-        basecalled = np.array(basecalled_events.value[['mean', 'stdv', 'model_state', 'move', 'start', 'length']])
-
-        length = block_size * num_blocks
-        if warn_if_short and events.shape[0] < length:
-            print("WARNING...less then truncate events", filename)
-
-        # x[i] is feat values for event #i
-        x = np.zeros([length, 3], dtype=np.float32)
-        x_len = min(length, events.shape[0])
-
-        # y[2*i] and y[2*i + 1] are bases for event #i
-        y = np.zeros([length], dtype=np.uint8)
-        y_len = np.zeros([num_blocks], dtype=np.int32)
-
-        bcall_idx = 0
-        prev, curr_sec = "N", 0
-        for i, e in enumerate(events[:length]):
-            if i // block_size > curr_sec:
-                prev, curr_sec = "N", i // block_size
-
-            if bcall_idx < basecalled.shape[0]:
-                b = basecalled[bcall_idx]
-                if b[0] == e[2] and b[1] == e[3]:  # mean == mean and stdv == stdv
-                    add_chr = []
-                    if bcall_idx == 0:
-                        add_chr.extend(list(b[2].decode("ASCII")))  # initial model state
-                    bcall_idx += 1
-                    if b[3] == 1:
-                        add_chr.append(chr(b[2][-1]))
-                    if b[3] == 2:
-                        add_chr.append(chr(b[2][-2]))
-                        add_chr.append(chr(b[2][-1]))
-                    # print(add_chr)
-                    for c in add_chr:
-                        prev, sym = next_num(prev, c)
-                        y[curr_sec * block_size + y_len[curr_sec]] = sym
-                        y_len[curr_sec] += 1
-                    if y_len[curr_sec] > block_size:
-                        print("Too many events in block!")
-                        return None
-
-        x[:events.shape[0], 0] = events['length'][:length]
-        x[:events.shape[0], 1] = events['mean'][:length]
-        x[:events.shape[0], 2] = events['stdv'][:length]
-
-        # Normalizing data to 0 mean, 1 std
-        means = np.array([9.2421999, 104.08872223, 2.02581143], dtype=np.float32)
-        stds = np.array([4.38210583, 16.13312531, 1.82191491], dtype=np.float32)
-
-        x -= means
-        x /= stds
-
-    return x, x_len, y, y_len
-
 
 def read_fast5_raw(filename, block_size_x, block_size_y, num_blocks, warn_if_short=False):
     'This assumes we are in the right dir.'
@@ -97,7 +36,7 @@ def read_fast5_raw(filename, block_size_x, block_size_y, num_blocks, warn_if_sho
         start_time = events['start'][0]
         start_pad = int(start_time - h5['Raw/Reads/' + target_read].attrs['start_time'])
 
-        basecalled_events = h5['/Analyses/Basecall_1D_000/BaseCalled_template/Events']
+        basecalled_events = h5['/Analyses/Basecall_1D_RNN_000/BaseCalled_template/Events']
         basecalled = np.array(basecalled_events.value[['mean', 'stdv', 'model_state', 'move', 'start', 'length']])
 
         signal = h5['Raw/Reads/' + target_read]['Signal']
@@ -275,68 +214,6 @@ def extract_blocks(ref_seq, called_seq, events_len, block_size, num_blocks, skip
 
     return y, y_len
 
-
-def read_fast5_ref(fast5_path, ref_path, block_size, num_blocks, warn_if_short=False):
-    'Read fast5 file.'
-
-    with h5py.File(fast5_path, 'r') as h5, open(ref_path, 'r') as ref_file:
-        reads = h5['Analyses/EventDetection_000/Reads']
-        events = np.array(reads[list(reads.keys())[0] + '/Events'])
-
-        basecalled_events = h5['/Analyses/Basecall_1D_000/BaseCalled_template/Events']
-        basecalled = np.array(basecalled_events.value[['mean', 'stdv', 'model_state', 'move', 'start', 'length']])
-
-        length = block_size * num_blocks
-        if warn_if_short and events.shape[0] < length:
-            print("WARNING...less then truncate events", fast5_path)
-
-        x = np.zeros([length, 3], dtype=np.float32)
-        x_len = min(length, events.shape[0])
-
-        y = np.zeros([length], dtype=np.uint8)
-        events_len = np.zeros([num_blocks], dtype=np.int32)
-
-        bcall_idx = 0
-        prev, curr_sec = "N", 0
-
-        for i, e in enumerate(events[:length]):
-            if i // block_size > curr_sec:
-                prev, curr_sec = "N", i // block_size
-
-            if bcall_idx < basecalled.shape[0]:
-                b = basecalled[bcall_idx]
-
-                if b[0] == e[2] and b[1] == e[3]:  # mean == mean and stdv == stdv
-                    added_bases = 0
-                    if bcall_idx == 0:
-                        added_bases = 5
-                        assert len(list(b[2].decode("ASCII"))) == 5
-
-                    bcall_idx += 1
-                    assert 0 <= b[3] <= 2
-                    added_bases += b[3]
-                    events_len[curr_sec] += added_bases
-
-        ref_seq = ref_file.readlines()[3].strip()
-        called_seq = get_basecalled_sequence(basecalled_events)
-        y, y_len = extract_blocks(ref_seq, called_seq, events_len, block_size, num_blocks)
-
-        if any(y_len > block_size):
-            print("Too many events in block!")
-            return None
-
-        x[:events.shape[0], 0] = events['length'][:length]
-        x[:events.shape[0], 1] = events['mean'][:length]
-        x[:events.shape[0], 2] = events['stdv'][:length]
-
-        # Normalizing data to 0 mean, 1 std
-        means = np.array([9.2421999, 104.08872223, 2.02581143], dtype=np.float32)
-        stds = np.array([4.38210583, 16.13312531, 1.82191491], dtype=np.float32)
-
-        x -= means
-        x /= stds
-
-    return x, x_len, y, y_len
 
 def sigopt_numeric(type, name, min, max):
     return dict(
