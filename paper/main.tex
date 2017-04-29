@@ -52,7 +52,13 @@ A MinION device typically yields reads several thousand bases long; reads as lon
 \section{Sequencing overview}
 Informally, the MinION sequencer works as follows. First, DNA is sheared into fragments of 8–20 kbp and adapters are ligated to either end of the fragments. The resulting DNA fragments pass through a protein embedded in a membrane via a nanometre-sized channel (this protein is the `nanopore'). A single strand of DNA passes through the pore; the optional use of a hairpin adapter at one end of the fragment allows the two strands of DNA to serially pass through nanopore, allowing two measurements of the fragment. With hairpin it's called 2D read, which isn't topic of this paper. In here we focus only on 1D reads.
 
- In ONT terminology, the first strand going through the nanopore is the template, and the second is the complement. As a DNA strand passes through the pore it partially blocks the flow of electric current through the pore. The flow of current is sampled over time which is the observable output of the system. The central idea is that the single-stranded DNA product present in the nanopore affects the current in a way that is strong enough to enable decoding the electric signal data into a DNA sequence. This process, called basecalling, takes as input a list of current measurements, and produces as output a list of DNA bases most likely to have generated those currents.
+In ONT terminology, the first strand going through the nanopore is the template, and the second is the complement. As a DNA strand passes through the pore it partially blocks the flow of electric current through the pore. The flow of current is sampled over time which is the observable output of the system. The central idea is that the single-stranded DNA product present in the nanopore affects the current in a way that is strong enough to enable decoding the electric signal data into a DNA sequence. This process, called basecalling, takes as input a list of current measurements, and produces as output a list of DNA bases most likely to have generated those currents.
+
+The nanopore is 6 nucleoides wide, and eariler HMM based models model it as such.
+
+\section{Pore models}
+
+
 
 Official MinION basecaller is
 
