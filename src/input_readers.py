@@ -27,52 +27,38 @@ class AlignedRaw(InputReader):
     def preprocessSignal(self, signal):
         return (signal - 646.11133) / 75.673653
 
-    def read_fast5_raw_ref(self, fast5_path, ref_path, block_size_x, block_size_y, num_blocks, warn_if_short=False):
+    def read_fast5_raw_ref(self, fast5_path, ref_path, block_size_x, block_size_y, num_blocks, warn_if_short=False, verify_file=True):
         num_blocks += 1
         ref_ext = os.path.splitext(ref_path)[1]
         with h5py.File(fast5_path, 'r') as h5, open(ref_path, 'r') as ref_file:
             reads = h5['Analyses/EventDetection_000/Reads']
             target_read = list(reads.keys())[0]
-            events = np.array(reads[target_read + '/Events'])
-            start_time = events['start'][0]
-            start_pad = int(start_time - h5['Raw/Reads/' + target_read].attrs['start_time'])
+            sampling_rate = h5['UniqueGlobalKey/channel_id'].attrs['sampling_rate']
 
-            basecalled_events = h5['/Analyses/Basecall_1D_000/BaseCalled_template/Events']
-            basecalled = np.array(basecalled_events.value[['mean', 'stdv', 'model_state', 'move', 'start', 'length']])
+            try:
+                basecalled_events = h5['/Analyses/Basecall_RNN_1D_000/BaseCalled_template/Events']
+            except:
+                print(fast5_path, "Not found RNN component")
+                raise util.AligmentError()
+
+            basecalled = np.array(basecalled_events.value[['start', 'length', 'model_state', 'move']])
 
             signal = h5['Raw/Reads/' + target_read]['Signal']
-            signal_len = h5['Raw/Reads/' + target_read].attrs['duration'] - start_pad
+            start_time = basecalled[0]['start']
+            start_pad = int(sampling_rate * basecalled[0]['start'])
+            signal_len = int(sampling_rate * (basecalled[-1]['start'] + basecalled[-1]['length'] - basecalled[0]['start']))
 
-            x = np.zeros([block_size_x * num_blocks, 1], dtype=np.float32)
-            x_len = min(signal_len, block_size_x * num_blocks)
-            x[:x_len, 0] = signal[start_pad:start_pad + x_len]
+            np.testing.assert_allclose(len(signal), start_pad + signal_len, rtol=1e-2)  # Within 1% relative tolerance
 
-            np.testing.assert_allclose(len(signal), start_pad + np.sum(events['length']))
-
-            events_len = np.zeros([num_blocks], dtype=np.int32)
-
-            bcall_idx = 0
-            prev, curr_sec = "N", 0
-            for e in events:
-                if (e['start'] - start_time) // block_size_x > curr_sec:
-                    prev, curr_sec = "N", (e['start'] - start_time) // block_size_x
-                if curr_sec >= num_blocks:
-                    break
-
-                if bcall_idx < basecalled.shape[0]:
-                    b = basecalled[bcall_idx]
-
-                    if b[0] == e[2] and b[1] == e[3]:  # mean == mean and stdv == stdv
-                        added_bases = 0
-
-                        if bcall_idx == 0:
-                            added_bases = 5
-                            assert len(list(b[2].decode("ASCII"))) == 5
-
-                        bcall_idx += 1
-                        assert 0 <= b[3] <= 2
-                        added_bases += b[3]
-                        events_len[curr_sec] += added_bases
+            bucketed_basecall = [basecalled[0]['model_state'].decode("ASCII")]
+            for b in basecalled[1:]:
+                if b['move'] != 0:
+                    target_bucket = int(np.floor((b['start'] - start_time) * sampling_rate / block_size_x))
+                    # print(target_bucket)
+                    while len(bucketed_basecall) <= target_bucket:
+                        bucketed_basecall.append("")
+                    bucketed_basecall[target_bucket] += \
+                        b['model_state'][-b['move']:].decode("ASCII")
 
             if ref_ext == ".ref":
                 ref_seq = ref_file.readlines()[3].strip()
@@ -81,8 +67,13 @@ class AlignedRaw(InputReader):
             else:
                 raise ValueError("extension not recognized %s" % ref_ext)
 
-            called_seq = util.get_basecalled_sequence(basecalled_events)
-            y, y_len = util.extract_blocks(ref_seq, called_seq, events_len, block_size_y, num_blocks)
+            print(bucketed_basecall)
+            basecalled = util.correct_basecalled(bucketed_basecall, ref_seq, nedit_tol=0.9)
+            print(basecalled)
+
+            x = np.zeros([block_size_x * num_blocks, 1], dtype=np.float32)
+            x_len = min(signal_len, block_size_x * num_blocks)
+            x[:x_len, 0] = signal[start_pad:start_pad + x_len]
 
             y_len = y_len[1:]
             y = y[block_size_y:]
@@ -174,3 +165,8 @@ def get_feed_yield_abs(logger, feed_fn, batch_size, file_list, root_dir=None, **
 def proc_wrapper(q, fun, *args):
     for feed in fun(*args):
         q.put(feed)
+
+
+if __name__ == '__main__':
+    inp = AlignedRaw()
+    inp.read_fast5_raw_ref("/home/lpp/Downloads/minion/pass/95274_ch178_read751_strand.fast5", "/home/lpp/Downloads/minion/ref/95274_ch178_read751_strand.ref", 2000, 500, 1)
