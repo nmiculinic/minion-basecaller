@@ -56,13 +56,13 @@ In ONT terminology, the first strand going through the nanopore is the template,
 
 The nanopore is 6 nucleoides wide, and eariler HMM based models model it as such.
 
-\section{Pore models}
+\section{Basecalling}
 
+The core of the decoding process is the basecalling step. Official basecaller is Metrichor, previously perfomed in the cloud before being opensourced under name Nanonet.
 
+Earlier models were (Hidden markov model) HMM based where hidden state modeled DNA sequence of length 6 (6-mer) in the nanopore. Pore models were used in computing emission probabilities.~\cite{loman2015complete,schreiber2015analysis,szalay2015novo,timp2012dna} and the recest open source HMM based basecaller Nanocall~\cite{david2016nanocall}.
 
-Official MinION basecaller is
-
-Note that neural networks were previously used for base calling Sanger sequencing reads (Tibbetts et al., 1994; Mohammed et al., 2013), though the nature of MinION data is rather different. Several tools for processing nanopore sequencing data were already published, including read mappers (Jain et al., 2015; Sovic et al., 2015), and error correction tools using short Illumina reads (Goodwin et al., 2015). Most closes related to our work are Nanopolish (Loman et al., 2015b) and PoreSeq (Szalay and Golovchenko, 2015). Both of these tools create a consensus sequence by combining information from multiple overlapping reads, considering not only the final base calls from Metrichor, but also the sequence of events. They analyze the events by hidden Markov models with emission probabilities provided by Metrichor. In contrast, our base caller does not require read overlaps, it processes reads individually and
+Recent models opted using (Recurrent neural network) RNN, notably DeepNano~\cite{deepnano} and recently open sourced official Nanonets from ONT.
 
 \chapter{Method}
 
