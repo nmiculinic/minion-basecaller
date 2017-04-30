@@ -23,6 +23,7 @@ import inspect
 import json
 import importlib
 import subprocess
+from collections import defaultdict
 
 # UGLY UGLY HACK!
 for name, logger in logging.root.manager.loggerDict.items():
@@ -556,7 +557,6 @@ class Model():
         for var, val in zip(vars, vals):
             print(var.op.name, val.ravel()[:5])
 
-
     def get_aligement(self, fast5_path, ref_path, verbose, fasta_out_dir=None, ref=None):
         t = perf_counter()
         fasta_out = None
@@ -577,16 +577,15 @@ class Model():
         self.logger.debug("extCigar %s", result['cigar'])
         self.logger.debug("Whole time %.3f", perf_counter() - t)
 
+        cigar_stat = defaultdict(int)
         total = 0
-        match = 0
         for num, op in breakCigar(result['cigar']):
             total += num
-            if op == "=":
-                match += num
+            cigar_stat[op] += num
 
-        acc = match / total
+        acc = cigar_stat['='] / total
         nedit = result['editDistance'] / len(target)
-        return nedit, acc
+        return nedit, acc, len(basecalled), cigar_stat
 
     def run_validation_full(self, frac, verbose=False, fasta_out_dir=None, ref=None):
         """
@@ -609,11 +608,14 @@ class Model():
         acc = np.zeros(fnames.shape, dtype=np.float32)
         n = len(acc)
         total_time = 0.0
+        total_bases_read = 0
+        cigar_stat = defaultdict(int)
+
         with self.g.as_default():
             is_training(False, session=self.sess)
             for i, fname in enumerate(fnames):
                 t = perf_counter()
-                nedit[i], acc[i] = self.get_aligement(
+                nedit[i], acc[i], read_len, cigar_read_stat = self.get_aligement(
                     os.path.join(
                         input_readers.root_dir_default,
                         'pass',
@@ -624,18 +626,28 @@ class Model():
                         fname + ".ref"
                     ), verbose=verbose, fasta_out_dir=fasta_out_dir, ref=ref)
                 total_time += perf_counter() - t
+                total_bases_read += read_len
+                for k in ['=', 'X', 'I', 'D']:
+                    cigar_stat[k] += cigar_read_stat[k]
+
                 mu_edit, mu_acc = np.mean(nedit[:i + 1]), np.mean(acc[:i + 1])
                 std_edit, std_acc = np.std(nedit[:i + 1]), np.std(acc[:i + 1])
                 se_edit, se_acc = std_edit / np.sqrt(i + 1), std_acc / np.sqrt(i + 1)
                 if i % 5 == 0 or i < 5:
-                    print("\r%4d/%d avg edit %.4f s %.4f CI <%.4f, %.4f> avg_acc %.4f s %.4f CI <%.4f, %.4f> tps %.3f" % (i + 1, n, mu_edit, std_edit, mu_edit - 2*se_edit, mu_edit + 2*se_edit, mu_acc, std_acc, mu_acc - 2*se_acc, mu_acc + 2*se_acc, total_time/(i + 1)), end='')
+                    print("\r%4d/%d avg edit %.4f s %.4f CI <%.4f, %.4f> avg_acc %.4f s %.4f CI <%.4f, %.4f> %.3f sample/s" % (i + 1, n, mu_edit, std_edit, mu_edit - 2*se_edit, mu_edit + 2*se_edit, mu_acc, std_acc, mu_acc - 2*se_acc, mu_acc + 2*se_acc, (i + 1)/total_time), end='')
 
         mu_edit, mu_acc = np.mean(nedit), np.mean(acc)
         std_edit, std_acc = np.std(nedit), np.std(acc)
         se_edit, se_acc = std_edit / np.sqrt(i + 1), std_acc / np.sqrt(i + 1)
 
-        self.logger.info("step: %d [samples %d] avg edit %.4f s %.4f CI <%.4f, %.4f> avg_acc %.4f s %.4f CI <%.4f, %.4f> tps %.3f", self.get_global_step(), n, mu_edit, std_edit, mu_edit - 2*se_edit, mu_edit + 2*se_edit, mu_acc, std_acc, mu_acc - 2*se_acc, mu_acc + 2*se_acc, total_time/n)
+        self.logger.info("step: %d [samples %d] avg edit %.4f s %.4f CI <%.4f, %.4f> avg_acc %.4f s %.4f CI <%.4f, %.4f> %.3f samples/s", self.get_global_step(), n, mu_edit, std_edit, mu_edit - 2*se_edit, mu_edit + 2*se_edit, mu_acc, std_acc, mu_acc - 2*se_acc, mu_acc + 2*se_acc, n/total_time)
 
+        total_cigar_elements = np.sum(list(cigar_stat.values()))
+        for k in ['=', 'X', 'I', 'D']:
+            self.logger.info("Step %d; %s %.2f%%", self.get_global_step(), k, 100 * cigar_stat[k] / total_cigar_elements)
+        self.logger.info("Speed = %.3f bases per second", total_bases_read/total_time)
+
+        # TODO fix this stuff
         if ref is not None and fasta_out_dir is not None:
             if error_rates_lookup is None:
                 self.logger.error("Cannot find errorrates.py")
