@@ -19,28 +19,26 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
     """
 
     print("model in", net.get_shape())
-    for block in range(1, 1 + 1):
-        with tf.variable_scope("block%d" % block):
-            for layer in range(1, 1 + 1):
-                with tf.variable_scope('layer_%d' % layer):
-                    res = net
-                    for sublayer in [1, 2]:
-                        res = batch_normalization(
-                            res, scope='bn_%d' % sublayer)
-                        res = tf.nn.relu(res)
-                        res = conv_1d(
-                            res,
-                            64,
-                            3,
-                            scope="conv_1d_%d" % sublayer,
-                            weights_init=variance_scaling_initializer(
-                                dtype=dtype)
-                        )
-                    k = tf.get_variable(
-                        "k", initializer=tf.constant_initializer(1.0), shape=[])
-                    net = tf.nn.relu(k) * res + net
-            net = max_pool_1d(net, 2)
-        net = tf.nn.relu(net)
+    for layer in range(1, 1 + 1):
+        with tf.variable_scope('layer_%d' % layer):
+            res = net
+            for sublayer in [1, 2]:
+                res = batch_normalization(
+                    res, scope='bn_%d' % sublayer)
+                res = tf.nn.relu(res)
+                res = conv_1d(
+                    res,
+                    64,
+                    3,
+                    scope="conv_1d_%d" % sublayer,
+                    weights_init=variance_scaling_initializer(
+                        dtype=dtype)
+                )
+            k = tf.get_variable(
+                "k", initializer=tf.constant_initializer(1.0), shape=[])
+            net = tf.nn.relu(k) * res + net
+    net = max_pool_1d(net, 8)
+    net = tf.nn.relu(net)
 
     net = central_cut(net, block_size, 8)
     print("after slice", net.get_shape())
@@ -62,7 +60,7 @@ def create_train_model(hyper, **kwargs):
         block_size_x=8 * 3 * 50 // 2,
         block_size_y=80,
         num_blocks=1,
-        batch_size=32,
+        batch_size=4,
         max_reach=8 * 20,  # 160
         queue_cap=300,
         overwrite=False,
