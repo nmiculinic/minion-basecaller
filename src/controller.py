@@ -20,6 +20,7 @@ def control(context):
     if len(sys.argv) <= 1:
         print("too few arguments!")
         print(usage)
+        sys.exit(1)
     task = sys.argv[1]
     del sys.argv[1]
     if task == "train":
@@ -31,6 +32,7 @@ def control(context):
     else:
         print("Unknown task type, {}".format(task))
         print(usage)
+        sys.exit(2)
 
 
 def eval_model():
