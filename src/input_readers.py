@@ -47,7 +47,6 @@ class AlignedRaw(InputReader):
 
         basecalled_events['start'] -= events['Events'][0]['start'] / sampling_rate
         basecalled_events['start'] += (event_start_time - raw_start_time) / sampling_rate
-        print(basecalled_events)
         return (
             basecalled_events,
             h5['/Analyses/Basecall_1D_000/BaseCalled_template/Fastq'][()].decode().split('\n')
