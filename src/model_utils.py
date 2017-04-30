@@ -2,7 +2,7 @@ import numpy as np
 import util
 import socket
 import tensorflow as tf
-from util import decode_example, decode_sparse
+from util import decode_example, decode_sparse, breakCigar
 from ops import dense2d_to_sparse
 import input_readers
 import multiprocessing
@@ -23,7 +23,6 @@ import inspect
 import json
 import importlib
 import subprocess
-
 
 # UGLY UGLY HACK!
 for name, logger in logging.root.manager.loggerDict.items():
@@ -574,12 +573,19 @@ class Model():
         self.logger.debug("Basecalled \n%s", basecalled)
         self.logger.debug("Target \n%s", target)
 
-        result = Edlib().align(basecalled, target)
-        self.logger.debug("Aligment %s", "".join(map(str, result.alignment)))
+        result = edlib.align(basecalled, target, task='path')
+        self.logger.debug("extCigar %s", result['cigar'])
         self.logger.debug("Whole time %.3f", perf_counter() - t)
 
-        acc = np.sum(np.array(result.alignment) == Edlib().EDLIB_EDOP_MATCH) / len(result.alignment)
-        nedit = result.edit_distance / len(target)
+        total = 0
+        match = 0
+        for num, op in breakCigar(result['cigar']):
+            total += num
+            if op == "=":
+                match += num
+
+        acc = match / total
+        nedit = result['editDistance'] / len(target)
         return nedit, acc
 
     def run_validation_full(self, frac, verbose=False, fasta_out_dir=None, ref=None):
