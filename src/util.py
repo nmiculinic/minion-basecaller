@@ -1,8 +1,8 @@
 import edlib
-import h5py
 import numpy as np
 import re
 import unittest
+from errors import TooLargeEditDistance, BlockSizeYTooSmall
 
 
 def next_num(prev, symbol):
@@ -65,10 +65,6 @@ def decode_example(Y, Y_len, num_blocks, block_size_y, pad=None):
     return list(map(lambda x: x.ljust(pad, ' '), gg))
 
 
-class AligmentError(Exception):
-    pass
-
-
 def correct_basecalled(bucketed_basecall, reference, nedit_tol=0.2):
     basecalled = "".join(bucketed_basecall)
     origin = np.zeros(len(basecalled), dtype=np.int32)
@@ -80,7 +76,7 @@ def correct_basecalled(bucketed_basecall, reference, nedit_tol=0.2):
     result_set = edlib.align(basecalled, reference, task="path")
     nedit = result_set['editDistance'] / len(reference)
     if nedit > nedit_tol:
-        raise RuntimeWarning("Normalized edit distance is large...%.3f" % nedit)
+        raise TooLargeEditDistance("Normalized edit distance is large...%.3f" % nedit)
 
     result = ["" for _ in bucketed_basecall]
     idx_ref = 0
@@ -102,6 +98,23 @@ def correct_basecalled(bucketed_basecall, reference, nedit_tol=0.2):
                 idx_ref += 1
     assert "".join(result) == reference
     return result
+
+
+def prepare_y(bucketed_basecall, block_size_y):
+    num_blocks = len(bucketed_basecall)
+    y = np.zeros([num_blocks * block_size_y], dtype=np.uint8)
+    y_len = np.zeros([num_blocks], dtype=np.int32)
+
+    prev = "N"
+    for i, seq in enumerate(bucketed_basecall):
+        y_len[i] = len(seq)
+        if y_len[i] > block_size_y:
+            raise BlockSizeYTooSmall("On block {}, got {}".format(i, y_len[i]))
+
+        for j, c in enumerate(seq):
+            prev, y[i * block_size_y + j] = next_num(prev, c)
+
+    return y, y_len
 
 
 class TestCorrectedBasecalled(unittest.TestCase):
@@ -135,23 +148,6 @@ def sigopt_int(name, min, max):
 
 def sigopt_double(name, min, max):
     return sigopt_numeric('double', name, min, max)
-
-
-def get_raw_signal(fast5_path):
-    """
-        Return 1D raw signal from fast5_path. No preprocessing
-    """
-    with h5py.File(fast5_path, 'r') as h5:
-        reads = h5['Analyses/EventDetection_000/Reads']
-        target_read = list(reads.keys())[0]
-        events = np.array(reads[target_read + '/Events'])
-        start_time = events['start'][0]
-        start_pad = int(start_time - h5['Raw/Reads/' + target_read].attrs['start_time'])
-
-        signal = h5['Raw/Reads/' + target_read]['Signal'][start_pad:].astype(np.float32)
-        signal_len = h5['Raw/Reads/' + target_read].attrs['duration'] - start_pad
-        assert(len(signal) == signal_len)
-        return signal
 
 
 if __name__ == '__main__':

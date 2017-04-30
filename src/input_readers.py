@@ -1,8 +1,7 @@
 import os
 import socket
 from random import shuffle
-from scipy.signal import medfilt
-
+from errors import MissingRNN1DBasecall, InsufficientDataBlocks, MinIONBasecallerException
 import numpy as np
 import util
 import h5py
@@ -27,10 +26,8 @@ class AlignedRaw(InputReader):
     def preprocessSignal(self, signal):
         return (signal - 646.11133) / 75.673653
 
-    def read_fast5_raw_ref(self, fast5_path, ref_path, block_size_x, block_size_y, num_blocks, warn_if_short=False, verify_file=True):
-        num_blocks += 1
-        ref_ext = os.path.splitext(ref_path)[1]
-        with h5py.File(fast5_path, 'r') as h5, open(ref_path, 'r') as ref_file:
+    def read_fast5(self, fast5_path):
+        with h5py.File(fast5_path, 'r') as h5:
             reads = h5['Analyses/EventDetection_000/Reads']
             target_read = list(reads.keys())[0]
             sampling_rate = h5['UniqueGlobalKey/channel_id'].attrs['sampling_rate']
@@ -38,8 +35,7 @@ class AlignedRaw(InputReader):
             try:
                 basecalled_events = h5['/Analyses/Basecall_RNN_1D_000/BaseCalled_template/Events']
             except:
-                print(fast5_path, "Not found RNN component")
-                raise util.AligmentError()
+                MissingRNN1DBasecall("{} Not found RNN component".format(fast5_path))
 
             basecalled = np.array(basecalled_events.value[['start', 'length', 'model_state', 'move']])
 
@@ -50,15 +46,40 @@ class AlignedRaw(InputReader):
 
             np.testing.assert_allclose(len(signal), start_pad + signal_len, rtol=1e-2)  # Within 1% relative tolerance
 
+            basecalled['start'] -= start_time
+            signal = signal[start_pad:start_pad + signal_len]
+            signal = self.preprocessSignal(signal)
+            fastq = h5['/Analyses/Basecall_RNN_1D_000/BaseCalled_template/Fastq'][()].decode().split('\n')
+
+            return {
+                'signal': signal,
+                'basecalled': basecalled,
+                'sampling_rate': sampling_rate,
+                'fastq': fastq
+            }
+
+    def read_fast5_raw_ref(self, fast5_path, ref_path, block_size_x, block_size_y, num_blocks, verify_file=True):
+        # num_blocks += 1
+        ref_ext = os.path.splitext(ref_path)[1]
+        with open(ref_path, 'r') as ref_file:
+            fast5 = self.read_fast5(fast5_path)
+
+            signal = fast5['signal']
+            basecalled = fast5['basecalled']
+            sampling_rate = fast5['sampling_rate']
+            fastq = fast5['fastq']
+
             bucketed_basecall = [basecalled[0]['model_state'].decode("ASCII")]
             for b in basecalled[1:]:
                 if b['move'] != 0:
-                    target_bucket = int(np.floor((b['start'] - start_time) * sampling_rate / block_size_x))
-                    # print(target_bucket)
+                    target_bucket = int(np.floor(b['start'] * sampling_rate / block_size_x))
                     while len(bucketed_basecall) <= target_bucket:
                         bucketed_basecall.append("")
                     bucketed_basecall[target_bucket] += \
                         b['model_state'][-b['move']:].decode("ASCII")
+
+            if len(bucketed_basecall) < num_blocks + 2:
+                raise InsufficientDataBlocks("Has only {} blocks, while requesting {} + first and last".format(len(bucketed_basecall), num_blocks))
 
             if ref_ext == ".ref":
                 ref_seq = ref_file.readlines()[3].strip()
@@ -67,31 +88,31 @@ class AlignedRaw(InputReader):
             else:
                 raise ValueError("extension not recognized %s" % ref_ext)
 
-            print(bucketed_basecall)
-            basecalled = util.correct_basecalled(bucketed_basecall, ref_seq, nedit_tol=0.9)
-            print(basecalled)
+            # Sanity check, correctly basecalled files
+            np.testing.assert_string_equal("".join(bucketed_basecall), fastq[1])
+            corrected_basecalled = util.correct_basecalled(bucketed_basecall, ref_seq, nedit_tol=0.5)
+            # Another sanity check
+            np.testing.assert_string_equal("".join(corrected_basecalled), ref_seq)
+            print(np.array(corrected_basecalled))
 
             x = np.zeros([block_size_x * num_blocks, 1], dtype=np.float32)
-            x_len = min(signal_len, block_size_x * num_blocks)
-            x[:x_len, 0] = signal[start_pad:start_pad + x_len]
+            x_len = min(len(signal), block_size_x * num_blocks)
 
-            y_len = y_len[1:]
-            y = y[block_size_y:]
-            if any(y_len > block_size_y):
-                raise util.AligmentError()
+            # Skipping first block
+            x[:x_len, 0] = signal[block_size_x:block_size_x + x_len]
+            y, y_len = util.prepare_y(corrected_basecalled[1:1 + num_blocks], block_size_y)
 
-        x = self.preprocessSignal(x)
-        return x[block_size_x:], max(0, x_len - block_size_x), y, y_len
+        return x, x_len, y, y_len
 
     def input_fn(self):
-        def fn(logger, block_size_x, block_size_y, num_blocks, file_list, batch_size=10, warn_if_short=False,
+        def fn(logger, block_size_x, block_size_y, num_blocks, file_list, batch_size=10,
                root_dir=None):
             def load_f(fast5_path, ref_path):
                 return self.read_fast5_raw_ref(fast5_path, ref_path,
                                                block_size_x=block_size_x,
                                                block_size_y=block_size_y,
                                                num_blocks=num_blocks,
-                                               warn_if_short=warn_if_short)
+                                               )
 
             return get_feed_yield_abs(logger, load_f, batch_size=batch_size, file_list=file_list, root_dir=root_dir)
         return fn
@@ -102,14 +123,8 @@ class AlignedRaw(InputReader):
     in_dim = 1
 
     def get_signal(self, fast5_path):
-        signal = util.get_raw_signal(fast5_path)
-        signal = self.preprocessSignal(signal)
+        signal = self.read_fast5(fast5_path)['signal']
         return signal.reshape(1, -1, 1)
-
-
-class RollingMedianAlignedRaw(AlignedRaw):
-    def preprocessSignal(self, signal):
-        return super().preprocessSignal(medfilt(signal, kernel_size=5))
 
 
 def sanitize_input_line(fname):
@@ -148,7 +163,7 @@ def get_feed_yield_abs(logger, feed_fn, batch_size, file_list, root_dir=None, **
 
                     for a, b in zip(arrs, sol):
                         a.append(b)
-                except Exception as ex:
+                except MinIONBasecallerException as ex:
                     if not isinstance(ex, util.AligmentError):
                         logger.error('in filename %s \n' % fname, exc_info=True)
                     other_error += 1
@@ -169,4 +184,7 @@ def proc_wrapper(q, fun, *args):
 
 if __name__ == '__main__':
     inp = AlignedRaw()
-    inp.read_fast5_raw_ref("/home/lpp/Downloads/minion/pass/95274_ch178_read751_strand.fast5", "/home/lpp/Downloads/minion/ref/95274_ch178_read751_strand.ref", 2000, 500, 1)
+    x, x_len, y, y_len = inp.read_fast5_raw_ref("/home/lpp/Downloads/minion/pass/95274_ch178_read751_strand.fast5", "/home/lpp/Downloads/minion/ref/95274_ch178_read751_strand.ref", 200, 25, 5)
+
+    print(y[:25*5].reshape(5,25))
+    print(y_len[:5])
