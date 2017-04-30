@@ -65,6 +65,11 @@ def decode_example(Y, Y_len, num_blocks, block_size_y, pad=None):
     return list(map(lambda x: x.ljust(pad, ' '), gg))
 
 
+def breakCigar(cigar):
+    r = re.compile(r"\d+[ID=X]")
+    return map(lambda g: (int(g[:-1]), g[-1]), r.findall(cigar))
+
+
 def correct_basecalled(bucketed_basecall, reference, nedit_tol=0.2):
     basecalled = "".join(bucketed_basecall)
     origin = np.zeros(len(basecalled), dtype=np.int32)
@@ -82,10 +87,7 @@ def correct_basecalled(bucketed_basecall, reference, nedit_tol=0.2):
     idx_ref = 0
     idx_bcalled = 0
 
-    r = re.compile(r"\d+[ID=X]")
-    for g in r.findall(result_set['cigar']):
-        num = int(g[:-1])
-        op = g[-1]
+    for num, op in breakCigar(result_set['cigar']):
         for _ in range(num):
             if op == "=" or op == "X":
                 result[origin[idx_bcalled]] += reference[idx_ref]
