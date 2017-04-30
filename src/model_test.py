@@ -1,13 +1,12 @@
 import tensorflow as tf
 from tflearn.layers.conv import max_pool_1d, conv_1d
-import os
-import tflearn
 from tflearn.layers.normalization import batch_normalization
 from dotenv import load_dotenv, find_dotenv
 from tflearn.initializations import variance_scaling_initializer
-from train import sigopt_runner
 from ops import central_cut
 from util import sigopt_double
+from model_utils import Model
+from controller import control
 load_dotenv(find_dotenv())
 
 
@@ -20,7 +19,7 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
     """
 
     print("model in", net.get_shape())
-    for block in range(1, 4):
+    for block in range(1, 1 + 1):
         with tf.variable_scope("block%d" % block):
             for layer in range(1, 1 + 1):
                 with tf.variable_scope('layer_%d' % layer):
@@ -56,9 +55,9 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
     }
 
 
-def model_setup_params(hyper):
+def create_train_model(hyper, **kwargs):
     print("Requesting %s hyperparams" % __file__)
-    return dict(
+    model_setup = dict(
         g=tf.Graph(),
         block_size_x=8 * 3 * 50 // 2,
         block_size_y=80,
@@ -75,9 +74,15 @@ def model_setup_params(hyper):
             hyper['initial_lr'], global_step, 100000, hyper['decay_factor']),
         hyper=hyper,
     )
+    model_setup.update(kwargs)
+    return Model(**model_setup)
 
 
-params = [
+def create_test_model(**kwargs):
+    create_train_model(default_params, **kwargs)
+
+
+sigopt_params = [
     sigopt_double('initial_lr', 1e-5, 1e-3),
     sigopt_double('decay_factor', 1e-3, 0.5),
 ]
@@ -87,6 +92,7 @@ default_params = {
     'decay_factor': 0.1,
 }
 
+default_name = "Test_model"
 
 if __name__ == "__main__":
-    sigopt_runner(__file__[:-3].split('/')[-1])
+    control(globals())

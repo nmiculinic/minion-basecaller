@@ -18,7 +18,7 @@ from tflearn.summaries import add_gradients_summary, add_activations_summary
 import logging
 from tflearn.config import is_training, get_training_mode
 from slacker_log_handler import SlackerLogHandler
-from edlib import Edlib
+import edlib
 import inspect
 import json
 import importlib
@@ -45,6 +45,7 @@ error_rates = None
 for path in error_rates_lookup:
     if os.path.isfile(path):
         error_rates = path
+
 
 def default_lr_fn(global_step):
     return tf.train.exponential_decay(1e-3, global_step, 100000, 0.01)
