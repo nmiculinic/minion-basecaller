@@ -16,3 +16,7 @@ class BlockSizeYTooSmall(MinIONBasecallerException):
 
 class InsufficientDataBlocks(MinIONBasecallerException):
     pass
+
+
+class ZeroLenY(MinIONBasecallerException):
+    pass

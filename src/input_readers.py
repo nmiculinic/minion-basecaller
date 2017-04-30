@@ -5,6 +5,7 @@ from errors import MissingRNN1DBasecall, InsufficientDataBlocks, MinIONBasecalle
 import numpy as np
 import util
 import h5py
+from collections import defaultdict
 
 root_dir_map = {
     'karla': '/hgst8TB/fjurisic/ecoli',
@@ -93,7 +94,6 @@ class AlignedRaw(InputReader):
             corrected_basecalled = util.correct_basecalled(bucketed_basecall, ref_seq, nedit_tol=0.5)
             # Another sanity check
             np.testing.assert_string_equal("".join(corrected_basecalled), ref_seq)
-            print(np.array(corrected_basecalled))
 
             x = np.zeros([block_size_x * num_blocks, 1], dtype=np.float32)
             x_len = min(len(signal), block_size_x * num_blocks)
@@ -101,8 +101,7 @@ class AlignedRaw(InputReader):
             # Skipping first block
             x[:x_len, 0] = signal[block_size_x:block_size_x + x_len]
             y, y_len = util.prepare_y(corrected_basecalled[1:1 + num_blocks], block_size_y)
-
-        return x, x_len, y, y_len
+            return x, x_len, y, y_len
 
     def input_fn(self):
         def fn(logger, block_size_x, block_size_y, num_blocks, file_list, batch_size=10,
@@ -139,9 +138,8 @@ def get_feed_yield_abs(logger, feed_fn, batch_size, file_list, root_dir=None, **
         items = items = list(map(sanitize_input_line, f.readlines()))
     names = ["X", "X_len", "Y", "Y_len"]
 
-    err_short = 0
     total = 0
-    other_error = 0
+    errors = defaultdict(int)
 
     while True:
         shuffle(items)
@@ -155,26 +153,26 @@ def get_feed_yield_abs(logger, feed_fn, batch_size, file_list, root_dir=None, **
 
                 try:
                     sol = feed_fn(fast5_path, ref_path)
-                    if np.any(sol[3] == 0):
-                        err_short += 1
-                        continue
-
                     np.testing.assert_array_less(0, sol[3], err_msg='y_len must be > 0')
 
                     for a, b in zip(arrs, sol):
                         a.append(b)
                 except MinIONBasecallerException as ex:
-                    if not isinstance(ex, util.AligmentError):
-                        logger.error('in filename %s \n' % fname, exc_info=True)
-                    other_error += 1
-                    continue
+                    errors[type(ex).__name__] += 1
+                except Exception as ex:
+                    errors[type(ex).__name__] += 1
+                    logger.error('in filename %s \n' % fname, exc_info=True)
 
                 yield {
                     name + "_enqueue_val": np.array(arr) for name, arr in zip(names, arrs)
                 }
 
                 if total % 10000 == 0 or total in [10, 100, 200, 1000]:
-                    logger.info("read %d datapoints. err_short_rate %.3f other %.3f ", total, err_short / total, other_error / total)
+                    logger.info(
+                        "read %d datapoints: %s",
+                        total,
+                        "".join(["{}: {:.2%}".format(key, errors[key] / total) for key in sorted(errors.keys())])
+                    )
 
 
 def proc_wrapper(q, fun, *args):

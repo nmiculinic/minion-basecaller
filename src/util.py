@@ -2,7 +2,7 @@ import edlib
 import numpy as np
 import re
 import unittest
-from errors import TooLargeEditDistance, BlockSizeYTooSmall
+from errors import TooLargeEditDistance, BlockSizeYTooSmall, ZeroLenY
 
 
 def next_num(prev, symbol):
@@ -110,6 +110,9 @@ def prepare_y(bucketed_basecall, block_size_y):
         y_len[i] = len(seq)
         if y_len[i] > block_size_y:
             raise BlockSizeYTooSmall("On block {}, got {}".format(i, y_len[i]))
+
+        if y_len[i] == 0:
+            raise ZeroLenY()
 
         for j, c in enumerate(seq):
             prev, y[i * block_size_y + j] = next_num(prev, c)
