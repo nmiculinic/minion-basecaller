@@ -1,0 +1,18 @@
+#!/usr/bin/python3
+
+help_txt="""
+This script is responsible for preparing the basecalled dataset. It expects to be given fast5 filled folder input, reference string, and alignment .sam
+
+It should work whether reference sequence is circular or not.
+
+Usage:
+    prepare_dataset fast5_folder reference.fa alignment.sam output_dir
+
+For example let's say we have following folder:
+
+fast5 = {a.fast5, b.fast5}
+
+prepare_dataset fast5 ref.fa alignment.fa out
+
+gives us out={a.ref, b.ref}
+"""
