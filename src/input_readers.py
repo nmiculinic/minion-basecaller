@@ -64,7 +64,7 @@ class AlignedRaw(InputReader):
             start_pad = int(sampling_rate * basecalled[0]['start'])
             signal_len = int(sampling_rate * (basecalled[-1]['start'] + basecalled[-1]['length'] - basecalled[0]['start']))
 
-            np.testing.assert_allclose(len(signal), start_pad + signal_len, rtol=1e-2)  # Within 1% relative tolerance
+            np.testing.assert_allclose(len(signal), start_pad + signal_len, rtol=1e-2)  # Within 1% relative tolerance, TODO check for HMM and RNN discrepancy
 
             basecalled['start'] -= start_time
             signal = signal[start_pad:start_pad + signal_len]
@@ -78,7 +78,6 @@ class AlignedRaw(InputReader):
             }
 
     def read_fast5_raw_ref(self, fast5_path, ref_path, block_size_x, block_size_y, num_blocks, verify_file=True):
-        # num_blocks += 1
         ref_ext = os.path.splitext(ref_path)[1]
         with open(ref_path, 'r') as ref_file:
             fast5 = self.read_fast5(fast5_path)
@@ -157,6 +156,8 @@ class AlignedRaw(InputReader):
                     )
                     np.testing.assert_array_less(0, sol[3], err_msg='y_len must be > 0')
 
+                except KeyboardInterrupt:
+                    raise
                 except MinIONBasecallerException as ex:
                     errors[type(ex).__name__] += 1
                 except Exception as ex:

@@ -34,10 +34,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# --build-arg tf=tensorflow for CPU only tensorflow
-RUN pip3 --no-cache-dir install tensorflow-gpu git+https://github.com/tflearn/tflearn.git Pillow h5py python-dotenv sigopt git+https://github.com/nmiculinic/edlib-python.git slacker-log-handler dill
-
+RUN pip3 --no-cache-dir install git+https://github.com/tflearn/tflearn.git Pillow h5py python-dotenv sigopt edlib slacker-log-handler
 RUN pip --no-cache-dir install -U matplotlib
+RUN pip3 --no-cache-dir install tensorflow-gpu==1.0.0
 
 WORKDIR /opt
 ENV TENSORFLOW_SRC_PATH=/opt/tensorflow
@@ -49,8 +48,6 @@ RUN git clone https://github.com/nmiculinic/warp-ctc.git warp-ctc
 RUN git clone https://github.com/isovic/graphmap.git graphmap --recursive
 RUN git clone https://github.com/isovic/samscripts.git samscripts
 
-WORKDIR /opt/graphmap
-RUN make && make install
 
 WORKDIR /opt/warp-ctc
 RUN mkdir build
@@ -62,6 +59,10 @@ RUN python3 setup.py install
 # For CUDA profiling, TensorFlow requires CUPTI.
 ENV LD_LIBRARY_PATH /opt/warp-ctc/build:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
 
+WORKDIR /opt/graphmap
+RUN make && make install
+
+WORKDIR /
 RUN mkdir /code
 RUN mkdir /data
 WORKDIR /code
