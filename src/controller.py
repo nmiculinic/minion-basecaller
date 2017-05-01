@@ -8,6 +8,7 @@ from time import monotonic
 import json
 import input_readers
 import util
+from time import perf_counter
 load_dotenv(find_dotenv())
 
 usage = """
@@ -91,13 +92,24 @@ def basecall(create_test_model, **kwargs):
         model.restore(checkpoint=args.checkpoint)
         if args.out_dir is not None:
             os.makedirs(args.out_dir, exist_ok=True)
+        total_time = 0
+        total_bases = 0
         for f in file_list:
+
             if args.out_dir is not None:
                 out = os.path.splitext(f)[0].split('/')[-1] + ".fasta"
                 out = os.path.join(args.out_dir, out)
             else:
                 out = None
-            util.dump_fasta(os.path.splitext(f)[0].split(os.sep)[-1], model.basecall_sample(f, fasta_out=out), sys.stdout)
+            t0 = perf_counter()
+            basecalled = model.basecall_sample(f, fasta_out=out)
+            total_time += perf_counter() - t0
+            total_bases += len(basecalled)
+            print("Speed %.3f bps" % (total_bases / total_time), file=sys.stderr)
+
+            if out is None:
+                util.dump_fasta(os.path.splitext(f)[0].split(os.sep)[-1], basecalled, sys.stdout)
+
     finally:
         model.close_session()
 
