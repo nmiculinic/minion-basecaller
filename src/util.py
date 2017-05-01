@@ -72,9 +72,11 @@ def decode_example(Y, Y_len, num_blocks, block_size_y, pad=None):
     return list(map(lambda x: x.ljust(pad, ' '), gg))
 
 
+cigar_re = re.compile(r"\d+[ID=X]")
+
+
 def breakCigar(cigar):
-    r = re.compile(r"\d+[ID=X]")
-    return map(lambda g: (int(g[:-1]), g[-1]), r.findall(cigar))
+    return map(lambda g: (int(g[:-1]), g[-1]), cigar_re.findall(cigar))
 
 
 def correct_basecalled(bucketed_basecall, reference, nedit_tol=0.2):
