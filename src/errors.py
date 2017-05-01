@@ -20,3 +20,7 @@ class InsufficientDataBlocks(MinIONBasecallerException):
 
 class ZeroLenY(MinIONBasecallerException):
     pass
+
+
+class RefFileNotFound(MinIONBasecallerException):
+    pass

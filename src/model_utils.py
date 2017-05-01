@@ -771,8 +771,8 @@ class Model():
         def data_thread_fn(enqueue_op, file_list):
             return __queue_feeder_thread(
                 enqueue_op,
-                self.in_data.input_fn(),
-                self.in_data.fn_args(self, file_list),
+                self.in_data.input_fn,
+                [self, file_list],
                 proc=proc
             )
 

@@ -6,6 +6,7 @@ import numpy as np
 import util
 import h5py
 from collections import defaultdict
+import errors
 
 root_dir_map = {
     'karla': '/hgst8TB/fjurisic/ecoli',
@@ -16,9 +17,6 @@ root_dir_default = root_dir_map.get(socket.gethostname(), '/data')
 
 class InputReader():
     def input_fn(self):
-        raise NotImplemented
-
-    def fn_args(self, model):
         raise NotImplemented
 
 
@@ -123,21 +121,58 @@ class AlignedRaw(InputReader):
             y, y_len = util.prepare_y(corrected_basecalled[1:1 + num_blocks], block_size_y)
             return x, x_len, y, y_len
 
-    def input_fn(self):
-        def fn(logger, block_size_x, block_size_y, num_blocks, file_list, batch_size=10,
-               root_dir=None):
-            def load_f(fast5_path, ref_path):
-                return self.read_fast5_raw_ref(fast5_path, ref_path,
-                                               block_size_x=block_size_x,
-                                               block_size_y=block_size_y,
-                                               num_blocks=num_blocks,
-                                               )
+    def find_ref(self, fast5, dirs):
+        fname = os.path.splitext(fast5)[0].split(os.sep)[-1]
+        for d in dirs:
+            pick = os.path.join(d, fname + ".ref")
+            if os.path.exists(pick):
+                return pick
 
-            return get_feed_yield_abs(logger, load_f, batch_size=batch_size, file_list=file_list, root_dir=root_dir)
-        return fn
+        raise errors.RefFileNotFound("{}-> search query:{}.ref in following directories {}".format(fast5, fname, dirs))
 
-    def fn_args(self, model, file_list):
-        return [model.logger, model.block_size_x, model.block_size_y, model.num_blocks, file_list, 10]
+    def input_fn(self, model, file_list, root_dir=None):
+        if root_dir is None:
+            root_dir = root_dir_default
+        with open(os.path.join(root_dir, file_list), 'r') as f:
+            items = list(map(sanitize_input_line, f.readlines()))
+        names = ["X", "X_len", "Y", "Y_len"]
+
+        total = 0
+        errors = defaultdict(int)
+
+        while True:
+            shuffle(items)
+            for fname in items:
+                fast5_path = os.path.join(root_dir, 'pass', fname + '.fast5')
+                ref_path = self.find_ref(fast5_path, [os.path.join(root_dir, 'ref')])
+                total += 1
+
+                try:
+                    sol = self.read_fast5_raw_ref(
+                        fast5_path,
+                        ref_path,
+                        block_size_x=model.block_size_x,
+                        block_size_y=model.block_size_y,
+                        num_blocks=model.num_blocks
+                    )
+                    np.testing.assert_array_less(0, sol[3], err_msg='y_len must be > 0')
+
+                except MinIONBasecallerException as ex:
+                    errors[type(ex).__name__] += 1
+                except Exception as ex:
+                    errors[type(ex).__name__] += 1
+                    model.logger.error('in filename %s \n' % fname, exc_info=True)
+
+                yield {
+                    name + "_enqueue_val": np.array([arr]) for name, arr in zip(names, sol)
+                }
+
+                if total % 10000 == 0 or total in [10, 100, 200, 1000]:
+                    model.logger.info(
+                        "read %d datapoints: %s",
+                        total,
+                        "".join(["{}: {:.2%}".format(key, errors[key] / total) for key in sorted(errors.keys())])
+                    )
 
     in_dim = 1
 
@@ -149,50 +184,6 @@ class AlignedRaw(InputReader):
 def sanitize_input_line(fname):
     fname = fname.strip().split()[0]
     return fname
-
-
-def get_feed_yield_abs(logger, feed_fn, batch_size, file_list, root_dir=None, **kwargs):
-    if root_dir is None:
-        root_dir = root_dir_default
-    with open(os.path.join(root_dir, file_list), 'r') as f:
-        items = items = list(map(sanitize_input_line, f.readlines()))
-    names = ["X", "X_len", "Y", "Y_len"]
-
-    total = 0
-    errors = defaultdict(int)
-
-    while True:
-        shuffle(items)
-        for i in range(0, len(items), batch_size):
-            arrs = [[] for _ in range(len(names))]
-
-            for fname in items[i:i + batch_size]:
-                fast5_path = os.path.join(root_dir, 'pass', fname + '.fast5')
-                ref_path = os.path.join(root_dir, 'ref', fname + '.ref')
-                total += 1
-
-                try:
-                    sol = feed_fn(fast5_path, ref_path)
-                    np.testing.assert_array_less(0, sol[3], err_msg='y_len must be > 0')
-
-                    for a, b in zip(arrs, sol):
-                        a.append(b)
-                except MinIONBasecallerException as ex:
-                    errors[type(ex).__name__] += 1
-                except Exception as ex:
-                    errors[type(ex).__name__] += 1
-                    logger.error('in filename %s \n' % fname, exc_info=True)
-
-                yield {
-                    name + "_enqueue_val": np.array(arr) for name, arr in zip(names, arrs)
-                }
-
-                if total % 10000 == 0 or total in [10, 100, 200, 1000]:
-                    logger.info(
-                        "read %d datapoints: %s",
-                        total,
-                        "".join(["{}: {:.2%}".format(key, errors[key] / total) for key in sorted(errors.keys())])
-                    )
 
 
 def proc_wrapper(q, fun, *args):
