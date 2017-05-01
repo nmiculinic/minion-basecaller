@@ -246,7 +246,7 @@ class Model():
         self.run_id = run_id
 
         if log_dir is None:
-            self.log_dir = os.path.join(repo_root, 'log', hostname, self.run_id)
+            self.log_dir = os.path.join(repo_root, 'log', self.run_id)
         else:
             self.log_dir = log_dir
 
