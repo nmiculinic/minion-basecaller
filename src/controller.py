@@ -37,6 +37,7 @@ def control(context):
 
 
 def eval_model():
+    raise NotImplemented
     parser = argparse.ArgumentParser()
     parser.add_argument("module_name", help="module name", type=str)
     parser.add_argument("model_dir", help="increase output verbosity", type=str)
@@ -80,7 +81,10 @@ def basecall(create_test_model, **kwargs):
         print("Not file not dir %s, exiting!!!" % args.fast5_in)
         sys.exit(1)
 
-    model = create_test_model(log_dir=args.model_dir, reuse=True, overwrite=False)
+    with open(os.path.join(args.model_dir, 'model_hyperparams.json'), 'r') as f:
+        hyper = json.load(f)
+
+    model = create_test_model(log_dir=args.model_dir, reuse=True, overwrite=False, hyper=hyper)
 
     try:
         model.init_session(start_queues=False)

@@ -74,7 +74,7 @@ def create_train_model(hyper, **kwargs):
 
 
 def create_test_model(**kwargs):
-    return create_train_model(default_params, **kwargs)
+    return create_train_model(**kwargs)
 
 
 sigopt_params = [
