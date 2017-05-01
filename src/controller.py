@@ -37,10 +37,8 @@ def control(context):
         sys.exit(2)
 
 
-def eval_model():
-    raise NotImplemented
+def eval_model(create_test_model, **kwargs):
     parser = argparse.ArgumentParser()
-    parser.add_argument("module_name", help="module name", type=str)
     parser.add_argument("model_dir", help="increase output verbosity", type=str)
     parser.add_argument("-v", "--verbose", help="increase output verbosity", action="store_true")
     parser.add_argument("-c", "--checkpoint", help="Checkpoint to restore", type=str, default=None)
@@ -50,7 +48,11 @@ def eval_model():
 
     args = parser.parse_args()
 
-    model = load_model(args.module_name, os.path.abspath(args.model_dir))
+    with open(os.path.join(args.model_dir, 'model_hyperparams.json'), 'r') as f:
+        hyper = json.load(f)
+
+    model = create_test_model(log_dir=args.model_dir, reuse=True, overwrite=False, hyper=hyper)
+
     try:
         model.init_session(start_queues=False)
         model.restore(checkpoint=args.checkpoint)
