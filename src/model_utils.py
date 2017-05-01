@@ -24,8 +24,6 @@ import inspect
 import json
 import importlib
 import subprocess
-from collections import defaultdict
-
 # UGLY UGLY HACK!
 for name, logger in logging.root.manager.loggerDict.items():
     logger.disabled=True
@@ -582,7 +580,6 @@ class Model():
         acc = cigar_stat['='] / total
         nedit = result['editDistance'] / len(target)
         return nedit, acc, len(basecalled), cigar_stat
-
     def run_validation_full(self, frac, verbose=False, fasta_out_dir=None, ref=None):
         """
             Runs full validation on test set with whole sequence_length
