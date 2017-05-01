@@ -108,7 +108,7 @@ class AlignedRaw(InputReader):
 
             # Sanity check, correctly basecalled files
             np.testing.assert_string_equal("".join(bucketed_basecall), fastq[1])
-            corrected_basecalled = util.correct_basecalled(bucketed_basecall, ref_seq, nedit_tol=0.5)
+            corrected_basecalled = util.correct_basecalled(bucketed_basecall, ref_seq, nedit_tol=0.2)
             # Another sanity check
             np.testing.assert_string_equal("".join(corrected_basecalled), ref_seq)
 
@@ -156,6 +156,9 @@ class AlignedRaw(InputReader):
                     )
                     np.testing.assert_array_less(0, sol[3], err_msg='y_len must be > 0')
 
+                    yield {
+                        name + "_enqueue_val": np.array([arr]) for name, arr in zip(names, sol)
+                    }
                 except KeyboardInterrupt:
                     raise
                 except MinIONBasecallerException as ex:
@@ -164,15 +167,11 @@ class AlignedRaw(InputReader):
                     errors[type(ex).__name__] += 1
                     model.logger.error('in filename %s \n' % fname, exc_info=True)
 
-                yield {
-                    name + "_enqueue_val": np.array([arr]) for name, arr in zip(names, sol)
-                }
-
                 if total % 10000 == 0 or total in [10, 100, 200, 1000]:
                     model.logger.info(
-                        "read %d datapoints: %s",
+                        "read %d datapoints: %s ",
                         total,
-                        "".join(["{}: {:.2%}".format(key, errors[key] / total) for key in sorted(errors.keys())])
+                        " ".join(["{}: {:.2f}%".format(key, 100 * errors[key] / total) for key in sorted(errors.keys())])
                     )
 
     in_dim = 1
