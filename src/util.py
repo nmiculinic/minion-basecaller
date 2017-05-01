@@ -5,6 +5,13 @@ import unittest
 from errors import TooLargeEditDistance, BlockSizeYTooSmall, ZeroLenY
 
 
+def dump_fasta(name, fasta, fd):
+    print(">" + name, file=fd)
+    n = 80
+    for i in range(0, len(fasta), n):
+        print(fasta[i:i + n], file=fd)
+
+
 def next_num(prev, symbol):
     val = {
         'A': 0,

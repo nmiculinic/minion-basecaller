@@ -7,6 +7,7 @@ from ops import central_cut
 from util import sigopt_double
 from model_utils import Model
 from controller import control
+import sys
 load_dotenv(find_dotenv())
 
 
@@ -18,7 +19,6 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
         logits -> Unscaled logits tensor in time_major form, (block_size, batch_size, out_classes)
     """
 
-    print("model in", net.get_shape())
     for layer in range(1, 1 + 1):
         with tf.variable_scope('layer_%d' % layer):
             res = net
@@ -41,11 +41,8 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
     net = tf.nn.relu(net)
 
     net = central_cut(net, block_size, 8)
-    print("after slice", net.get_shape())
     net = tf.transpose(net, [1, 0, 2], name="Shift_to_time_major")
-    print("after transpose", net.get_shape())
     net = conv_1d(net, 9, 1, scope='logits')
-    print("model out", net.get_shape())
     return {
         'logits': net,
         'init_state': tf.constant(0),
@@ -54,7 +51,7 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
 
 
 def create_train_model(hyper, **kwargs):
-    print("Requesting %s hyperparams" % __file__)
+    print("Requesting %s hyperparams" % __file__, file=sys.stderr)
     model_setup = dict(
         g=tf.Graph(),
         block_size_x=8 * 3 * 50 // 2,
@@ -77,7 +74,7 @@ def create_train_model(hyper, **kwargs):
 
 
 def create_test_model(**kwargs):
-    create_train_model(default_params, **kwargs)
+    return create_train_model(default_params, **kwargs)
 
 
 sigopt_params = [

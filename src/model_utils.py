@@ -1,8 +1,9 @@
 import numpy as np
+import sys
 import util
 import socket
 import tensorflow as tf
-from util import decode_example, decode_sparse, breakCigar
+from util import decode_example, decode_sparse, breakCigar, dump_fasta
 from ops import dense2d_to_sparse
 import input_readers
 import multiprocessing
@@ -58,7 +59,7 @@ def load_model_parms(module_name, model_dir):
         hyper = json.load(f)
 
     params = model_module.model_setup_params(hyper)
-    print(params, type(params))
+    print(params, type(params), file=sys.stderr)
     params['reuse'] = True
     params['overwrite'] = False
     params['log_dir'] = model_dir
@@ -184,7 +185,6 @@ class Model():
         """
             Function returning loss.
         """
-        print("Model _setup_loss")
         with tf.name_scope("loss"):
             loss = warpctc_tensorflow.ctc(
                 self.logits,
@@ -254,13 +254,13 @@ class Model():
 
         if os.path.exists(self.log_dir):
             if overwrite:
-                print("Clearing %s" % self.log_dir)
+                print("Clearing %s" % self.log_dir, file=sys.stderr)
                 shutil.rmtree(self.log_dir)
             elif not reuse:
                 raise ValueError("path " + self.log_dir + " exists")
 
         os.makedirs(self.log_dir, mode=0o744, exist_ok=reuse or overwrite)
-        print("Logdir = ", self.log_dir)
+        print("Logdir = ", self.log_dir, file=sys.stderr)
         self.logger = logging.getLogger(run_id)
         self.logger.propagate = False
         self.logger.setLevel(logging.DEBUG)
@@ -283,7 +283,7 @@ class Model():
 
             slack_handler.setFormatter(file_log_fmt)
             slack_handler.setLevel(logging.INFO)
-            print("Ignoring Slack INFO handler")
+            print("Ignoring Slack INFO handler", file=sys.stderr)
             # self.logger.addHandler(slack_handler)
 
             slack_handler = SlackerLogHandler(os.environ['SLACK_TOKEN'], 'error', username=username)
@@ -381,7 +381,6 @@ class Model():
                 padding = tf.convert_to_tensor(padding)
                 net = tf.pad(net, padding)
                 net.set_shape([None, 2 * self.max_reach + self.block_size_x, self.in_data.in_dim])
-                print(net.get_shape())
                 self.X_batch = tf.placeholder_with_default(net, (None, None, self.in_data.in_dim))
 
             with tf.name_scope("Y_batch"):
@@ -539,10 +538,7 @@ class Model():
         basecalled = "".join(util.decode(basecalled))
         if fasta_out is not None:
             with open(fasta_out, 'w') as f:
-                print("> " + fast5_path, file=f)
-                n = 80
-                for i in range(0, len(basecalled), n):
-                    print(basecalled[i:i+n], file=f)
+                dump_fasta(fast5_path, basecalled, f)
             self.logger.info("Saved basecalled %s to %s in %.3f ms/bp", fast5_path, fasta_out, (perf_counter() - t)*1000.0/len(basecalled))
             if ref is not None:
                 sam_out = os.path.splitext(fasta_out)[0] + ".sam"
@@ -766,7 +762,7 @@ class Model():
                     try:
                         self.sess.run(enqueue_op, feed_dict=feed)
                     except tf.errors.CancelledError:
-                        print("closing queue_feeder")
+                        print("closing queue_feeder", file=sys.stderr)
                         break
                 if proc:
                     p.terminate()

@@ -7,6 +7,7 @@ from sigopt import Connection
 from time import monotonic
 import json
 import input_readers
+import util
 load_dotenv(find_dotenv())
 
 usage = """
@@ -67,7 +68,7 @@ def basecall(create_test_model, **kwargs):
     parser = argparse.ArgumentParser()
     parser.add_argument("model_dir", help="increase output verbosity", type=str)
     parser.add_argument("fast5_in", help="Fast5 file to basecall or dir of fast5 files", default='.', type=str)
-    parser.add_argument("out_dir", type=str, default='.', help='Directory for output fasta files from processed fast5 files')
+    parser.add_argument("out_dir", nargs='?', type=str, default=None, help='Directory for output fasta files from processed fast5 files')
     parser.add_argument("-c", "--checkpoint", help="Checkpoint to restore", type=str, default=None)
 
     args = parser.parse_args()
@@ -79,16 +80,20 @@ def basecall(create_test_model, **kwargs):
         print("Not file not dir %s, exiting!!!" % args.fast5_in)
         sys.exit(1)
 
-    model = create_test_model(model)
+    model = create_test_model(log_dir=args.model_dir, reuse=True, overwrite=False)
 
     try:
         model.init_session(start_queues=False)
         model.restore(checkpoint=args.checkpoint)
-        os.makedirs(args.out_dir, exist_ok=True)
+        if args.out_dir is not None:
+            os.makedirs(args.out_dir, exist_ok=True)
         for f in file_list:
-            out = os.path.splitext(f)[0].split('/')[-1] + ".fasta"
-            out = os.path.join(args.out_dir, out)
-            model.basecall_sample(f, fasta_out=out)
+            if args.out_dir is not None:
+                out = os.path.splitext(f)[0].split('/')[-1] + ".fasta"
+                out = os.path.join(args.out_dir, out)
+            else:
+                out = None
+            util.dump_fasta(os.path.splitext(f)[0].split(os.sep)[-1], model.basecall_sample(f, fasta_out=out), sys.stdout)
     finally:
         model.close_session()
 
