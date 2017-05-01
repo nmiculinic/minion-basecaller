@@ -4,17 +4,16 @@ import model_utils
 import argparse
 import sys
 from sigopt import Connection
-from time import monotonic
 import json
 import input_readers
 import util
-from time import perf_counter
+from time import perf_counter, monotonic
 load_dotenv(find_dotenv())
 
 usage = """
     This File is responsible for controlling model training, testing and basecalling.
 
-    python <model_file> (train|basecall|eval) (task specific arguments, -h for help)
+    python <model_file> (simple-train|sigopt-train|basecall|eval) (task specific arguments, -h for help)
 """
 
 
@@ -25,8 +24,10 @@ def control(context):
         sys.exit(1)
     task = sys.argv[1]
     del sys.argv[1]
-    if task == "train":
+    if task == "sigopt-train":
         sigopt_runner(**context)
+    elif task == "simple-train":
+        simple_train(**context)
     elif task == "basecall":
         basecall(**context)
     elif task == "eval":
@@ -116,6 +117,40 @@ def basecall(create_test_model, **kwargs):
         model.close_session()
 
 
+def simple_train(create_train_model, default_params, default_name, **kwargs):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("train_steps", nargs='?', type=int,
+                        default=50000, help='Number of training steps')
+    parser.add_argument('--num_workers', type=int,
+                        default=3, help='Number of worker threads for feeding queues')
+    parser.add_argument(
+        "-s", "--summarize", help="Summarize gradient during training", action="store_true")
+    parser.add_argument('--name', type=str,
+                        default=default_name, help="Model name [run_id]", dest="model_name")
+    parser.add_argument('--reuse', action="store_true", help="Should you reuse existing model dir")
+    parser.add_argument('--overwrite', action="store_true", help="Should you overwrite existing logdir if found")
+    parser.add_argument('--trace_every', '-t', type=int,
+                        default=10000, help="Each x steps to run profile trace. Negative number (e.g. -1) to disable")
+    parser.add_argument("--ref", type=str, default=None,
+                        help='Path to reference string')
+    args = parser.parse_args()
+
+    start_timestamp = monotonic()
+    model = create_train_model(
+        default_params, reuse=args.reuse, overwrite=args.overwrite, run_id=args.model_name)
+    result = model.simple_managed_train_model(
+        args.train_steps, summarize=args.summarize, num_workers=args.num_workers, trace_every=args.trace_every, ref=args.ref)
+    result['time[h]'] = (monotonic() - start_timestamp) / 3600.0,
+    result['logdir'] = model.log_dir
+    for key in sorted(result.keys()):
+        if isinstance(result[key], dict):
+            model.logger.info("%s:", key)
+            for key2 in sorted(result[key].keys()):
+                model.logger.info("\t%s: %s", key2, str(result[key][key2]))
+        else:
+            model.logger.info("%s: %s", key, str(result[key]))
+
+
 def sigopt_runner(
     create_train_model,
     sigopt_params,
@@ -139,8 +174,6 @@ def sigopt_runner(
                         default=3, help='Number of worker threads for feeding queues')
     parser.add_argument(
         "-s", "--summarize", help="Summarize gradient during training", action="store_true")
-    parser.add_argument('--name', type=str,
-                        default=default_name, help="Model name [run_id]", dest="model_name")
     parser.add_argument('--trace_every', '-t', type=int,
                         default=10000, help="Each x steps to run profile trace. Negative number (e.g. -1) to disable")
     parser.add_argument("--ref", type=str, default=None,
@@ -207,10 +240,6 @@ def sigopt_runner(
                 hyper.update(default_params)
             else:
                 print("PRODUCTION MODE!!!")
-
-        print("Running hyper parameters")
-        for k in sorted(hyper.keys()):
-            print("%-20s: %7s" % (k, str(hyper[k])))
 
         # Setup model
         model_extra_params = {}

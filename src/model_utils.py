@@ -24,6 +24,8 @@ import inspect
 import json
 import importlib
 import subprocess
+from collections import defaultdict
+
 # UGLY UGLY HACK!
 for name, logger in logging.root.manager.loggerDict.items():
     logger.disabled=True
