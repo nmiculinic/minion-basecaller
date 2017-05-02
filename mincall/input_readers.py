@@ -172,7 +172,7 @@ class AlignedRaw(InputReader):
                     model.logger.error('in filename %s \n' % fname, exc_info=True)
 
                 if total % 10000 == 0 or total in [10, 100, 200, 1000]:
-                    model.logger.info(
+                    model.logger.debug(
                         "read %d datapoints: %s ",
                         total,
                         " ".join(["{}: {:.2f}%".format(key, 100 * errors[key] / total) for key in sorted(errors.keys())])
