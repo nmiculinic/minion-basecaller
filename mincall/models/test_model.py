@@ -78,8 +78,8 @@ def create_train_model(hyper, **kwargs):
     return Model(**model_setup)
 
 
-def create_test_model(**kwargs):
-    return create_train_model(default_params, **kwargs)
+def create_test_model(hyper, **kwargs):
+    return create_train_model(hyper, **kwargs)
 
 
 sigopt_params = [
@@ -92,7 +92,7 @@ default_params = {
     'decay_factor': 0.1,
 }
 
-default_name = "Model_small"
+default_name = "test_model"
 
 if __name__ == "__main__":
     control(globals())
