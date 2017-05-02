@@ -18,7 +18,6 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
         logits -> Unscaled logits tensor in time_major form, (block_size, batch_size, out_classes)
     """
 
-    print("model in", net.get_shape())
     for block in range(1, 4):
         with tf.variable_scope("block%d" % block):
             for layer in range(1, 1 + 1):
@@ -43,11 +42,8 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
         net = tf.nn.relu(net)
 
     net = central_cut(net, block_size, 8)
-    print("after slice", net.get_shape())
     net = tf.transpose(net, [1, 0, 2], name="Shift_to_time_major")
-    print("after transpose", net.get_shape())
     net = conv_1d(net, 9, 1, scope='logits')
-    print("model out", net.get_shape())
     return {
         'logits': net,
         'init_state': tf.constant(0),
@@ -56,7 +52,6 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
 
 
 def create_train_model(hyper, **kwargs):
-    print("Requesting %s hyperparams" % __file__)
     model_setup = dict(
         g=tf.Graph(),
         block_size_x=8 * 3 * 50 // 2,
