@@ -5,6 +5,7 @@ import sys
 from sigopt import Connection
 import json
 from time import perf_counter, monotonic
+from tqdm import tqdm
 
 from . import util
 from . import model_utils
@@ -98,8 +99,8 @@ def basecall(create_test_model, **kwargs):
             os.makedirs(args.out_dir, exist_ok=True)
         total_time = 0
         total_bases = 0
-        for f in file_list:
-
+        pbar = tqdm(file_list, unit='reads', unit_scale=True, dynamic_ncols=True)
+        for f in pbar:
             if args.out_dir is not None:
                 out = os.path.splitext(f)[0].split('/')[-1] + ".fasta"
                 out = os.path.join(args.out_dir, out)
@@ -109,7 +110,7 @@ def basecall(create_test_model, **kwargs):
             basecalled = model.basecall_sample(f, fasta_out=out)
             total_time += perf_counter() - t0
             total_bases += len(basecalled)
-            print("Speed %.3f bps" % (total_bases / total_time), file=sys.stderr)
+            pbar.set_postfix(speed="{:.3f} b/s".format(total_bases / total_time))
 
             if out is None:
                 util.dump_fasta(os.path.splitext(f)[0].split(os.sep)[-1], basecalled, sys.stdout)

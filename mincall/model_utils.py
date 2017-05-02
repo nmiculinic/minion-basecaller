@@ -3,9 +3,8 @@ import sys
 import mincall.util as util
 import socket
 import tensorflow as tf
-from .util import decode_example, decode_sparse, breakCigar, dump_fasta
-from .ops import dense2d_to_sparse
-from . import input_readers
+from tqdm import tqdm
+from collections import OrderedDict
 import multiprocessing
 from threading import Thread
 from time import perf_counter
@@ -25,6 +24,10 @@ import json
 import importlib
 import subprocess
 from collections import defaultdict
+
+from .util import decode_example, decode_sparse, breakCigar, dump_fasta
+from .ops import dense2d_to_sparse
+from . import input_readers
 
 # UGLY UGLY HACK!
 for name, logger in logging.root.manager.loggerDict.items():
@@ -203,7 +206,7 @@ class Model():
             sol_values = sparse_tensor.values - 4 * tf.to_int32(sparse_tensor.values >= 4)
             sol = tf.SparseTensor(
                 sparse_tensor.indices,
-                tf.Print(sol_values, [sol_values, sparse_tensor.values], first_n=5, message="__dedup", summarize=20),
+                sol_values,  # tf.Print(sol_values, [sol_values, sparse_tensor.values], first_n=5, message="__dedup", summarize=20),
                 sparse_tensor.dense_shape
             )
             return sol
@@ -436,7 +439,7 @@ class Model():
     def get_global_step(self):
         return self.sess.run(self.global_step)
 
-    def train_minibatch(self, log_every=20, trace_every=10000):
+    def train_minibatch(self, log_every=100, trace_every=10000):
         """
             Trains minibatch and performs all required operations
 
@@ -539,10 +542,10 @@ class Model():
         if fasta_out is not None:
             with open(fasta_out, 'w') as f:
                 dump_fasta(fast5_path, basecalled, f)
-            self.logger.info("Saved basecalled %s to %s in %.3f ms/bp", fast5_path, fasta_out, (perf_counter() - t)*1000.0/len(basecalled))
+            self.logger.debug("Saved basecalled %s to %s in %.3f ms/bp", fast5_path, fasta_out, (perf_counter() - t)*1000.0/len(basecalled))
             if ref is not None:
                 sam_out = os.path.splitext(fasta_out)[0] + ".sam"
-                self.logger.info("Sam out %s", sam_out)
+                self.logger.debug("Sam out %s", sam_out)
                 subprocess.Popen(["graphmap", "align", "-r", ref, "-d", fasta_out, "-o", sam_out , "--extcigar"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         return basecalled
@@ -608,7 +611,8 @@ class Model():
 
         with self.g.as_default():
             is_training(False, session=self.sess)
-            for i, fname in enumerate(fnames):
+            pbar = tqdm(fnames)
+            for i, fname in enumerate(pbar):
                 t = perf_counter()
                 nedit[i], acc[i], read_len, cigar_read_stat = self.get_aligement(
                     os.path.join(
@@ -628,8 +632,7 @@ class Model():
                 mu_edit, mu_acc = np.mean(nedit[:i + 1]), np.mean(acc[:i + 1])
                 std_edit, std_acc = np.std(nedit[:i + 1]), np.std(acc[:i + 1])
                 se_edit, se_acc = std_edit / np.sqrt(i + 1), std_acc / np.sqrt(i + 1)
-                if i % 5 == 0 or i < 5:
-                    print("\r%4d/%d avg edit %.4f s %.4f CI <%.4f, %.4f> avg_acc %.4f s %.4f CI <%.4f, %.4f> %.2f bps" % (i + 1, n, mu_edit, std_edit, mu_edit - 2*se_edit, mu_edit + 2*se_edit, mu_acc, std_acc, mu_acc - 2*se_acc, mu_acc + 2*se_acc, total_bases_read/total_time), end='')
+                pbar.set_postfix(stat="avg edit %.4f s %.4f CI <%.4f, %.4f> avg_acc %.4f s %.4f CI <%.4f, %.4f> %.2f bps" % (mu_edit, std_edit, mu_edit - 2*se_edit, mu_edit + 2*se_edit, mu_acc, std_acc, mu_acc - 2*se_acc, mu_acc + 2*se_acc, total_bases_read/total_time))
 
         mu_edit, mu_acc = np.mean(nedit), np.mean(acc)
         std_edit, std_acc = np.std(nedit), np.std(acc)
@@ -808,8 +811,17 @@ class Model():
             if trace_every < 0:
                 self.logger.warn("Profiling tracing is disabled!!!")
             self.init_session(num_workers=num_workers)
-            for i in range(self.restore(must_exist=False) + 1, num_steps + 1):
-                print('\r%s Step %4d, loss %7.4f batch_time %.3f bbt %.3f dequeue %.3f  ' % (self.run_id, i, self.train_minibatch(trace_every=trace_every), self.batch_time, self.bbt, self.dequeue_time), end='')
+
+            init_step = self.restore(must_exist=False)
+            target_range = range(init_step + 1, num_steps + 1)
+            pbar = tqdm(target_range, unit='step', unit_scale=True, dynamic_ncols=True, initial=init_step, total=num_steps)
+            for i in pbar:
+                pbar.set_postfix(OrderedDict([
+                    ('loss', self.train_minibatch(trace_every=trace_every)),
+                    ('batch_time', self.batch_time),
+                    ('bbt', self.bbt),
+                    ('dequeue_time', self.dequeue_time)
+                ]))
                 if i > 0 and i % val_every == 0:
                     self.run_validation()
                     if summarize:
