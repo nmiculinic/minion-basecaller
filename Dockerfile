@@ -1,8 +1,5 @@
 FROM nvidia/cuda:8.0-cudnn5-devel
 
-# Mostly copy/paste from tensorflow webpage
-# Pick up some TF dependencies
-
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         curl \
@@ -81,3 +78,4 @@ WORKDIR /
 RUN mkdir /code
 RUN mkdir /data
 WORKDIR /code
+ENV PYTHONPATH=/code

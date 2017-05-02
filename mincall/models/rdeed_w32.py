@@ -4,11 +4,11 @@ from tflearn.layers.normalization import batch_normalization
 from dotenv import load_dotenv, find_dotenv
 from tflearn.initializations import variance_scaling_initializer
 
-from ops import central_cut
-import input_readers
-from util import sigopt_int, sigopt_double
-from controller import control
-from model_utils import Model
+from mincall.ops import central_cut
+from mincall import input_readers
+from mincall.util import sigopt_int, sigopt_double
+from mincall.controller import control
+from mincall.model_utils import Model
 load_dotenv(find_dotenv())
 
 
@@ -20,7 +20,6 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
         logits -> Unscaled logits tensor in time_major form, (block_size, batch_size, out_classes)
     """
 
-    print("model in", net.get_shape())
     for block in range(1, 3):
         with tf.variable_scope("block%d" % block):
             for layer in range(kwargs['num_layers']):
@@ -45,11 +44,8 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
         net = tf.nn.relu(net)
 
     net = central_cut(net, block_size, 4)
-    print("after slice", net.get_shape())
     net = tf.transpose(net, [1, 0, 2], name="Shift_to_time_major")
-    print("after transpose", net.get_shape())
     net = conv_1d(net, 9, 1, scope='logits')
-    print("model out", net.get_shape())
     return {
         'logits': net,
         'init_state': tf.constant(0),
@@ -58,7 +54,6 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
 
 
 def model_setup_params(hyper):
-    print("Requesting %s hyperparams" % __file__)
     return dict(
         g=tf.Graph(),
         block_size_x=8 * 3 * 600 // 2,
@@ -95,7 +90,6 @@ default_params = {
 
 
 def create_train_model(hyper, **kwargs):
-    print("Requesting %s hyperparams" % __file__)
     model_setup = model_setup_params(hyper)
     model_setup.update(kwargs)
     return Model(**model_setup)
