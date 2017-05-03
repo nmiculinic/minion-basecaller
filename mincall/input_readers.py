@@ -21,35 +21,16 @@ class InputReader():
         raise NotImplemented
 
 
-class AlignedRaw(InputReader):
+class AlignedRawAbstract(InputReader):
+    def __init__(self, nedit_tol=0.35):
+        super()
+        self.nedit_tol = nedit_tol
 
     def preprocessSignal(self, signal):
         return (signal - 646.11133) / 75.673653
 
-    def getRNNBasecalled(self, h5, **kwargs):
-        try:
-            basecalled_events = h5['/Analyses/Basecall_RNN_1D_000/BaseCalled_template/Events']
-            return (
-                np.array(basecalled_events.value[['start', 'length', 'model_state', 'move']]),
-                h5['/Analyses/Basecall_RNN_1D_000/BaseCalled_template/Fastq'][()].decode().split('\n')
-            )
-        except:
-            raise MissingRNN1DBasecall("Not found RNN component")
-
-    def getHMMBasecalled(self, h5, target_read, sampling_rate):
-        basecalled_events = h5['/Analyses/Basecall_1D_000/BaseCalled_template/Events']
-        basecalled_events = np.array(basecalled_events.value[['start', 'length', 'model_state', 'move']])
-
-        raw_start_time = h5['Raw/Reads/' + target_read].attrs['start_time']
-        events = h5['/Analyses/EventDetection_000/Reads/' + target_read]
-        event_start_time = events.attrs['start_time']
-
-        basecalled_events['start'] -= events['Events'][0]['start'] / sampling_rate
-        basecalled_events['start'] += (event_start_time - raw_start_time) / sampling_rate
-        return (
-            basecalled_events,
-            h5['/Analyses/Basecall_1D_000/BaseCalled_template/Fastq'][()].decode().split('\n')
-        )
+    def get_basecalled_data(self, h5, target_read, sampling_rate):
+        raise NotImplemented
 
     def read_fast5(self, fast5_path):
         with h5py.File(fast5_path, 'r') as h5:
@@ -57,8 +38,7 @@ class AlignedRaw(InputReader):
             target_read = list(reads.keys())[0]
             sampling_rate = h5['UniqueGlobalKey/channel_id'].attrs['sampling_rate']
 
-            basecalled, fastq = self.getHMMBasecalled(h5, target_read, sampling_rate)
-            # basecalled = self.getRNNBasecalled(h5, target_read, sampling_rate)
+            basecalled, fastq = self.get_basecalled_data(h5, target_read, sampling_rate)
 
             signal = h5['Raw/Reads/' + target_read]['Signal']
             start_time = basecalled[0]['start']
@@ -108,7 +88,7 @@ class AlignedRaw(InputReader):
             else:
                 raise ValueError("extension not recognized %s" % ref_ext)
 
-            corrected_basecalled = util.correct_basecalled(bucketed_basecall, ref_seq, nedit_tol=0.35)
+            corrected_basecalled = util.correct_basecalled(bucketed_basecall, ref_seq, nedit_tol=self.nedit_tol)
 
             if verify_file:
                 # Sanity check, correctly basecalled files
@@ -183,6 +163,35 @@ class AlignedRaw(InputReader):
     def get_signal(self, fast5_path):
         signal = self.read_fast5(fast5_path)['signal']
         return signal.reshape(1, -1, 1)
+
+
+class HMMAlignedRaw(AlignedRawAbstract):
+    def get_basecalled_data(self, h5, target_read, sampling_rate):
+        basecalled_events = h5['/Analyses/Basecall_1D_000/BaseCalled_template/Events']
+        basecalled_events = np.array(basecalled_events.value[['start', 'length', 'model_state', 'move']])
+
+        raw_start_time = h5['Raw/Reads/' + target_read].attrs['start_time']
+        events = h5['/Analyses/EventDetection_000/Reads/' + target_read]
+        event_start_time = events.attrs['start_time']
+
+        basecalled_events['start'] -= events['Events'][0]['start'] / sampling_rate
+        basecalled_events['start'] += (event_start_time - raw_start_time) / sampling_rate
+        return (
+            basecalled_events,
+            h5['/Analyses/Basecall_1D_000/BaseCalled_template/Fastq'][()].decode().split('\n')
+        )
+
+
+class RNNAlignedRaw(AlignedRawAbstract):
+    def get_basecalled_data(self, h5, target_read, sampling_rate):
+        try:
+            basecalled_events = h5['/Analyses/Basecall_RNN_1D_000/BaseCalled_template/Events']
+            return (
+                np.array(basecalled_events.value[['start', 'length', 'model_state', 'move']]),
+                h5['/Analyses/Basecall_RNN_1D_000/BaseCalled_template/Fastq'][()].decode().split('\n')
+            )
+        except:
+            raise MissingRNN1DBasecall("Not found RNN component")
 
 
 def sanitize_input_line(fname):
