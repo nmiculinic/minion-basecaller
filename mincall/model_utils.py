@@ -28,6 +28,7 @@ from collections import defaultdict
 from .util import decode_example, decode_sparse, breakCigar, dump_fasta
 from .ops import dense2d_to_sparse
 from . import input_readers
+import mincall.bioinf_utils as butils
 
 # UGLY UGLY HACK!
 for name, logger in logging.root.manager.loggerDict.items():
@@ -569,10 +570,14 @@ class Model():
             print("Basecalled:\n", basecalled)
             print("Target\n", target)
         self.logger.debug("fast5_path %s, ref_path %s", fast5_path, ref_path)
-        self.logger.debug("Basecalled \n%s", basecalled)
-        self.logger.debug("Target \n%s", target)
-
         result = edlib.align(basecalled, target, task='path')
+        cigar_pairs = butils.cigar_str_to_pairs(result['cigar'])
+
+        self.logger.debug("\nBasecalled: %s\nTarget    : %s",
+                          butils.query_align_string(basecalled, cigar_pairs),
+                          butils.reference_align_string(target, cigar_pairs)
+                          )
+
         self.logger.debug("extCigar %s", result['cigar'])
         self.logger.debug("Whole time %.3f", perf_counter() - t)
 

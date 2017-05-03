@@ -101,7 +101,7 @@ def reference_align_string(ref, cigar_int_pairs):
     ref_index = 0
 
     for b, cnt in cigar_int_pairs:
-        sym = cigar_int_to_c(b)
+        sym = cigar_int_to_c(b) if isinstance(b, int) else b
         if sym in CIGAR_MATCH_MISSMATCH or sym in CIGAR_DELETION:
             assert ref_index + cnt <= len(ref)
             out_ref.extend(ref[ref_index:ref_index + cnt])
@@ -121,7 +121,7 @@ def query_align_string(ref, cigar_int_pairs):
     ref_index = 0
 
     for b, cnt in cigar_int_pairs:
-        sym = cigar_int_to_c(b)
+        sym = cigar_int_to_c(b) if isinstance(b, int) else b
         if sym in CIGAR_MATCH_MISSMATCH or sym in CIGAR_INSERTION:
             assert ref_index + cnt <= len(ref)
             out_ref.extend(ref[ref_index:ref_index + cnt])
