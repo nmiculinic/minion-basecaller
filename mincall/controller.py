@@ -77,6 +77,7 @@ def basecall(create_test_model, **kwargs):
     parser.add_argument("fast5_in", help="Fast5 file to basecall or dir of fast5 files", default='.', type=str)
     parser.add_argument("out_dir", nargs='?', type=str, default=None, help='Directory for output fasta files from processed fast5 files')
     parser.add_argument("-c", "--checkpoint", help="Checkpoint to restore", type=str, default=None)
+    parser.add_argument("--write_logits", help="Write logits to file", action="store_true")
 
     args = parser.parse_args()
     if os.path.isfile(args.fast5_in):
@@ -107,7 +108,7 @@ def basecall(create_test_model, **kwargs):
             else:
                 out = None
             t0 = perf_counter()
-            basecalled = model.basecall_sample(f, fasta_out=out)
+            basecalled = model.basecall_sample(f, fasta_out=out, write_logits=args.write_logits)
             total_time += perf_counter() - t0
             total_bases += len(basecalled)
             pbar.set_postfix(speed="{:.3f} b/s".format(total_bases / total_time))
