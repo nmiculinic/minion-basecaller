@@ -55,7 +55,9 @@ class AlignedRawAbstract(InputReader):
                 'signal': signal,
                 'basecalled': basecalled,
                 'sampling_rate': sampling_rate,
-                'fastq': fastq
+                'fastq': fastq,
+                'start_pad': start_pad,
+                'signal_len': signal_len
             }
 
     def read_fast5_raw_ref(self, fast5_path, ref_path, block_size_x, block_size_y, num_blocks, verify_file=True):
@@ -161,8 +163,10 @@ class AlignedRawAbstract(InputReader):
     in_dim = 1
 
     def get_signal(self, fast5_path):
-        signal = self.read_fast5(fast5_path)['signal']
-        return signal.reshape(1, -1, 1)
+        f5 = self.read_fast5(fast5_path)
+        signal = f5['signal']
+        start_pad = f5['start_pad']
+        return signal.reshape(1, -1, 1), start_pad
 
 
 class HMMAlignedRaw(AlignedRawAbstract):

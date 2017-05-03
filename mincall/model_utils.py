@@ -23,6 +23,7 @@ import inspect
 import json
 import importlib
 import subprocess
+import h5py
 from collections import defaultdict
 
 from .util import decode_example, decode_sparse, breakCigar, dump_fasta
@@ -523,20 +524,51 @@ class Model():
         self.bbt_clock = perf_counter()
         return avg_loss, avg_edit_distance
 
-    def basecall_sample(self, fast5_path, fasta_out=None, ref=None):
+    def basecall_sample(self, fast5_path, fasta_out=None, ref=None, write_logits=False):
         with self.g.as_default():
             is_training(False, session=self.sess)
-        signal = self.in_data.get_signal(fast5_path)
+        signal, start_pad = self.in_data.get_signal(fast5_path)
         t = perf_counter()
-        basecalled = self.sess.run(
-            self.dense_pred,
-            feed_dict={
+        feed_dict = {
             self.X_batch: signal,
             self.X_batch_len: np.array(signal.shape[1]).reshape([1,]),
             self.block_idx: 0,
             self.batch_size_var: 1,
             self.block_size_x_tensor: signal.shape[1]
-        }).ravel()
+        }
+
+        if write_logits:
+            basecalled, logits = self.sess.run(
+                [self.dense_pred, self.logits],
+                feed_dict=feed_dict
+            )
+            with h5py.File(fast5_path, 'a') as h5:
+                h5_path = 'Analyses/MinCall/{}/Logits'.format(self.run_id)
+                logits = np.squeeze(logits, (1,))
+                try:
+                    h5.create_dataset(h5_path, data=logits)
+                except RuntimeError:
+                    del h5[h5_path]
+                    h5.create_dataset(h5_path, data=logits)
+
+                h5[h5_path].attrs['start_pad'] = start_pad
+                h5[h5_path].attrs['model_logdir'] = self.log_dir
+                h5[h5_path].attrs['run_id'] = self.run_id
+                h5[h5_path].attrs['in_data_classname'] = type(self.in_data).__name__
+
+                fname = os.path.join(self.log_dir, 'model_hyperparams.json')
+                with open(fname, 'r') as f:
+                    hyper = json.load(f)
+                    for k, v in hyper.items():
+                        h5[h5_path].attrs[k] = v
+
+        else:
+            basecalled = self.sess.run(
+                self.dense_pred,
+                feed_dict=feed_dict
+            )
+
+        basecalled = basecalled.ravel()
         self.logger.debug("Basecalled %s in %.3f", fast5_path, perf_counter() - t)
 
         basecalled = "".join(util.decode(basecalled))
