@@ -107,7 +107,6 @@ def correct_basecalled(bucketed_basecall, reference, nedit_tol=0.2):
             elif op in CIGAR_DELETION:
                 result[origin[idx_bcalled]] += reference[idx_ref]
                 idx_ref += 1
-    assert "".join(result) == reference
     return result
 
 
