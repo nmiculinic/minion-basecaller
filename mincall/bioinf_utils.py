@@ -1,6 +1,10 @@
 import itertools
 import logging
-from collections import Counter
+import pysam
+import csv
+import numpy as np
+from collections import Counter, defaultdict
+
 
 CIGAR_TO_BYTE = {
     'M': 0,
@@ -20,6 +24,8 @@ CIGAR_MATCH = ['=']
 CIGAR_MISSMATCH = ['X']
 CIGAR_INSERTION = 'ISH'
 CIGAR_DELETION = 'DNP'
+CIGAR_SOFTCLIP = ['S']
+CIGAR_HARDCLIP = ['H']
 
 BYTE_TO_CIGAR = {v: k for k, v in CIGAR_TO_BYTE.items()}
 
@@ -145,14 +151,16 @@ def error_rates_from_cigar(cigar_full_str):
 
     cigar_len = len(cigar_full_str)
     n_deletions = get_cnt(CIGAR_DELETION)
-    n_insertions = get_cnt(CIGAR_INSERTION)
+    n_all_insertions = get_cnt(CIGAR_INSERTION)
+    n_insertions = n_all_insertions - get_cnt(CIGAR_SOFTCLIP) - get_cnt(CIGAR_HARDCLIP)
     n_missmatches = get_cnt(CIGAR_MISSMATCH)
     n_matches = get_cnt(CIGAR_MATCH)
 
-    ref_len = n_insertions + n_missmatches + n_matches
-    read_len = n_deletions + n_missmatches + n_matches
 
-    assert cigar_len == n_deletions + n_insertions + n_missmatches + n_matches
+    read_len = n_all_insertions + n_missmatches + n_matches
+    if cigar_len != n_deletions + n_all_insertions + n_missmatches + n_matches:
+        raise Exception("cigar_len != n_deletions + n_all_insertions + n_missmatches + n_matches "
+                        "- Expected extended cigar format")
 
     n_errors = n_missmatches + n_insertions + n_deletions
 
@@ -161,8 +169,69 @@ def error_rates_from_cigar(cigar_full_str):
     missmatch_rate = n_missmatches / read_len
     ins_rate = n_insertions / read_len
     del_rate = n_deletions / read_len
+    return error_rate, match_rate, missmatch_rate, ins_rate, del_rate, read_len
 
-    return error_rate, match_rate, missmatch_rate, ins_rate, del_rate
+
+ERROR_RATES_TITLES = ['Error rate', 'Match rate', 'Mismatch rate', 'Insertion rate', 'Deletion rate', 'Read length']
+ERROR_RATES_METRICS = ['mean', 'std', 'median', 'min', 'max']
+
+
+def error_rates_for_sam(sam_path):
+    with pysam.AlignmentFile(sam_path, "r") as samfile:
+        all_errors = []
+        for x in samfile.fetch():
+            cigar_pairs = x.cigartuples
+            if not cigar_pairs:
+                logging.error("%s No cigar string found", x.query_name)
+                continue
+
+            full_cigar = decompress_cigar_pairs(cigar_pairs, mode='ints')
+            all_errors.append(error_rates_from_cigar(full_cigar))
+
+    all_error_rates = np.array(all_errors)
+    all_stats = [0, 0, 0, 0, 0, 0]
+    if len(all_error_rates) > 0:
+        all_stats = [np.mean(all_error_rates, axis=0),
+                     np.std(all_error_rates, axis=0),
+                     np.median(all_error_rates, axis=0),
+                     np.min(all_error_rates, axis=0),
+                     np.max(all_error_rates, axis=0)]
+    all_stats = np.array(all_stats)
+
+    stats_dict = defaultdict(lambda: defaultdict(float))
+    for title, stats in zip(ERROR_RATES_TITLES, all_stats.T):
+        for metrics, val in zip(ERROR_RATES_METRICS, stats):
+            stats_dict[title][metrics] = val
+    return stats_dict
+
+
+def error_rates_str(error_rates_dict, title_padding=10):
+    max_title_len = max(map(len, ERROR_RATES_TITLES)) + title_padding
+    header = '\t\t'.join(['%s' % s for s in ERROR_RATES_METRICS])
+    padding = ' ' * max_title_len
+    out = "%s%s\n" % (padding, header)
+
+    for title in ERROR_RATES_TITLES:
+        metric_dict = error_rates_dict[title]
+        title = (title + ':').ljust(max_title_len)
+
+        values = [metric_dict[m] for m in ERROR_RATES_METRICS]
+        values = '\t\t'.join(['%4.2f' % v for v in values])
+        out += "%s%s\n" % (title, values)
+
+    return out
+
+
+def error_rates_to_csv(error_rates_dict, csv_path):
+    with open(csv_path, 'w') as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(['Metric'] + ERROR_RATES_METRICS)
+
+        for title in ERROR_RATES_TITLES:
+            metric_dict = error_rates_dict[title]
+            values = [metric_dict[m] for m in ERROR_RATES_METRICS]
+            writer.writerow([title] + values)
+
 
 
 def read_fasta(fp):
