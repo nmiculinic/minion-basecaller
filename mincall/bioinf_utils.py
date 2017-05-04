@@ -87,7 +87,7 @@ def get_ref_len_from_cigar(cigar_pairs):
 
     for b, cnt in cigar_pairs:
         sym = cigar_int_to_c(b)
-        if sym in 'MX=DNP':
+        if sym in CIGAR_MATCH_MISSMATCH or sym in CIGAR_DELETION:
             ref_len += cnt
     return ref_len
 
