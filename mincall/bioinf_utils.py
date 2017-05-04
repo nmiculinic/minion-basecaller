@@ -4,7 +4,7 @@ import pysam
 import csv
 import numpy as np
 from collections import Counter, defaultdict
-
+import pandas as pd
 
 CIGAR_TO_BYTE = {
     'M': 0,
@@ -156,8 +156,8 @@ def error_rates_from_cigar(cigar_full_str):
     n_missmatches = get_cnt(CIGAR_MISSMATCH)
     n_matches = get_cnt(CIGAR_MATCH)
 
-
-    read_len = n_all_insertions + n_missmatches + n_matches
+    read_len = n_insertions + n_missmatches + n_matches
+    noncliped_len = n_all_insertions + n_missmatches + n_matches
     if cigar_len != n_deletions + n_all_insertions + n_missmatches + n_matches:
         raise Exception("cigar_len != n_deletions + n_all_insertions + n_missmatches + n_matches "
                         "- Expected extended cigar format")
@@ -169,68 +169,58 @@ def error_rates_from_cigar(cigar_full_str):
     missmatch_rate = n_missmatches / read_len
     ins_rate = n_insertions / read_len
     del_rate = n_deletions / read_len
-    return error_rate, match_rate, missmatch_rate, ins_rate, del_rate, read_len
+    return error_rate, match_rate, missmatch_rate, ins_rate, del_rate, noncliped_len
 
 
-ERROR_RATES_TITLES = ['Error rate', 'Match rate', 'Mismatch rate', 'Insertion rate', 'Deletion rate', 'Read length']
-ERROR_RATES_METRICS = ['mean', 'std', 'median', 'min', 'max']
+ERROR_RATES_COLUMNS = ['Query name', 'Error rate', 'Match rate', 'Mismatch rate',
+                       'Insertion rate', 'Deletion rate', 'Read length']
 
 
 def error_rates_for_sam(sam_path):
+    all_errors = []
     with pysam.AlignmentFile(sam_path, "r") as samfile:
-        all_errors = []
         for x in samfile.fetch():
+            qname = x.query_name
             cigar_pairs = x.cigartuples
             if not cigar_pairs:
                 logging.error("%s No cigar string found", x.query_name)
                 continue
 
             full_cigar = decompress_cigar_pairs(cigar_pairs, mode='ints')
-            all_errors.append(error_rates_from_cigar(full_cigar))
-
-    all_error_rates = np.array(all_errors)
-    all_stats = [0, 0, 0, 0, 0, 0]
-    if len(all_error_rates) > 0:
-        all_stats = [np.mean(all_error_rates, axis=0),
-                     np.std(all_error_rates, axis=0),
-                     np.median(all_error_rates, axis=0),
-                     np.min(all_error_rates, axis=0),
-                     np.max(all_error_rates, axis=0)]
-    all_stats = np.array(all_stats)
-
-    stats_dict = defaultdict(lambda: defaultdict(float))
-    for title, stats in zip(ERROR_RATES_TITLES, all_stats.T):
-        for metrics, val in zip(ERROR_RATES_METRICS, stats):
-            stats_dict[title][metrics] = val
-    return stats_dict
+            all_errors.append([qname] + list(error_rates_from_cigar(full_cigar)))
+    return pd.DataFrame(all_errors, columns=ERROR_RATES_COLUMNS)
 
 
-def error_rates_str(error_rates_dict, title_padding=10):
-    max_title_len = max(map(len, ERROR_RATES_TITLES)) + title_padding
-    header = '\t\t'.join(['%s' % s for s in ERROR_RATES_METRICS])
-    padding = ' ' * max_title_len
-    out = "%s%s\n" % (padding, header)
+def error_positions_report(sam_path, n_buckets=1000):
+    bucket_width = 1 / n_buckets
 
-    for title in ERROR_RATES_TITLES:
-        metric_dict = error_rates_dict[title]
-        title = (title + ':').ljust(max_title_len)
+    def _update_positions(cigar_str, positions_dict):
+        cigar_len = len(cigar_str)
+        for i, c in enumerate(cigar_str.upper()):
+            relative_pos = i / cigar_len
+            bucket_index = relative_pos // bucket_width
+            bucket_pos = bucket_index * bucket_width
+            positions_dict[bucket_pos][c] += 1
 
-        values = [metric_dict[m] for m in ERROR_RATES_METRICS]
-        values = '\t\t'.join(['%4.2f' % v for v in values])
-        out += "%s%s\n" % (title, values)
+    positions = defaultdict(lambda: defaultdict(int))
+    n_reads = 0
+    with pysam.AlignmentFile(sam_path, "r") as samfile:
+        for x in samfile.fetch():
+            cigar_pairs = x.cigartuples
+            if not cigar_pairs:
+                logging.error("%s No cigar string found", x.query_name)
+                continue
+            full_cigar = decompress_cigar_pairs(cigar_pairs, mode='ints')
+            _update_positions(full_cigar, positions)
+            n_reads += 1
 
-    return out
+    data = [[pos, op, cnt] for pos, count in positions.items()
+            for op, cnt in count.items()]
 
-
-def error_rates_to_csv(error_rates_dict, csv_path):
-    with open(csv_path, 'w') as csv_file:
-        writer = csv.writer(csv_file)
-        writer.writerow(['Metric'] + ERROR_RATES_METRICS)
-
-        for title in ERROR_RATES_TITLES:
-            metric_dict = error_rates_dict[title]
-            values = [metric_dict[m] for m in ERROR_RATES_METRICS]
-            writer.writerow([title] + values)
+    df = pd.DataFrame(data, columns=['relative_position', 'operation', 'op_count'])
+    df.sort_values(by='relative_position', inplace=True)
+    df.reset_index(inplace=True, drop=True)
+    return df
 
 
 

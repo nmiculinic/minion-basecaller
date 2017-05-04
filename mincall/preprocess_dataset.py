@@ -2,101 +2,18 @@ import glob
 import logging
 import os
 import shutil
-import subprocess
 import tempfile
-import time
 from argparse import ArgumentParser
 from configparser import ConfigParser
+from dotenv import load_dotenv, find_dotenv
 
 import h5py
 import pysam
 from tqdm import tqdm
-
-from mincall.bioinf_utils import reverse_complement, decompress_cigar_pairs, read_fasta
-
-
-def get_target_sequences(sam_out):
-    result_dict = {}
-
-    with pysam.AlignmentFile(sam_out, "r") as samfile:
-        for x in samfile.fetch():
-            name = x.query_name
-
-            if x.is_unmapped:
-                logging.warning("%s unmapped" % name)
-                continue
-            try:
-                target = x.get_reference_sequence()
-            except ValueError:
-                logging.error("%s Mapped but reference len equals 0" % name)
-                continue
-
-            ref_name = x.reference_name
-            length = x.reference_length
-            start_pos = x.reference_start
-            cigar_pairs = x.cigartuples
-
-            if x.is_reverse:
-                target = reverse_complement(target)
-                cigar_pairs = list(reversed(cigar_pairs))
-
-            cigar_str = decompress_cigar_pairs(cigar_pairs, mode='ints')
-            result_dict[name] = [target, ref_name, start_pos, length, cigar_str]
-    return result_dict
+from mincall import align_utils, bioinf_utils
 
 
-def _align_for_reference_batch(files_in_batch, generate_sam_f, ref_starts, out_root):
-    name_to_file = {}
-    tmp_work_dir = tempfile.mkdtemp()
-    tmp_sam_path = os.path.join(tmp_work_dir, 'tmp.sam')
-    tmp_fastq_path = os.path.join(tmp_work_dir, 'tmp.fastq')
-    with open(tmp_fastq_path, 'wb') as fq_file:
-        for f in files_in_batch:
-            try:
-                with h5py.File(f, 'r') as h5:
-                    fastq = h5['/Analyses/Basecall_1D_000/BaseCalled_template/Fastq'][()]
-                    read_name, *_ = fastq.strip().split(b'\n')
-                    read_name = read_name[1:].split(b' ')[0].decode()
-                    assert read_name not in name_to_file
-                    name_to_file[read_name] = os.path.basename(f)
-
-                    fq_file.write(fastq)
-                    fq_file.write(b'\n')
-
-            except Exception as ex:
-                logging.error('Error reading file %s', f, exc_info=True)
-
-        generate_sam_f(tmp_fastq_path, tmp_sam_path)
-        result_dict = get_target_sequences(tmp_sam_path)
-
-    # cleanup
-    shutil.rmtree(tmp_work_dir)
-    for name, (target, ref_name, start_position, length, cigar) in result_dict.items():
-        basename, ext = os.path.splitext(name_to_file[name])
-        ref_out_name = basename + '.ref'
-        out_ref_path = os.path.join(out_root, ref_out_name)
-
-        abs_start_pos = ref_starts[ref_name] + start_position
-
-        with open(out_ref_path, 'w') as fout:
-            fout.write('%s\t%s\n' % (name, ref_name))
-            fout.write('%d\t%d\t%d\n' % (abs_start_pos, start_position, length))
-            fout.write(cigar + '\n')
-            fout.write(target + '\n')
-
-
-
-def generate_sam_graphmap(ref_path, is_circular):
-    def _generate_sam(fastq_path, sam_path):
-        args = ["graphmap", "align", "-r", ref_path, "-d", fastq_path, "-o", sam_path, "-v", "0", "--extcigar"]
-        if is_circular:
-            args.append("-C")
-
-        exit_status = subprocess.call(args)
-        if exit_status != 0:
-            logging.warning("Graphmap exit status %d" % exit_status)
-
-    return _generate_sam
+load_dotenv(find_dotenv())
 
 
 def get_ref_starts_dict(fa_path):
@@ -110,7 +27,7 @@ def get_ref_starts_dict(fa_path):
 
 
 def reads_train_test_split(ref_root, test_size, ref_path):
-    reference_len = len(read_fasta(ref_path))
+    reference_len = len(bioinf_utils.read_fasta(ref_path))
     train_size = 1 - test_size
 
     files = glob.glob(os.path.join(ref_root, '*.ref'))
@@ -118,7 +35,7 @@ def reads_train_test_split(ref_root, test_size, ref_path):
     test_path = os.path.join(ref_root, 'test.txt')
 
     with open(train_path, 'w') as trainf, open(test_path, 'w') as testf:
-        for file_path in files:
+        for file_path in tqdm(files):
             basename = os.path.basename(file_path)
             name, ext = os.path.splitext(basename)
 
@@ -137,24 +54,6 @@ def reads_train_test_split(ref_root, test_size, ref_path):
                     testf.write("%s\t%d\n" % (name, length))
                 else:
                     logging.info('Skipping ref, overlaps train and test')
-
-
-def align_for_reference(fast5_in, out_dir, generate_sam_f, ref_path, batch_size):
-    if os.path.isfile(fast5_in):
-        file_list = [fast5_in]
-    elif os.path.isdir(fast5_in):
-        file_list = glob.glob(os.path.join(fast5_in, '*.fast5'))
-    else:
-        logging.error("Invalid fastin - expected file or dir %s, skipping!!!" % fast5_in)
-        return
-
-    n_files = len(file_list)
-    os.makedirs(out_dir, exist_ok=True)
-    ref_starts = get_ref_starts_dict(ref_path)
-
-    for i in tqdm(range(0, n_files, batch_size)):
-        files_in_batch = file_list[i:i + batch_size]
-        _align_for_reference_batch(files_in_batch, generate_sam_f, ref_starts, out_dir)
 
 
 def _make_rel_symlink(src, dest_dir):
@@ -176,7 +75,7 @@ def _make_train_test_symlinks_from_list(file_list_txt, out_root, fast5_root, ref
             _make_rel_symlink(ref_path, out_root)
 
 
-def make_train_test_symlinks(train_root, test_root, fast5_root, ref_root):
+def _make_train_test_symlinks(train_root, test_root, fast5_root, ref_root):
     train_path = os.path.join(ref_root, 'train.txt')
     test_path = os.path.join(ref_root, 'test.txt')
 
@@ -187,12 +86,74 @@ def make_train_test_symlinks(train_root, test_root, fast5_root, ref_root):
     _make_train_test_symlinks_from_list(test_path, test_root, fast5_root, ref_root)
 
 
-def preprocess_all_ref(dataset_conf_path, only_split, generate_sam_f):
+def align_for_reference(fast5_in, out_dir, generate_sam_f, ref_path, batch_size):
+    if os.path.isfile(fast5_in):
+        file_list = [fast5_in]
+    elif os.path.isdir(fast5_in):
+        file_list = glob.glob(os.path.join(fast5_in, '*.fast5'))
+    else:
+        logging.error("Invalid fastin - expected file or dir %s, skipping!!!" % fast5_in)
+        return
+
+    n_files = len(file_list)
+    os.makedirs(out_dir, exist_ok=True)
+    ref_starts = get_ref_starts_dict(ref_path)
+
+    for i in tqdm(range(0, n_files, batch_size)):
+        files_in_batch = file_list[i:i + batch_size]
+        _align_for_reference_batch(files_in_batch, generate_sam_f, ref_starts, out_dir)
+
+
+def _align_for_reference_batch(files_in_batch, generate_sam_f, ref_starts, out_root):
+    if not files_in_batch:
+        return
+
+    name_to_file = {}
+    tmp_work_dir = tempfile.mkdtemp()
+    tmp_sam_path = os.path.join(tmp_work_dir, 'tmp.sam')
+    tmp_fastq_path = os.path.join(tmp_work_dir, 'tmp.fastq')
+    with open(tmp_fastq_path, 'wb') as fq_file:
+        for f in files_in_batch:
+            try:
+                with h5py.File(f, 'r') as h5:
+                    fastq = h5['/Analyses/Basecall_1D_000/BaseCalled_template/Fastq'][()]
+                    read_name, *_ = fastq.strip().split(b'\n')
+                    read_name = read_name[1:].split(b' ')[0].decode()
+                    assert read_name not in name_to_file
+                    name_to_file[read_name] = os.path.basename(f)
+
+                    fq_file.write(fastq)
+                    fq_file.write(b'\n')
+
+            except Exception as ex:
+                logging.error('Error reading file %s', f, exc_info=True)
+
+        generate_sam_f(tmp_fastq_path, tmp_sam_path)
+        result_dict = align_utils.get_target_sequences(tmp_sam_path)
+
+    # cleanup
+    shutil.rmtree(tmp_work_dir)
+    for name, (target, ref_name, start_position, length, cigar) in result_dict.items():
+        basename, ext = os.path.splitext(name_to_file[name])
+        ref_out_name = basename + '.ref'
+        out_ref_path = os.path.join(out_root, ref_out_name)
+
+        abs_start_pos = ref_starts[ref_name] + start_position
+
+        with open(out_ref_path, 'w') as fout:
+            fout.write('%s\t%s\n' % (name, ref_name))
+            fout.write('%d\t%d\t%d\n' % (abs_start_pos, start_position, length))
+            fout.write(cigar + '\n')
+            fout.write(target + '\n')
+
+
+def preprocess_all_ref(dataset_conf_path, only_split, align_function):
     dataset_config = ConfigParser()
     dataset_config.read(dataset_conf_path)
     batch_size = int(dataset_config['DEFAULT']['batch_size'])
-    test_root = dataset_config['DEFAULT']['train_root']
-    train_root = dataset_config['DEFAULT']['test_root']
+    train_root = dataset_config['DEFAULT']['train_root']
+    test_root = dataset_config['DEFAULT']['test_root']
+    per_genome_split_root = dataset_config['DEFAULT']['per_genome_split_root']
 
     for section in dataset_config.sections():
         config = dataset_config[section]
@@ -205,21 +166,32 @@ def preprocess_all_ref(dataset_conf_path, only_split, generate_sam_f):
 
         if not only_split:
             logging.info("Started %s" % section)
-            generate_sam_f = generate_sam_f(ref_path, is_circular)
+
+            def generate_sam_f(reads, sam_out):
+                align_function(reads, ref_path, is_circular, sam_out)
+
             logging.info("Started aligning")
             align_for_reference(fast5_root, ref_root, generate_sam_f, ref_path, batch_size)
 
         logging.info("Started train-test split")
+        # global train-test dest for all genomes
         reads_train_test_split(ref_root, test_size, ref_path)
-        make_train_test_symlinks(train_root, test_root, fast5_root, ref_root)
+        _make_train_test_symlinks(train_root, test_root, fast5_root, ref_root)
+
+        # train-test dest per genome
+        logging.info("Started train-test split per genome")
+        root = os.path.join(per_genome_split_root, section)
+        genome_train_root = os.path.join(root, 'train')
+        genome_test_root = os.path.join(root, 'test')
+        _make_train_test_symlinks(genome_train_root, genome_test_root, fast5_root, ref_root)
 
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument("dataset_conf_path", help="path to dataset conf file defining \
                                                   all references used to construct dataset", type=str)
-    parser.add_argument("--split", help="Only split train and tests set,\
+    parser.add_argument("--split", action='store_true', help="Only split train and tests set,\
                                         ref data should be already preprocessed")
     args = parser.parse_args()
 
-    preprocess_all_ref(args.dataset_conf_path, args.split, generate_sam_graphmap)
+    preprocess_all_ref(args.dataset_conf_path, args.split, align_utils.align_with_graphmap)
 
