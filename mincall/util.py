@@ -3,7 +3,7 @@ import numpy as np
 import re
 import unittest
 from mincall.errors import TooLargeEditDistance, BlockSizeYTooSmall, ZeroLenY
-
+from mincall.bioinf_utils import CIGAR_MATCH_MISSMATCH, CIGAR_INSERTION, CIGAR_DELETION
 
 def dump_fasta(name, fasta, fd):
     print(">" + name, file=fd)
@@ -98,13 +98,13 @@ def correct_basecalled(bucketed_basecall, reference, nedit_tol=0.2):
 
     for num, op in breakCigar(result_set['cigar']):
         for _ in range(num):
-            if op == "=" or op == "X":
+            if op in CIGAR_MATCH_MISSMATCH:
                 result[origin[idx_bcalled]] += reference[idx_ref]
                 idx_bcalled = min(idx_bcalled + 1, len(basecalled) - 1)
                 idx_ref += 1
-            elif op == "I":
+            elif op in CIGAR_INSERTION:
                 idx_bcalled += 1
-            elif op == "D":
+            elif op in CIGAR_DELETION:
                 result[origin[idx_bcalled]] += reference[idx_ref]
                 idx_ref += 1
     assert "".join(result) == reference

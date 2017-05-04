@@ -6,7 +6,7 @@ This script is responsible for preparing the basecalled dataset. It expects to b
 It should work whether reference sequence is circular or not.
 
 Usage:
-    prepare_dataset fast5_folder reference.fa alignment.sam output_dir
+    prepare_dataset fast5_folder reference.fa output_dir
 
 For example let's say we have following folder:
 

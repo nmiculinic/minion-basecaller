@@ -58,7 +58,7 @@ def model_setup_params(hyper):
         g=tf.Graph(),
         block_size_x=8 * 3 * 600 // 2,
         block_size_y=630,
-        in_data=input_readers.AlignedRaw(),
+        in_data=input_readers.HMMAlignedRaw(),
         num_blocks=3,
         batch_size=16,
         max_reach=8 * 20,  # 240
