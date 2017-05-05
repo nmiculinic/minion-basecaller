@@ -1,10 +1,10 @@
 import numpy as np
-import util
+import sys
+import mincall.util as util
 import socket
 import tensorflow as tf
-from util import decode_example, decode_sparse
-from ops import dense2d_to_sparse
-import input_readers
+from tqdm import tqdm
+from collections import OrderedDict
 import multiprocessing
 from threading import Thread
 from time import perf_counter
@@ -18,12 +18,18 @@ from tflearn.summaries import add_gradients_summary, add_activations_summary
 import logging
 from tflearn.config import is_training, get_training_mode
 from slacker_log_handler import SlackerLogHandler
-from edlib import Edlib
+import edlib
 import inspect
 import json
 import importlib
 import subprocess
+import h5py
+from collections import defaultdict
 
+from .util import decode_example, decode_sparse, breakCigar, dump_fasta
+from .ops import dense2d_to_sparse
+from . import input_readers
+import mincall.bioinf_utils as butils
 
 # UGLY UGLY HACK!
 for name, logger in logging.root.manager.loggerDict.items():
@@ -46,6 +52,7 @@ for path in error_rates_lookup:
     if os.path.isfile(path):
         error_rates = path
 
+
 def default_lr_fn(global_step):
     return tf.train.exponential_decay(1e-3, global_step, 100000, 0.01)
 
@@ -57,7 +64,7 @@ def load_model_parms(module_name, model_dir):
         hyper = json.load(f)
 
     params = model_module.model_setup_params(hyper)
-    print(params, type(params))
+    print(params, type(params), file=sys.stderr)
     params['reuse'] = True
     params['overwrite'] = False
     params['log_dir'] = model_dir
@@ -66,7 +73,7 @@ def load_model_parms(module_name, model_dir):
 
 
 class Model():
-    def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size_x, block_size_y, lr_fn=default_lr_fn, log_dir=None, run_id=None, overwrite=False, reuse=False, queue_cap=None, shrink_factor=1, test_queue_cap=None, in_data=input_readers.AlignedRaw(), dtype=tf.float32, hyper={}, clip_grad=2.0):
+    def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size_x, block_size_y, lr_fn=default_lr_fn, log_dir=None, run_id=None, overwrite=False, reuse=False, queue_cap=None, shrink_factor=1, test_queue_cap=None, in_data=input_readers.HMMAlignedRaw(), dtype=tf.float32, hyper={}, clip_grad=2.0):
         """
             Args:
                 max_reach: int, size of contextual window for convolutions etc.
@@ -183,7 +190,6 @@ class Model():
         """
             Function returning loss.
         """
-        print("Model _setup_loss")
         with tf.name_scope("loss"):
             loss = warpctc_tensorflow.ctc(
                 self.logits,
@@ -202,7 +208,7 @@ class Model():
             sol_values = sparse_tensor.values - 4 * tf.to_int32(sparse_tensor.values >= 4)
             sol = tf.SparseTensor(
                 sparse_tensor.indices,
-                tf.Print(sol_values, [sol_values, sparse_tensor.values], first_n=5, message="__dedup", summarize=20),
+                sol_values,  # tf.Print(sol_values, [sol_values, sparse_tensor.values], first_n=5, message="__dedup", summarize=20),
                 sparse_tensor.dense_shape
             )
             return sol
@@ -247,19 +253,19 @@ class Model():
         self.run_id = run_id
 
         if log_dir is None:
-            self.log_dir = os.path.join(repo_root, 'log', hostname, self.run_id)
+            self.log_dir = os.path.join(repo_root, 'log', self.run_id)
         else:
             self.log_dir = log_dir
 
         if os.path.exists(self.log_dir):
             if overwrite:
-                print("Clearing %s" % self.log_dir)
+                print("Clearing %s" % self.log_dir, file=sys.stderr)
                 shutil.rmtree(self.log_dir)
             elif not reuse:
                 raise ValueError("path " + self.log_dir + " exists")
 
         os.makedirs(self.log_dir, mode=0o744, exist_ok=reuse or overwrite)
-        print("Logdir = ", self.log_dir)
+        print("Logdir = ", self.log_dir, file=sys.stderr)
         self.logger = logging.getLogger(run_id)
         self.logger.propagate = False
         self.logger.setLevel(logging.DEBUG)
@@ -282,7 +288,7 @@ class Model():
 
             slack_handler.setFormatter(file_log_fmt)
             slack_handler.setLevel(logging.INFO)
-            print("Ignoring Slack INFO handler")
+            print("Ignoring Slack INFO handler", file=sys.stderr)
             # self.logger.addHandler(slack_handler)
 
             slack_handler = SlackerLogHandler(os.environ['SLACK_TOKEN'], 'error', username=username)
@@ -380,7 +386,6 @@ class Model():
                 padding = tf.convert_to_tensor(padding)
                 net = tf.pad(net, padding)
                 net.set_shape([None, 2 * self.max_reach + self.block_size_x, self.in_data.in_dim])
-                print(net.get_shape())
                 self.X_batch = tf.placeholder_with_default(net, (None, None, self.in_data.in_dim))
 
             with tf.name_scope("Y_batch"):
@@ -436,7 +441,7 @@ class Model():
     def get_global_step(self):
         return self.sess.run(self.global_step)
 
-    def train_minibatch(self, log_every=20, trace_every=10000):
+    def train_minibatch(self, log_every=100, trace_every=10000):
         """
             Trains minibatch and performs all required operations
 
@@ -519,33 +524,61 @@ class Model():
         self.bbt_clock = perf_counter()
         return avg_loss, avg_edit_distance
 
-    def basecall_sample(self, fast5_path, fasta_out=None, ref=None):
+    def basecall_sample(self, fast5_path, fasta_out=None, ref=None, write_logits=False):
         with self.g.as_default():
             is_training(False, session=self.sess)
-        signal = self.in_data.get_signal(fast5_path)
+        signal, start_pad = self.in_data.get_signal(fast5_path)
         t = perf_counter()
-        basecalled = self.sess.run(
-            self.dense_pred,
-            feed_dict={
+        feed_dict = {
             self.X_batch: signal,
             self.X_batch_len: np.array(signal.shape[1]).reshape([1,]),
             self.block_idx: 0,
             self.batch_size_var: 1,
             self.block_size_x_tensor: signal.shape[1]
-        }).ravel()
+        }
+
+        if write_logits:
+            basecalled, logits = self.sess.run(
+                [self.dense_pred, self.logits],
+                feed_dict=feed_dict
+            )
+            with h5py.File(fast5_path, 'a') as h5:
+                h5_path = 'Analyses/MinCall/Logits'
+                logits = np.squeeze(logits, (1,))
+                try:
+                    h5.create_dataset(h5_path, data=logits)
+                except RuntimeError:
+                    del h5[h5_path]
+                    h5.create_dataset(h5_path, data=logits)
+
+                h5[h5_path].attrs['start_pad'] = start_pad
+                h5[h5_path].attrs['model_logdir'] = self.log_dir
+                h5[h5_path].attrs['run_id'] = self.run_id
+                h5[h5_path].attrs['in_data_classname'] = type(self.in_data).__name__
+
+                fname = os.path.join(self.log_dir, 'model_hyperparams.json')
+                with open(fname, 'r') as f:
+                    hyper = json.load(f)
+                    for k, v in hyper.items():
+                        h5[h5_path].attrs[k] = v
+
+        else:
+            basecalled = self.sess.run(
+                self.dense_pred,
+                feed_dict=feed_dict
+            )
+
+        basecalled = basecalled.ravel()
         self.logger.debug("Basecalled %s in %.3f", fast5_path, perf_counter() - t)
 
         basecalled = "".join(util.decode(basecalled))
         if fasta_out is not None:
             with open(fasta_out, 'w') as f:
-                print("> " + fast5_path, file=f)
-                n = 80
-                for i in range(0, len(basecalled), n):
-                    print(basecalled[i:i+n], file=f)
-            self.logger.info("Saved basecalled %s to %s in %.3f ms/bp", fast5_path, fasta_out, (perf_counter() - t)*1000.0/len(basecalled))
+                dump_fasta(fast5_path, basecalled, f)
+            self.logger.debug("Saved basecalled %s to %s in %.3f ms/bp", fast5_path, fasta_out, (perf_counter() - t)*1000.0/len(basecalled))
             if ref is not None:
                 sam_out = os.path.splitext(fasta_out)[0] + ".sam"
-                self.logger.info("Sam out %s", sam_out)
+                self.logger.debug("Sam out %s", sam_out)
                 subprocess.Popen(["graphmap", "align", "-r", ref, "-d", fasta_out, "-o", sam_out , "--extcigar"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         return basecalled
@@ -555,7 +588,6 @@ class Model():
         vals = self.sess.run(vars)
         for var, val in zip(vars, vals):
             print(var.op.name, val.ravel()[:5])
-
 
     def get_aligement(self, fast5_path, ref_path, verbose, fasta_out_dir=None, ref=None):
         t = perf_counter()
@@ -570,17 +602,26 @@ class Model():
             print("Basecalled:\n", basecalled)
             print("Target\n", target)
         self.logger.debug("fast5_path %s, ref_path %s", fast5_path, ref_path)
-        self.logger.debug("Basecalled \n%s", basecalled)
-        self.logger.debug("Target \n%s", target)
+        result = edlib.align(basecalled, target, task='path')
+        cigar_pairs = butils.cigar_str_to_pairs(result['cigar'])
 
-        result = Edlib().align(basecalled, target)
-        self.logger.debug("Aligment %s", "".join(map(str, result.alignment)))
+        self.logger.debug("\nBasecalled: %s\nTarget    : %s",
+                          butils.query_align_string(basecalled, cigar_pairs),
+                          butils.reference_align_string(target, cigar_pairs)
+                          )
+
+        self.logger.debug("extCigar %s", result['cigar'])
         self.logger.debug("Whole time %.3f", perf_counter() - t)
 
-        acc = np.sum(np.array(result.alignment) == Edlib().EDLIB_EDOP_MATCH) / len(result.alignment)
-        nedit = result.edit_distance / len(target)
-        return nedit, acc
+        cigar_stat = defaultdict(int)
+        total = 0
+        for num, op in breakCigar(result['cigar']):
+            total += num
+            cigar_stat[op] += num
 
+        acc = cigar_stat['='] / total
+        nedit = result['editDistance'] / len(target)
+        return nedit, acc, len(basecalled), cigar_stat
     def run_validation_full(self, frac, verbose=False, fasta_out_dir=None, ref=None):
         """
             Runs full validation on test set with whole sequence_length
@@ -602,11 +643,15 @@ class Model():
         acc = np.zeros(fnames.shape, dtype=np.float32)
         n = len(acc)
         total_time = 0.0
+        total_bases_read = 0
+        cigar_stat = defaultdict(int)
+
         with self.g.as_default():
             is_training(False, session=self.sess)
-            for i, fname in enumerate(fnames):
+            pbar = tqdm(fnames)
+            for i, fname in enumerate(pbar):
                 t = perf_counter()
-                nedit[i], acc[i] = self.get_aligement(
+                nedit[i], acc[i], read_len, cigar_read_stat = self.get_aligement(
                     os.path.join(
                         input_readers.root_dir_default,
                         'pass',
@@ -617,18 +662,27 @@ class Model():
                         fname + ".ref"
                     ), verbose=verbose, fasta_out_dir=fasta_out_dir, ref=ref)
                 total_time += perf_counter() - t
+                total_bases_read += read_len
+                for k in ['=', 'X', 'I', 'D']:
+                    cigar_stat[k] += cigar_read_stat[k]
+
                 mu_edit, mu_acc = np.mean(nedit[:i + 1]), np.mean(acc[:i + 1])
                 std_edit, std_acc = np.std(nedit[:i + 1]), np.std(acc[:i + 1])
                 se_edit, se_acc = std_edit / np.sqrt(i + 1), std_acc / np.sqrt(i + 1)
-                if i % 5 == 0 or i < 5:
-                    print("\r%4d/%d avg edit %.4f s %.4f CI <%.4f, %.4f> avg_acc %.4f s %.4f CI <%.4f, %.4f> tps %.3f" % (i + 1, n, mu_edit, std_edit, mu_edit - 2*se_edit, mu_edit + 2*se_edit, mu_acc, std_acc, mu_acc - 2*se_acc, mu_acc + 2*se_acc, total_time/(i + 1)), end='')
+                pbar.set_postfix(stat="avg edit %.4f s %.4f CI <%.4f, %.4f> avg_acc %.4f s %.4f CI <%.4f, %.4f> %.2f bps" % (mu_edit, std_edit, mu_edit - 2*se_edit, mu_edit + 2*se_edit, mu_acc, std_acc, mu_acc - 2*se_acc, mu_acc + 2*se_acc, total_bases_read/total_time))
 
         mu_edit, mu_acc = np.mean(nedit), np.mean(acc)
         std_edit, std_acc = np.std(nedit), np.std(acc)
         se_edit, se_acc = std_edit / np.sqrt(i + 1), std_acc / np.sqrt(i + 1)
 
-        self.logger.info("step: %d [samples %d] avg edit %.4f s %.4f CI <%.4f, %.4f> avg_acc %.4f s %.4f CI <%.4f, %.4f> tps %.3f", self.get_global_step(), n, mu_edit, std_edit, mu_edit - 2*se_edit, mu_edit + 2*se_edit, mu_acc, std_acc, mu_acc - 2*se_acc, mu_acc + 2*se_acc, total_time/n)
+        self.logger.info("step: %d [samples %d] avg edit %.4f s %.4f CI <%.4f, %.4f> avg_acc %.4f s %.4f CI <%.4f, %.4f> %.3f bps", self.get_global_step(), n, mu_edit, std_edit, mu_edit - 2*se_edit, mu_edit + 2*se_edit, mu_acc, std_acc, mu_acc - 2*se_acc, mu_acc + 2*se_acc, total_bases_read/total_time)
 
+        total_cigar_elements = np.sum(list(cigar_stat.values()))
+        for k in ['=', 'X', 'I', 'D']:
+            self.logger.info("Step %d; %s %.2f%%", self.get_global_step(), k, 100 * cigar_stat[k] / total_cigar_elements)
+        self.logger.info("Speed = %.3f bases per second", total_bases_read/total_time)
+
+        # TODO fix this stuff
         if ref is not None and fasta_out_dir is not None:
             if error_rates_lookup is None:
                 self.logger.error("Cannot find errorrates.py")
@@ -747,7 +801,7 @@ class Model():
                     try:
                         self.sess.run(enqueue_op, feed_dict=feed)
                     except tf.errors.CancelledError:
-                        print("closing queue_feeder")
+                        print("closing queue_feeder", file=sys.stderr)
                         break
                 if proc:
                     p.terminate()
@@ -756,8 +810,8 @@ class Model():
         def data_thread_fn(enqueue_op, file_list):
             return __queue_feeder_thread(
                 enqueue_op,
-                self.in_data.input_fn(),
-                self.in_data.fn_args(self, file_list),
+                self.in_data.input_fn,
+                [self, file_list],
                 proc=proc
             )
 
@@ -794,8 +848,17 @@ class Model():
             if trace_every < 0:
                 self.logger.warn("Profiling tracing is disabled!!!")
             self.init_session(num_workers=num_workers)
-            for i in range(self.restore(must_exist=False) + 1, num_steps + 1):
-                print('\r%s Step %4d, loss %7.4f batch_time %.3f bbt %.3f dequeue %.3f  ' % (self.run_id, i, self.train_minibatch(trace_every=trace_every), self.batch_time, self.bbt, self.dequeue_time), end='')
+
+            init_step = self.restore(must_exist=False)
+            target_range = range(init_step + 1, num_steps + 1)
+            pbar = tqdm(target_range, unit='step', unit_scale=True, dynamic_ncols=True, initial=init_step, total=num_steps)
+            for i in pbar:
+                pbar.set_postfix(OrderedDict([
+                    ('loss', self.train_minibatch(trace_every=trace_every)),
+                    ('batch_time', self.batch_time),
+                    ('bbt', self.bbt),
+                    ('dequeue_time', self.dequeue_time)
+                ]))
                 if i > 0 and i % val_every == 0:
                     self.run_validation()
                     if summarize:

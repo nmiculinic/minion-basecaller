@@ -1,8 +1,5 @@
 FROM nvidia/cuda:8.0-cudnn5-devel
 
-# Mostly copy/paste from tensorflow webpage
-# Pick up some TF dependencies
-
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         curl \
@@ -17,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-numpy \
         python3-scipy \
         python3-sklearn \
+        python3-pandas \
         python \
         python-pip \
         python-numpy \
@@ -30,14 +28,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         git \
         cmake \
         sshfs \
+        autoconf \
+        libbz2-dev \
+        liblzma-dev \
+        libncurses5-dev \
         && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# --build-arg tf=tensorflow for CPU only tensorflow
-RUN pip3 --no-cache-dir install tensorflow-gpu git+https://github.com/tflearn/tflearn.git Pillow h5py python-dotenv sigopt git+https://github.com/nmiculinic/edlib-python.git slacker-log-handler dill
-
-RUN pip --no-cache-dir install -U matplotlib
+RUN pip3 --no-cache-dir install git+https://github.com/tflearn/tflearn.git Pillow h5py python-dotenv sigopt edlib slacker-log-handler pysam tqdm seaborn pandas
+RUN pip3 --no-cache-dir install tensorflow-gpu==1.0.0
 
 WORKDIR /opt
 ENV TENSORFLOW_SRC_PATH=/opt/tensorflow
@@ -48,9 +48,19 @@ RUN git clone https://github.com/tensorflow/tensorflow.git tensorflow
 RUN git clone https://github.com/nmiculinic/warp-ctc.git warp-ctc
 RUN git clone https://github.com/isovic/graphmap.git graphmap --recursive
 RUN git clone https://github.com/isovic/samscripts.git samscripts
+RUN git clone https://github.com/samtools/samtools
+RUN git clone https://github.com/samtools/htslib
+RUN git clone https://github.com/samtools/bcftools
 
-WORKDIR /opt/graphmap
+
+WORKDIR /opt/htslib
+RUN autoheader && autoconf && ./configure
 RUN make && make install
+WORKDIR /opt/samtools
+RUN autoconf -Wno-syntax  && ./configure && make && make install
+WORKDIR /opt/bcftools
+RUN make && make install
+
 
 WORKDIR /opt/warp-ctc
 RUN mkdir build
@@ -62,6 +72,11 @@ RUN python3 setup.py install
 # For CUDA profiling, TensorFlow requires CUPTI.
 ENV LD_LIBRARY_PATH /opt/warp-ctc/build:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
 
+WORKDIR /opt/graphmap
+RUN make && make install
+
+WORKDIR /
 RUN mkdir /code
 RUN mkdir /data
 WORKDIR /code
+ENV PYTHONPATH=/code

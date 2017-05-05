@@ -1,13 +1,12 @@
 import tensorflow as tf
 from tflearn.layers.conv import max_pool_1d, conv_1d
-import os
-import tflearn
 from tflearn.layers.normalization import batch_normalization
 from dotenv import load_dotenv, find_dotenv
 from tflearn.initializations import variance_scaling_initializer
-from train import sigopt_runner
-from ops import central_cut
-from util import sigopt_double
+from mincall.ops import central_cut
+from mincall.util import sigopt_double
+from mincall.model_utils import Model
+from mincall.controller import control
 load_dotenv(find_dotenv())
 
 
@@ -19,7 +18,6 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
         logits -> Unscaled logits tensor in time_major form, (block_size, batch_size, out_classes)
     """
 
-    print("model in", net.get_shape())
     for block in range(1, 4):
         with tf.variable_scope("block%d" % block):
             for layer in range(1, 1 + 1):
@@ -44,11 +42,8 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
         net = tf.nn.relu(net)
 
     net = central_cut(net, block_size, 8)
-    print("after slice", net.get_shape())
     net = tf.transpose(net, [1, 0, 2], name="Shift_to_time_major")
-    print("after transpose", net.get_shape())
     net = conv_1d(net, 9, 1, scope='logits')
-    print("model out", net.get_shape())
     return {
         'logits': net,
         'init_state': tf.constant(0),
@@ -56,9 +51,8 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
     }
 
 
-def model_setup_params(hyper):
-    print("Requesting %s hyperparams" % __file__)
-    return dict(
+def create_train_model(hyper, **kwargs):
+    model_setup = dict(
         g=tf.Graph(),
         block_size_x=8 * 3 * 50 // 2,
         block_size_y=80,
@@ -75,9 +69,15 @@ def model_setup_params(hyper):
             hyper['initial_lr'], global_step, 100000, hyper['decay_factor']),
         hyper=hyper,
     )
+    model_setup.update(kwargs)
+    return Model(**model_setup)
 
 
-params = [
+def create_test_model(hyper, **kwargs):
+    return create_train_model(hyper, **kwargs)
+
+
+sigopt_params = [
     sigopt_double('initial_lr', 1e-5, 1e-3),
     sigopt_double('decay_factor', 1e-3, 0.5),
 ]
@@ -87,6 +87,7 @@ default_params = {
     'decay_factor': 0.1,
 }
 
+default_name = "test_model"
 
 if __name__ == "__main__":
-    sigopt_runner(__file__[:-3].split('/')[-1])
+    control(globals())

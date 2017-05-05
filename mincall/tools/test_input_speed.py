@@ -1,4 +1,4 @@
-import input_readers
+from .. import input_readers
 import logging
 from time import perf_counter
 import multiprocessing

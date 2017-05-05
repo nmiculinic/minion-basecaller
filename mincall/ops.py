@@ -118,8 +118,6 @@ def atrous_conv1d(value, filters, rate, padding="SAME", name=None):
 def dense2d_to_sparse(dense_input, length, name=None, dtype=None):
     with tf.name_scope(name, "dense2d_to_sparse"):
         num_batches = dense_input.get_shape()[0]
-        print(dense_input.get_shape())
-        print(length.get_shape())
 
         indices = [tf.stack([tf.fill([length[x]], x), tf.range(length[x])], axis=1) for x in range(num_batches)]
         indices = tf.concat(axis=0, values=indices)
