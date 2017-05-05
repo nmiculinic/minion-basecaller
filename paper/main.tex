@@ -1,6 +1,5 @@
-\documentclass[times, utf8, seminar]{fer}
+\documentclass[times, utf8, seminar, numeric]{fer}
 \usepackage{booktabs}
-
 \usepackage{mathtools, amsmath,amsfonts,amssymb, amsthm}
 \usepackage{acronym}
 \usepackage{geometry}
@@ -16,8 +15,8 @@
 \newtheorem{definition}{Definition}[section]
 
 \voditelj{Mile Sikić}
-\title{CNNNano --- MinION  basecaller pogonjen dubokim ucenjem}
-\engtitle{CNNNano --- MinION deep learning powered basecaller}
+\title{MinCall --- MinION  basecaller pogonjen dubokim ucenjem}
+\engtitle{MinCall --- MinION deep learning powered basecaller}
 \author{Neven Miculinić}
 
 \maketitle
@@ -104,12 +103,12 @@ TODO.
 
 \chapter{Conclusion and further work}
 
-This model used advance state-of-the-art gated residual convolutional neural network, with top models having 270 layers and over 3M parameters, yet improvements over Metrichorn baseline are mariginal. As conclusion it might be that we've reached Bayesian error rate for R9 chemistry. Furthermore R9.5 and 1D^2 reads are under development which shall yield this paper's result obsolite quite soon, yet underlying code developed could easily be adjusted, and trained on new data.
+This model used advance state-of-the-art gated residual convolutional neural network, with top models having 270 layers and over 3M parameters, yet improvements over Metrichorn baseline are mariginal. As conclusion it might be that we've reached Bayesian error rate for R9 chemistry. Furthermore R9.5 and 1D\^2 reads are under development which shall yield this paper's result obsolite quite soon, yet underlying code developed could easily be adjusted, and trained on new data.
 
 Unlike Nanonet which uses custom OpenCL kernels, or Albacore -- a novel ONT basecaller as of May 2017 lacking GPU support, this work used world class computational framework tensorflow with highly optimized kernels and large development community. Therefore resulting paper's effect is showcasing Residual CNN approach or pure CNN approach with CTC loss is marginally better than already established basecaller, and providing code in contemporary framework.
 
-% \bibliographystyle{fer}
+\bibliographystyle{fer}
+\bibliography{refs}
 % \bibliographystyle{abbrv}
-% \bibliography{refs}
 
 \end{document}
