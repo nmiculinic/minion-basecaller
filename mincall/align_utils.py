@@ -2,7 +2,8 @@ import logging
 import subprocess
 import math
 import pysam
-
+import os
+import glob
 from mincall.bioinf_utils import reverse_complement, decompress_cigar_pairs
 
 
@@ -67,4 +68,9 @@ def read_len_filter(min_len=-1, max_len=math.inf):
         return min_len < aligment.query_length < max_len
 
     return _filter
+
+def merge_sam_files(sam_dir_path, out_sam_path):
+    sam_files = glob.glob(os.path.join(sam_dir_path, '*.sam'))
+    pysam.merge('-f', out_sam_path, *sam_files, catch_stdout=False)
+
 

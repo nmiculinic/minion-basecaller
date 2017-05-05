@@ -12,7 +12,6 @@ import pysam
 from tqdm import tqdm
 from mincall import align_utils, bioinf_utils
 
-
 load_dotenv(find_dotenv())
 
 
