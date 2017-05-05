@@ -36,8 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-RUN pip3 --no-cache-dir install git+https://github.com/tflearn/tflearn.git Pillow h5py \
-                        python-dotenv sigopt edlib slacker-log-handler pysam tqdm seaborn
+RUN pip3 --no-cache-dir install git+https://github.com/tflearn/tflearn.git Pillow h5py python-dotenv sigopt edlib slacker-log-handler pysam tqdm seaborn pandas
 RUN pip3 --no-cache-dir install tensorflow-gpu==1.0.0
 
 WORKDIR /opt
