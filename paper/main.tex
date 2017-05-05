@@ -71,10 +71,35 @@ Instead of opting for traditional path using HMM or RNN we tried using CNN~(Conv
 
 \section{Data preprocessing}
 
+Dataset were obtained from (Ask Marko!). In this research models were trainined on ecoli K-12 strand. (Should I cite someone for strand). Data was split into train and test subset, such that aligned reads map to different reference genome parts. For initial model data bootstrapping metrichorn was used, version (Ask Someone?).
+
+The fast5 input training files were further split into smaller training blocks, constiting of fixed block size on raw signal. For each block target sequence basecalled data is used in following way.
+
+We're using basecalled knowledge which tells us on each raw read part which 6-mer were currently in the nanopore. Using this data, we get the intermediate target sequence for each block. To correc for model errors, we use aligned information, that is reference genome and alignment data(cigar string) to correct those information, yielding finalized target sequence. For further performace we skip first and last traning block, since most error aggregate on edges.
+
+Adjacent matching bases are spearated with surogate one, for example: AAA -> AA'A for reasong described in following section.
+
+\section{Residual arhitecture}
+
+
+\section{CTC}
+
+This section gives brief overview over CTC, for further detail and in depth explaintion we recommend original paper~\cite{graves2006connectionist} or searhcing for contemporary blog posts.
+
+In CTC we have target sequecne $\mathbf{l}$ consisting from symbols of alphabet $\Sigma$. Our models outputs $\mathbf{x}$, and CTC maximizes $p(\mathbf{l}|\mathbf{x})$.
+
+$\mathbf{x}$ is consistend of $n$ independent discrete random variables, $X_i$  over domain $\Sigma \cup \text{Blank}$. Path $p$ through $\mathbf{x}$ is assigning for each $X_i$ single value. It's log probabity is $\log P(p) = \sum_i {\log P(X_i=x_i)}$ where $x_i$s define the path.
+
+We further have merging operator on path, $\text{merge}(x_1, x_2, \ldots, x_n)$ which merges together adjacent equivalent elements. Then $p(\mathbf{l}|\mathbf{x}) = \sum_{p\in\text{paths}(\mathbf{x}, \text{merged}(p) = \mathbf{l}}{P(p)}$ or less formally, $P(\mathbf{l}|\mathbf{x})$ is sum of all path probabilites which when merged give $\mathbf{l}$
+
+In out concrete $x$ aplication $\Sigma = \{\text{A G T C A' G' T' A'}\}$
+
+For decoding we use beam search decoder, with beam width 100.
 
 \chapter{Results}
 
 Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+
 \chapter{Conclusion and further work}
 Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
 % \cite{deepnano}
