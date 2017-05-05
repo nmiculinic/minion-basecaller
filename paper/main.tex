@@ -66,7 +66,6 @@ Recent models opted using (Recurrent neural network) RNN, notably DeepNano~\cite
 
 \chapter{Method}
 
-
 Instead of opting for traditional path using HMM or RNN we tried using CNN~(Convolutional neural networks)~\cite{lecun-98}, that is their residual version~\cite{he2016deep}. We opted out for gated residuan network variant~\cite{savarese2016learning}. For loss we used CTC (Connectionist temporal classification)~\cite{graves2006connectionist} between basecallled and target sequence. The implementation used is open source warp-ctc~\cite{warpctc}. Main computation framework is tensorflow~\cite{tensorflow2015-whitepaper}
 
 \section{Data preprocessing}
@@ -81,6 +80,7 @@ Adjacent matching bases are spearated with surogate one, for example: AAA -> AA'
 
 \section{Residual arhitecture}
 
+We use gated residual network, that is layer function is like this: $f(x) = k g(x) + x$ Where $x$ is input layer and $k$ constant learnt during training. Specifically $g$ used is multiple, 1--3 times in our experiments, Relu-BatchNorm-CNN layers.
 
 \section{CTC}
 
