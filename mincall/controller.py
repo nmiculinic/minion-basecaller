@@ -102,19 +102,22 @@ def basecall(create_test_model, **kwargs):
         total_bases = 0
         pbar = tqdm(file_list, unit='reads', unit_scale=True, dynamic_ncols=True)
         for f in pbar:
-            if args.out_dir is not None:
-                out = os.path.splitext(f)[0].split('/')[-1] + ".fasta"
-                out = os.path.join(args.out_dir, out)
-            else:
-                out = None
-            t0 = perf_counter()
-            basecalled = model.basecall_sample(f, fasta_out=out, write_logits=args.write_logits)
-            total_time += perf_counter() - t0
-            total_bases += len(basecalled)
-            pbar.set_postfix(speed="{:.3f} b/s".format(total_bases / total_time))
+            try:
+                if args.out_dir is not None:
+                    out = os.path.splitext(f)[0].split('/')[-1] + ".fasta"
+                    out = os.path.join(args.out_dir, out)
+                else:
+                    out = None
+                t0 = perf_counter()
+                basecalled = model.basecall_sample(f, fasta_out=out, write_logits=args.write_logits)
+                total_time += perf_counter() - t0
+                total_bases += len(basecalled)
+                pbar.set_postfix(speed="{:.3f} b/s".format(total_bases / total_time))
 
-            if out is None:
-                util.dump_fasta(os.path.splitext(f)[0].split(os.sep)[-1], basecalled, sys.stdout)
+                if out is None:
+                    util.dump_fasta(os.path.splitext(f)[0].split(os.sep)[-1], basecalled, sys.stdout)
+            except Exception as ex:
+                model.logger.error("Error happened in %s", f, exc_info=True)
 
     finally:
         model.close_session()
