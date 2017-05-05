@@ -86,11 +86,13 @@ We use gated residual network, that is layer function is like this: $f(x) = k g(
 
 This section gives brief overview over CTC, for further detail and in depth explaintion we recommend original paper~\cite{graves2006connectionist} or searhcing for contemporary blog posts.
 
-In CTC we have target sequecne $\mathbf{l}$ consisting from symbols of alphabet $\Sigma$. Our models outputs $\mathbf{x}$, and CTC maximizes $p(\mathbf{l}|\mathbf{x})$.
+In CTC we have target sequecne $\mathbf{l}$ consisting from symbols of alphabet $\Sigma$. Our models outputs $\mathbf{x}$, and CTC loss maximizes $p(\mathbf{l}|\mathbf{x})$.
 
 $\mathbf{x}$ is consistend of $n$ independent discrete random variables, $X_i$  over domain $\Sigma \cup \text{Blank}$. Path $p$ through $\mathbf{x}$ is assigning for each $X_i$ single value. It's log probabity is $\log P(p) = \sum_i {\log P(X_i=x_i)}$ where $x_i$s define the path.
 
-We further have merging operator on path, $\text{merge}(x_1, x_2, \ldots, x_n)$ which merges together adjacent equivalent elements. Then $p(\mathbf{l}|\mathbf{x}) = \sum_{p\in\text{paths}(\mathbf{x}, \text{merged}(p) = \mathbf{l}}{P(p)}$ or less formally, $P(\mathbf{l}|\mathbf{x})$ is sum of all path probabilites which when merged give $\mathbf{l}$
+We further have merging operator on path, $\text{merge}(x_1, x_2, \ldots, x_n)$ which merges together adjacent equivalent elements. For example $\text{merge}(AAAGC) = AGC$.
+
+Then $p(\mathbf{l}|\mathbf{x}) = \sum_{p\in\text{paths}(\mathbf{x}, \text{merged}(p) = \mathbf{l}}{P(p)}$ or less formally, $P(\mathbf{l}|\mathbf{x})$ is sum of all path probabilites which when merged give $\mathbf{l}$
 
 In out concrete $x$ aplication $\Sigma = \{\text{A G T C A' G' T' A'}\}$
 
@@ -101,8 +103,11 @@ For decoding we use beam search decoder, with beam width 100.
 TODO.
 
 \chapter{Conclusion and further work}
-Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
-% \cite{deepnano}
+
+This model used advance state-of-the-art gated residual convolutional neural network, with top models having 270 layers and over 3M parameters, yet improvements over Metrichorn baseline are mariginal. As conclusion it might be that we've reached Bayesian error rate for R9 chemistry. Furthermore R9.5 and 1D^2 reads are under development which shall yield this paper's result obsolite quite soon, yet underlying code developed could easily be adjusted, and trained on new data.
+
+Unlike Nanonet which uses custom OpenCL kernels, or Albacore -- a novel ONT basecaller as of May 2017 lacking GPU support, this work used world class computational framework tensorflow with highly optimized kernels and large development community. Therefore resulting paper's effect is showcasing Residual CNN approach or pure CNN approach with CTC loss is marginally better than already established basecaller, and providing code in contemporary framework.
+
 % \bibliographystyle{fer}
 % \bibliographystyle{abbrv}
 % \bibliography{refs}
