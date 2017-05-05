@@ -43,6 +43,8 @@ def align_with_graphmap(reads_path, ref_path, is_circular, out_sam):
         args.append("-C")
 
     exit_status = subprocess.call(args)
+    logging.info("Graphmap exit status %d" % exit_status)
+
     if exit_status != 0:
         logging.warning("Graphmap exit status %d" % exit_status)
 
@@ -69,8 +71,22 @@ def read_len_filter(min_len=-1, max_len=math.inf):
 
     return _filter
 
+
 def merge_sam_files(sam_dir_path, out_sam_path):
     sam_files = glob.glob(os.path.join(sam_dir_path, '*.sam'))
     pysam.merge('-f', out_sam_path, *sam_files, catch_stdout=False)
 
+
+def merge_reads(reads_fastx_root, out_fastx_path):
+    dir_content = [os.path.join(reads_fastx_root, f) for f in os.listdir(reads_fastx_root)]
+    files = filter(os.path.isfile, dir_content)
+
+    def _copy_to(outfp, input_file_path):
+        with open(input_file_path, 'r') as fin:
+            for line in fin:
+                outfp.write(line)
+
+    with open(out_fastx_path, 'w') as fout:
+        for in_path in files:
+            _copy_to(fout, in_path)
 
