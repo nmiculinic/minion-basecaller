@@ -92,7 +92,7 @@ def get_ref_len_from_cigar(cigar_pairs):
     ref_len = 0
 
     for b, cnt in cigar_pairs:
-        sym = cigar_int_to_c(b)
+        sym = cigar_int_to_c(b) if isinstance(b, int) else b
         if sym in CIGAR_MATCH_MISSMATCH or sym in CIGAR_DELETION:
             ref_len += cnt
     return ref_len
@@ -221,7 +221,6 @@ def error_positions_report(sam_path, n_buckets=1000):
     df.sort_values(by='relative_position', inplace=True)
     df.reset_index(inplace=True, drop=True)
     return df
-
 
 
 def read_fasta(fp):

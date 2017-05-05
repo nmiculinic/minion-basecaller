@@ -1,6 +1,6 @@
 import logging
 import subprocess
-
+import math
 import pysam
 
 from mincall.bioinf_utils import reverse_complement, decompress_cigar_pairs
@@ -45,4 +45,26 @@ def align_with_graphmap(reads_path, ref_path, is_circular, out_sam):
     if exit_status != 0:
         logging.warning("Graphmap exit status %d" % exit_status)
 
+
+def filter_aligments_in_sam(sam_path, out_path, filters=[]):
+    n_reads = 0
+    n_kept = 0
+
+    with pysam.AlignmentFile(sam_path, "r") as in_sam:
+        with pysam.AlignmentFile(out_path, "w", template=in_sam) as out_sam:
+
+            for x in in_sam.fetch():
+                n_reads += 1
+
+                if all([f(x) for f in filters]):
+                    n_kept += 1
+                    out_sam.write(x)
+    return n_kept, n_reads - n_kept
+
+
+def read_len_filter(min_len=-1, max_len=math.inf):
+    def _filter(aligment):
+        return min_len < aligment.query_length < max_len
+
+    return _filter
 
