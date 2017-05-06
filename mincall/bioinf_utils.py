@@ -208,11 +208,12 @@ def error_rates_for_sam(sam_path):
     all_errors = []
     with pysam.AlignmentFile(sam_path, "r") as samfile:
         for x in samfile.fetch():
+            if x.is_unmapped:
+                logging.error("%s is unmapped", x.query_name)
+                continue
+
             qname = x.query_name
             cigar_pairs = x.cigartuples
-            if not cigar_pairs:
-                logging.error("%s No cigar string found", x.query_name)
-                continue
 
             full_cigar = decompress_cigar_pairs(cigar_pairs, mode='ints')
             all_errors.append([qname] + list(error_rates_from_cigar(full_cigar)))

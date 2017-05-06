@@ -123,6 +123,12 @@ def secondary_aligments_filter():
     return _filter
 
 
+def only_mapped_filter():
+    def _filter(x):
+        return not x.is_unmapped
+    return _filter
+
+
 def merge_sam_files(sam_dir_path, out_sam_path):
     sam_files = glob.glob(os.path.join(sam_dir_path, '*.sam'))
     os.makedirs(os.path.dirname(out_sam_path), exist_ok=True)
