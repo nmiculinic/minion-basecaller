@@ -316,7 +316,7 @@ def process_mpileup_line(line, coverage_threshold, fp_variant, fp_vcf):
     return skip, np.array(cnts)
 
 
-def get_consensus_report(sam_path, ref_path, coverage_threshold=0, out_dir=None, tmp_files_dir=None):
+def get_consensus_report(sam_path, ref_path, is_circular, coverage_threshold=0, out_dir=None, tmp_files_dir=None):
     basename = os.path.basename(sam_path)
     file_name, ext = os.path.splitext(basename)
 
@@ -339,7 +339,13 @@ def get_consensus_report(sam_path, ref_path, coverage_threshold=0, out_dir=None,
     pysam.index(bam_path, '-b')
 
     logging.info("Creating mpileup")
-    pysam.mpileup('-A', '-B', '-Q', '0',
+
+    mpileup_flags = ['-A', '-B', '-Q', '0']
+    if is_circular:
+        # use secondary aligments as well
+        mpileup_flags.extend(['--ff', '0'])
+
+    pysam.mpileup(*mpileup_flags,
                   '-f', ref_path, bam_path,
                   '-o', mpileup_path, catch_stdout=False)
 

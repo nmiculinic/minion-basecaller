@@ -1,6 +1,7 @@
 import itertools
 import logging
 import pysam
+import re
 import csv
 import numpy as np
 from collections import Counter, defaultdict
@@ -26,6 +27,7 @@ CIGAR_INSERTION = 'ISH'
 CIGAR_DELETION = 'DNP'
 CIGAR_SOFTCLIP = ['S']
 CIGAR_HARDCLIP = ['H']
+CIGAR_CLIP = 'SH'
 
 BYTE_TO_CIGAR = {v: k for k, v in CIGAR_TO_BYTE.items()}
 
@@ -86,6 +88,32 @@ def decompress_cigar_pairs(cigar_pairs, mode='ints'):
 def decompress_cigar(cigar_str):
     cigar_pairs = cigar_str_to_pairs(cigar_str)
     return decompress_cigar_pairs(cigar_pairs, mode='chars')
+
+
+def compress_cigar(cigar_str):
+    pairs = []
+    count = 1
+
+    for i in range(1, len(cigar_str)):
+        if cigar_str[i-1] == cigar_str[i]:
+            count += 1
+        else:
+            pairs.append((cigar_str[i-1], count))
+            count = 1
+    pairs.append((cigar_str[-1], count))
+    return pairs
+
+
+def ltrim_cigar(cigar):
+    for op in CIGAR_CLIP:
+        cigar = re.sub(r'^%s*' % op, r'', cigar)
+    return cigar
+
+
+def rtrim_cigar(cigar):
+    for op in CIGAR_CLIP:
+        cigar = re.sub(r'%s*$' % op, r'', cigar)
+    return cigar
 
 
 def get_ref_len_from_cigar(cigar_pairs):
@@ -180,11 +208,12 @@ def error_rates_for_sam(sam_path):
     all_errors = []
     with pysam.AlignmentFile(sam_path, "r") as samfile:
         for x in samfile.fetch():
+            if x.is_unmapped:
+                logging.error("%s is unmapped", x.query_name)
+                continue
+
             qname = x.query_name
             cigar_pairs = x.cigartuples
-            if not cigar_pairs:
-                logging.error("%s No cigar string found", x.query_name)
-                continue
 
             full_cigar = decompress_cigar_pairs(cigar_pairs, mode='ints')
             all_errors.append([qname] + list(error_rates_from_cigar(full_cigar)))
