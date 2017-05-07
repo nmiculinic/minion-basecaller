@@ -3,6 +3,7 @@ import socket
 from random import shuffle
 import numpy as np
 import h5py
+from glob import glob
 from collections import defaultdict
 
 from . import util
@@ -11,10 +12,23 @@ from .errors import MissingRNN1DBasecall, InsufficientDataBlocks, MinIONBasecall
 
 root_dir_map = {
     'karla': '/hgst8TB/fjurisic/ecoli',
-    'protagonist': '/home/lpp/Downloads/minion'
+    'protagonist': '/home/lpp/Downloads/minion',
+    'inspiron5520': '/data'
 }
 root_dir_default = root_dir_map.get(socket.gethostname(), '/data')
 
+
+def find_ref(fast5_path):
+    dirname = os.path.dirname(fast5_path)
+    basename = os.path.basename(fast5_path)
+    name, ext = os.path.splitext(basename)
+    ref_path = os.path.join(dirname, name + '.ref')
+
+    if not os.path.exists(ref_path):
+        raise errors.RefFileNotFound(
+            "{}-> search query:{}.ref in following directory {}".format(basename, name, dirname))
+
+    return ref_path
 
 class InputReader():
     def input_fn(self):
@@ -90,6 +104,7 @@ class AlignedRawAbstract(InputReader):
             else:
                 raise ValueError("extension not recognized %s" % ref_ext)
 
+            ref_seq = ref_seq.upper()
             corrected_basecalled = util.correct_basecalled(bucketed_basecall, ref_seq, nedit_tol=self.nedit_tol)
 
             if verify_file:
@@ -105,20 +120,26 @@ class AlignedRawAbstract(InputReader):
             y, y_len = util.prepare_y(corrected_basecalled[1:1 + num_blocks], block_size_y)
             return x, x_len, y, y_len
 
-    def find_ref(self, fast5, dirs):
-        fname = os.path.splitext(fast5)[0].split(os.sep)[-1]
-        for d in dirs:
-            pick = os.path.join(d, fname + ".ref")
-            if os.path.exists(pick):
-                return pick
+    def find_ref(self, fast5_path):
+        dirname = os.path.dirname(fast5_path)
+        basename = os.path.basename(fast5_path)
+        name, ext = os.path.splitext(basename)
+        ref_path = os.path.join(dirname, name + '.ref')
+        if not os.path.exists(ref_path):
+            raise errors.RefFileNotFound(
+                "{}-> search query:{}.ref in following directory {}".format(basename, name, dirname))
 
-        raise errors.RefFileNotFound("{}-> search query:{}.ref in following directories {}".format(fast5, fname, dirs))
+        return ref_path
 
-    def input_fn(self, model, file_list, root_dir=None):
+    def input_fn(self, model, subdir, root_dir=None):
         if root_dir is None:
             root_dir = root_dir_default
-        with open(os.path.join(root_dir, file_list), 'r') as f:
-            items = list(map(sanitize_input_line, f.readlines()))
+
+        root_dir = os.path.join(root_dir, subdir)
+        if not os.path.exists(root_dir) or not os.path.isdir(root_dir):
+            model.logger.error('Invalid input folder %s, expected root dir with .fast5 and .ref', root_dir)
+
+        items = glob(os.path.join(root_dir, '*.fast5'))
         names = ["X", "X_len", "Y", "Y_len"]
 
         total = 0
@@ -126,11 +147,10 @@ class AlignedRawAbstract(InputReader):
 
         while True:
             shuffle(items)
-            for fname in items:
-                fast5_path = os.path.join(root_dir, 'pass', fname + '.fast5')
-                ref_path = self.find_ref(fast5_path, [os.path.join(root_dir, 'ref')])
-                total += 1
+            for fast5_path in items:
+                ref_path = find_ref(fast5_path)
 
+                total += 1
                 try:
                     sol = self.read_fast5_raw_ref(
                         fast5_path,
@@ -151,7 +171,7 @@ class AlignedRawAbstract(InputReader):
                     errors[type(ex).__name__] += 1
                 except Exception as ex:
                     errors[type(ex).__name__] += 1
-                    model.logger.error('in filename %s \n' % fname, exc_info=True)
+                    model.logger.error('in filename %s \n' % fast5_path, exc_info=True)
 
                 if total % 10000 == 0 or total in [10, 100, 200, 1000]:
                     model.logger.debug(
@@ -206,8 +226,3 @@ def sanitize_input_line(fname):
 def proc_wrapper(q, fun, *args):
     for feed in fun(*args):
         q.put(feed)
-
-
-if __name__ == '__main__':
-    inp = AlignedRaw()
-    x, x_len, y, y_len = inp.read_fast5_raw_ref("/home/lpp/Downloads/minion/pass/58342_ch183_read295_strand.fast5", "/home/lpp/Downloads/minion/ref/58342_ch183_read295_strand.ref", 8 * 3 * 600 // 2, 630, 3, verify_file=True)

@@ -89,13 +89,19 @@ def process_mpileup(alignments_path, reference_path, mpileup_path, coverage_thre
         # transfrorm coverage sum to average coverage
         counts[-1] /= (i+1)
 
-        columns = ['field', 'value']
         fields = ['alignments_file', 'mpileup_file', 'coverage_threshold', 'snp_count', 'insertion_count',
                   'deletion_count', 'num_undercovered_bases', 'num_called_bases',
                   'num_correct_bases', 'average_coverage']
         values = [alignments_path, mpileup_path, coverage_threshold] + counts.tolist()
-        data = list(zip(fields, values))
-        report = pd.DataFrame(data, columns=columns)
+        report = pd.DataFrame([values], columns=fields)
+
+        for col in filter(lambda c: c.endswith('_count'), report.columns):
+            new_col = col.replace('count', 'rate')
+            report[new_col] = 100 * report[col] / report.num_called_bases
+
+        report['correct_rate'] = 100 * report.num_correct_bases / report.num_called_bases
+        report = report.transpose()
+
         if output_prefix:
             summary_file = os.path.join(output_prefix, 'cov_%d.sum.vcf' % coverage_threshold)
             report.to_csv(summary_file, sep=';', index=False)
