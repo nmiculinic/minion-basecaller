@@ -24,9 +24,9 @@ args.add_argument("--coverage_threshold", help="Minimal coverage threshold for c
 args = args.parse_args()
 
 basecallers = {
-    # "mincall_m270": ["nvidia-docker", "run", "--rm", "-v", "%s:/data" % args.input_folder, "-u=%d" % os.getuid(), "nmiculinic/mincall:9947283"],
-    # "nanonet": ["nanonetcall", args.input_folder, "--chemistry", "r9", "--platforms", "nvidia:0:20", "--exc_opencl"]
-    "nanonet": ["nanonetcall", args.input_folder, "--chemistry", "r9", "--jobs", "8"]
+    "mincall_m270": ["nvidia-docker", "run", "--rm", "-v", "%s:/data" % args.input_folder, "-u=%d" % os.getuid(), "nmiculinic/mincall:9947283"],
+    "nanonet": ["nanonetcall", args.input_folder, "--chemistry", "r9", "--platforms", "nvidia:0:20", "--exc_opencl"]
+    # "nanonet": ["nanonetcall", args.input_folder, "--chemistry", "r9", "--jobs", "8"]
 }
 
 os.makedirs(args.out_folder, exist_ok=True)
