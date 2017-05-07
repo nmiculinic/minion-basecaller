@@ -22,7 +22,6 @@ args.add_argument("--min_length", type=int, default=500, help="Minimum read leng
 args.add_argument("-c", "--circular", help="Is genome circular", action="store_true")
 args.add_argument("--coverage_threshold", help="Minimal coverage threshold for consensus", type=float, default=0.0)
 args = args.parse_args()
-print(args, dir(args))
 
 basecallers = {
     # "mincall_m270": ["nvidia-docker", "run", "--rm", "-v", "%s:/data" % args.input_folder, "-u=%d" % os.getuid(), "nmiculinic/mincall:9947283"],
@@ -38,6 +37,7 @@ for name, cmd in basecallers.items():
         logging.info("%s exists, skipping", fasta_path)
     else:
         logging.info("Basecalling %s with %s", args.input_folder, name)
+        logging.info("Output file", fasta_path)
         logging.info("Full command: %s", " ".join(cmd))
         with open(fasta_path, 'w') as f:
             subprocess.check_call(cmd, stdout=f)
@@ -63,12 +63,13 @@ for name, cmd in basecallers.items():
         logging.info("%s file exists, loading", reads_csv)
         df = pd.read_csv(reads_csv)
     else:
-        df = error_rates_for_sam(reads_csv)
+        df = error_rates_for_sam(filtered_sam)
         df.to_csv(reads_csv)
         desc = df.describe()
-        with open(os.path.join(args.out_folder, name + "_read_data.tex"), 'w') as f:
+        with open(os.path.join(args.out_folder, name + "_read_summary.tex"), 'w') as f:
             desc.to_latex(f)
-        desc.to_csv(os.path.join(args.out_folder, name + "_read_summary.csv"))
+        with open(os.path.join(args.out_folder, name + "_read_summary.txt"), 'w') as f:
+            desc.to_string(f)
     logging.info("%s\n%s", name, df.describe())
     dfs[name] = df
 
@@ -78,10 +79,12 @@ for name, cmd in basecallers.items():
     else:
         consensus_report = get_consensus_report(filtered_sam, args.ref, args.coverage_threshold)
         consensus_report.to_csv(consensus_report_path)
+        with open(os.path.splitext(consensus_report_path)[0] + ".txt", 'w') as f:
+            consensus_report.to_string(f)
 
 
-fig_kde_path = os.path.join(args.out_dir, name + "reads_kde.png")
-fig_hist_path = os.path.join(args.out_dir, name + "reads_hist.png")
+fig_kde_path = os.path.join(args.out_folder, name + "reads_kde.png")
+fig_hist_path = os.path.join(args.out_folder, name + "reads_hist.png")
 
 fig_kde, axes_kde = plt.subplots(3, 2)
 fig_hist, axes_hist = plt.subplots(3, 2)
