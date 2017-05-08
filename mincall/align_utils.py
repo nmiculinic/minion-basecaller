@@ -123,6 +123,12 @@ def secondary_aligments_filter():
     return _filter
 
 
+def supplementary_aligments_filter():
+    def _filter(aligment):
+        return not aligment.is_supplementary
+    return _filter
+
+
 def only_mapped_filter():
     def _filter(x):
         return not x.is_unmapped
@@ -169,3 +175,6 @@ def cnt_reads_in_sam(sam_path):
     with pysam.AlignmentFile(sam_path, "r") as samfile:
         total = sum(1 for _ in samfile.fetch())
     return total
+
+def extend_cigar_in_sam(sam_path_in, sam_path_out, reference, reads_fastx):
+    pass
