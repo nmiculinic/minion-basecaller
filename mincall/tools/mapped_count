@@ -1,0 +1,14 @@
+#!/usr/bin/python3
+
+from mincall.align_utils import filter_aligments_in_sam, only_mapped_filter
+from tempfile import NamedTemporaryFile
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("sam_file_in")
+args = parser.parse_args()
+
+with NamedTemporaryFile() as fout:
+    filters = [only_mapped_filter()]
+    n_kept, n_discarded = filter_aligments_in_sam(args.sam_file_in, fout.name, filters)
+    print("Mapped %d, unmapped %d" % (n_kept, n_discarded))
