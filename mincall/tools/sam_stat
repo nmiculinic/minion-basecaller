@@ -7,5 +7,5 @@ parser = argparse.ArgumentParser()
 parser.add_argument("sam_file")
 args = parser.parse_args()
 
-df = error_rates_for_sam(args.sam_path)
+df = error_rates_for_sam(args.sam_file)
 print(df.describe(percentiles=[]).transpose())
