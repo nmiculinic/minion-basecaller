@@ -79,7 +79,7 @@ def decompress_cigar_pairs(cigar_pairs, mode='ints'):
     elif mode == 'chars':
         convert = lambda x: x
     else:
-        raise Exception('Invalid mode argument. Expected ints or chars')
+        raise ValueError('Invalid mode argument. Expected ints or chars')
 
     extended = (cnt * [convert(b)] for b, cnt in cigar_pairs)
     return ''.join(itertools.chain.from_iterable(extended))
@@ -187,8 +187,8 @@ def error_rates_from_cigar(cigar_full_str):
     read_len = n_insertions + n_missmatches + n_matches
     noncliped_len = n_all_insertions + n_missmatches + n_matches
     if cigar_len != n_deletions + n_all_insertions + n_missmatches + n_matches:
-        raise Exception("cigar_len != n_deletions + n_all_insertions + n_missmatches + n_matches "
-                        "- Expected extended cigar format")
+        raise ValueError("cigar_len != n_deletions + n_all_insertions + n_missmatches + n_matches"
+                         ";Expected extended cigar format")
 
     n_errors = n_missmatches + n_insertions + n_deletions
 

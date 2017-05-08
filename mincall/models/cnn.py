@@ -50,7 +50,7 @@ def model_setup_params(hyper):
         block_size_x=8 * 3 * 600 // 2,
         block_size_y=630,
         in_data=input_readers.HMMAlignedRaw(),
-        num_blocks=3,
+        num_blocks=4,
         batch_size=16,
         max_reach=8 * 20,  # 240
         queue_cap=300,
@@ -71,7 +71,7 @@ sigopt_params = [
 default_params = {
     'initial_lr': 0.0009,
     'decay_factor': 0.002,
-    'num_layers': 20,
+    'num_layers': 5,
 }
 
 
@@ -85,7 +85,7 @@ def create_test_model(hyper, **kwargs):
     return create_train_model(hyper, **kwargs)
 
 
-default_name = "cnn_20l_64c_3"
+default_name = "cnn_5l_64c_3"
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 import os
 import socket
-from random import shuffle
+from random import shuffle, randint
 import numpy as np
 import h5py
 from glob import glob
@@ -93,8 +93,11 @@ class AlignedRawAbstract(InputReader):
                     bucketed_basecall[target_bucket] += \
                         b['model_state'][-b['move']:].decode("ASCII")
 
-            if len(bucketed_basecall) < num_blocks + 2:
-                raise InsufficientDataBlocks("Has only {} blocks, while requesting {} + first and last".format(len(bucketed_basecall), num_blocks))
+            # -2 for first and last that are always skipped
+            num_blocks_max = len(bucketed_basecall) - 2
+            if num_blocks_max < num_blocks:
+                raise InsufficientDataBlocks("Has only {} blocks, while requesting {} + first and last"
+                                             .format(len(bucketed_basecall), num_blocks))
 
             ref_ext = os.path.splitext(ref_path)[1]
             if ref_ext == ".ref":
@@ -112,12 +115,15 @@ class AlignedRawAbstract(InputReader):
                 np.testing.assert_string_equal("".join(bucketed_basecall), fastq[1])
                 np.testing.assert_string_equal("".join(corrected_basecalled), ref_seq)
 
+            # Skipping first n random blocks
+            skip_first_n = randint(1, num_blocks_max-num_blocks+1)
+
             x = np.zeros([block_size_x * num_blocks, 1], dtype=np.float32)
             x_len = min(len(signal), block_size_x * num_blocks)
 
-            # Skipping first block
-            x[:x_len, 0] = signal[block_size_x:block_size_x + x_len]
-            y, y_len = util.prepare_y(corrected_basecalled[1:1 + num_blocks], block_size_y)
+            x_offset = skip_first_n*block_size_x
+            x[:x_len, 0] = signal[x_offset:x_offset + x_len]
+            y, y_len = util.prepare_y(corrected_basecalled[skip_first_n:skip_first_n + num_blocks], block_size_y)
             return x, x_len, y, y_len
 
     def find_ref(self, fast5_path):
@@ -160,6 +166,7 @@ class AlignedRawAbstract(InputReader):
                         num_blocks=model.num_blocks,
                         verify_file=False
                     )
+                    # sol = (x, x_len, y, y_len)
                     np.testing.assert_array_less(0, sol[3], err_msg='y_len must be > 0')
 
                     yield {
