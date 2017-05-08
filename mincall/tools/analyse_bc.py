@@ -38,7 +38,7 @@ for name, cmd in basecallers.items():
         logger.info("%s exists, skipping", fasta_path)
     else:
         logger.info("Basecalling %s with %s", args.input_folder, name)
-        logger.info("Output file", fasta_path)
+        logger.info("Output file %s", fasta_path)
         logger.info("Full command: %s", " ".join(cmd))
         with open(fasta_path, 'w') as f:
             subprocess.check_call(cmd, stdout=f)

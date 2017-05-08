@@ -76,11 +76,15 @@ def model_setup_params(hyper):
 
 
 sigopt_params = [
+    sigopt_double('initial_lr', 1e-5, 1e-3),
+    sigopt_double('decay_factor', 1e-3, 0.5),
+    sigopt_int('num_layers', 10, 20),
+    sigopt_int('num_sub_layers', 1, 2),
 ]
 
 default_params = {
-    'initial_lr': 0.0009,
-    'decay_factor': 0.002,
+    'initial_lr': 0.000965352400196344,
+    'decay_factor': 0.0017387361908150767,
     'num_layers': 20,
     'num_sub_layers': 2
 }
@@ -96,7 +100,7 @@ def create_test_model(hyper, **kwargs):
     return create_train_model(hyper, **kwargs)
 
 
-default_name = "resdeep_test"
+default_name = "resdeep"
 
 
 if __name__ == "__main__":
