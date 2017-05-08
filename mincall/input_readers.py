@@ -116,7 +116,8 @@ class AlignedRawAbstract(InputReader):
                 np.testing.assert_string_equal("".join(corrected_basecalled), ref_seq)
 
             # Skipping first n random blocks
-            skip_first_n = randint(1, num_blocks_max-num_blocks+1)
+            #skip_first_n = randint(1, num_blocks_max-num_blocks+1)
+            skip_first_n = 1
 
             x = np.zeros([block_size_x * num_blocks, 1], dtype=np.float32)
             x_len = min(len(signal), block_size_x * num_blocks)
