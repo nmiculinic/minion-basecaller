@@ -74,7 +74,9 @@ class AlignedRawAbstract(InputReader):
                 'signal_len': signal_len
             }
 
-    def read_fast5_raw_ref(self, fast5_path, ref_path, block_size_x, block_size_y, num_blocks, verify_file=True):
+    def read_fast5_raw_ref(self, fast5_path, ref_path, block_size_x, block_size_y, num_blocks, max_n_samples_per_ref=1,
+                           verify_file=True):
+
         with open(ref_path, 'r') as ref_file:
             fast5 = self.read_fast5(fast5_path)
 
@@ -115,17 +117,22 @@ class AlignedRawAbstract(InputReader):
                 np.testing.assert_string_equal("".join(bucketed_basecall), fastq[1])
                 np.testing.assert_string_equal("".join(corrected_basecalled), ref_seq)
 
-            # Skipping first n random blocks
-            #skip_first_n = randint(1, num_blocks_max-num_blocks+1)
-            skip_first_n = 1
+            # possible different blocks (with overlap)
+            n_different_blocks = num_blocks_max-num_blocks+1
+            n_different_non_overlap_blocks = n_different_blocks // num_blocks
+            n_samples = min(max_n_samples_per_ref, n_different_non_overlap_blocks)
 
-            x = np.zeros([block_size_x * num_blocks, 1], dtype=np.float32)
-            x_len = min(len(signal), block_size_x * num_blocks)
+            for i in range(n_samples):
+                x = np.zeros([block_size_x * num_blocks, 1], dtype=np.float32)
+                x_len = min(len(signal), block_size_x * num_blocks)
 
-            x_offset = skip_first_n*block_size_x
-            x[:x_len, 0] = signal[x_offset:x_offset + x_len]
-            y, y_len = util.prepare_y(corrected_basecalled[skip_first_n:skip_first_n + num_blocks], block_size_y)
-            return x, x_len, y, y_len
+                # start from i-th block
+                # does not guarantee non overlapping blocks but ok enough
+                start_block = randint(1, n_different_blocks)
+                x_offset = start_block*block_size_x
+                x[:x_len, 0] = signal[x_offset:x_offset + x_len]
+                y, y_len = util.prepare_y(corrected_basecalled[start_block:start_block + num_blocks], block_size_y)
+                yield x, x_len, y, y_len
 
     def find_ref(self, fast5_path):
         dirname = os.path.dirname(fast5_path)
@@ -159,20 +166,19 @@ class AlignedRawAbstract(InputReader):
 
                 total += 1
                 try:
-                    sol = self.read_fast5_raw_ref(
+                    sols = self.read_fast5_raw_ref(
                         fast5_path,
                         ref_path,
                         block_size_x=model.block_size_x,
                         block_size_y=model.block_size_y,
                         num_blocks=model.num_blocks,
+                        max_n_samples_per_ref=model.max_n_samples_per_ref,
                         verify_file=False
                     )
-                    # sol = (x, x_len, y, y_len)
-                    np.testing.assert_array_less(0, sol[3], err_msg='y_len must be > 0')
-
-                    yield {
-                        name + "_enqueue_val": np.array([arr]) for name, arr in zip(names, sol)
-                    }
+                    for sol in sols:
+                        yield {
+                            name + "_enqueue_val": np.array([arr]) for name, arr in zip(names, sol)
+                        }
                 except KeyboardInterrupt:
                     raise
                 except MinIONBasecallerException as ex:
