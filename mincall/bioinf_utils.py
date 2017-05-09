@@ -6,6 +6,7 @@ import csv
 import numpy as np
 from collections import Counter, defaultdict
 import pandas as pd
+from tqdm import tqdm
 
 CIGAR_TO_BYTE = {
     'M': 0,
@@ -215,10 +216,12 @@ ERROR_RATES_COLUMNS = ['Query name', 'Error rate', 'Match rate', 'Mismatch rate'
 
 def error_rates_for_sam(sam_path):
     all_errors = []
+    unmapped = 0
     with pysam.AlignmentFile(sam_path, "r") as samfile:
-        for x in samfile.fetch():
+        for x in tqdm(samfile.fetch(), unit='read'):
             if x.is_unmapped:
-                logging.error("%s is unmapped", x.query_name)
+                logging.debug("%s is unmapped", x.query_name)
+                unmapped += 1
                 continue
 
             qname = x.query_name
@@ -226,6 +229,8 @@ def error_rates_for_sam(sam_path):
 
             full_cigar = decompress_cigar_pairs(cigar_pairs, mode='ints')
             all_errors.append([qname] + list(error_rates_from_cigar(full_cigar)) + [x.is_reverse])
+    if unmapped > 0:
+        logging.error("%d reads were unmapped", unmapped)
     return pd.DataFrame(all_errors, columns=ERROR_RATES_COLUMNS)
 
 
