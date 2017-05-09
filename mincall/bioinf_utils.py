@@ -52,8 +52,15 @@ def cigar_int_to_c(b):
     return ret
 
 
-def cigar_pairs_to_str(cigar_pairs):
-    cigar = ('%d%s' % (cnt, cigar_int_to_c(b)) for b, cnt in cigar_pairs)
+def cigar_pairs_to_str(cigar_pairs, mode='ints'):
+    if mode == 'ints':
+        convert = cigar_int_to_c
+    elif mode == 'chars':
+        convert = lambda x: x
+    else:
+        raise ValueError('Invalid mode argument. Expected ints or chars')
+
+    cigar = ('%d%s' % (cnt, convert(b)) for b, cnt in cigar_pairs)
     return ''.join(cigar)
 
 
@@ -137,6 +144,8 @@ def reference_align_string(ref, cigar_int_pairs):
     for b, cnt in cigar_int_pairs:
         sym = cigar_int_to_c(b) if isinstance(b, int) else b
         if sym in CIGAR_MATCH_MISSMATCH or sym in CIGAR_DELETION:
+            if ref_index + cnt > len(ref):
+                print(len(ref), ref_index + cnt )
             assert ref_index + cnt <= len(ref)
             out_ref.extend(ref[ref_index:ref_index + cnt])
             ref_index += cnt
@@ -201,7 +210,7 @@ def error_rates_from_cigar(cigar_full_str):
 
 
 ERROR_RATES_COLUMNS = ['Query name', 'Error rate', 'Match rate', 'Mismatch rate',
-                       'Insertion rate', 'Deletion rate', 'Read length']
+                       'Insertion rate', 'Deletion rate', 'Read length', 'Is reversed']
 
 
 def error_rates_for_sam(sam_path):
@@ -216,7 +225,7 @@ def error_rates_for_sam(sam_path):
             cigar_pairs = x.cigartuples
 
             full_cigar = decompress_cigar_pairs(cigar_pairs, mode='ints')
-            all_errors.append([qname] + list(error_rates_from_cigar(full_cigar)))
+            all_errors.append([qname] + list(error_rates_from_cigar(full_cigar)) + [x.is_reverse])
     return pd.DataFrame(all_errors, columns=ERROR_RATES_COLUMNS)
 
 

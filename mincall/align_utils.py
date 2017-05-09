@@ -4,7 +4,10 @@ import math
 import pysam
 import os
 import glob
-from mincall.bioinf_utils import reverse_complement, decompress_cigar_pairs, rtrim_cigar, ltrim_cigar
+import multiprocessing
+from mincall import bioinf_utils as butil
+import shutil
+import tempfile
 
 
 def get_target_sequences(sam_path):
@@ -20,7 +23,7 @@ def get_target_sequences(sam_path):
             try:
                 target = x.get_reference_sequence()
             except ValueError:
-                logging.error("%s Mapped but reference len equals 0" % name)
+                logging.error("%s Mapped but reference len equals 0, md tag: %s", name, x.has_tag('MD'))
                 continue
 
             ref_name = x.reference_name
@@ -29,10 +32,10 @@ def get_target_sequences(sam_path):
             cigar_pairs = x.cigartuples
 
             if x.is_reverse:
-                target = reverse_complement(target)
+                target = butil.reverse_complement(target)
                 cigar_pairs = list(reversed(cigar_pairs))
 
-            cigar_str = decompress_cigar_pairs(cigar_pairs, mode='ints')
+            cigar_str = butil.decompress_cigar_pairs(cigar_pairs, mode='ints')
 
             if name in result_dict:
                 prev_target, _, prev_start_pos, _, prev_cigar_str = result_dict[name]
@@ -54,19 +57,19 @@ def _merge_circular_aligment(target_1, start_pos_1, cigar_str_1,
     if is_reversed:
         # reverse back both
         cigar_str_1 = ''.join(reversed(cigar_str_1))
-        target_1 = reverse_complement(target_1)
+        target_1 = butil.reverse_complement(target_1)
 
         cigar_str_2 = ''.join(reversed(cigar_str_2))
-        target_2 = reverse_complement(target_2)
+        target_2 = butil.reverse_complement(target_2)
 
     if start_pos_1 == 0:
         start = start_pos_2
-        cigar = rtrim_cigar(cigar_str_2) + ltrim_cigar(cigar_str_1)
+        cigar = butil.rtrim_cigar(cigar_str_2) + butil.ltrim_cigar(cigar_str_1)
         target = target_2 + target_1
 
     elif start_pos_2 == 0:
         start = start_pos_1
-        cigar = rtrim_cigar(cigar_str_1) + ltrim_cigar(cigar_str_2)
+        cigar = butil.rtrim_cigar(cigar_str_1) + butil.ltrim_cigar(cigar_str_2)
         target = target_1 + target_2
 
     else:
@@ -76,7 +79,7 @@ def _merge_circular_aligment(target_1, start_pos_1, cigar_str_1,
 
     if is_reversed:
         cigar = ''.join(reversed(cigar))
-        target = reverse_complement(target)
+        target = butil.reverse_complement(target)
 
     return [target, start, cigar]
 
@@ -92,6 +95,42 @@ def align_with_graphmap(reads_path, ref_path, is_circular, out_sam):
 
     if exit_status != 0:
         logging.warning("Graphmap exit status %d" % exit_status)
+
+
+def align_with_bwa_mem(reads_path, ref_path, is_circular, out_sam, extended_cigar=True):
+    os.makedirs(os.path.dirname(out_sam), exist_ok=True)
+    if os.path.exists(out_sam):
+        logging.info("Removing %s", out_sam)
+        os.remove(out_sam)
+
+    n_threads = multiprocessing.cpu_count()
+    args = ["bwa", "mem", "-x", "ont2d", "-t", str(n_threads),
+            ref_path, reads_path]
+    args_index = ["bwa", "index", ref_path]
+
+    def _align():
+        with open(out_sam, 'w') as f:
+            ex_status = subprocess.call(args, stdout=f)
+        return ex_status
+
+    if is_circular:
+        logging.warning("BWA mem circular reference flag not implemented")
+
+    def _log_exit_status(msg, ex_status):
+        log = logging.warning if ex_status != 0 else logging.info
+        log("%s exit status %d", msg, ex_status)
+
+    exit_status = _align()
+    _log_exit_status("bwa mem align", exit_status)
+
+    if exit_status != 0:
+        # build index if needed
+        logging.info("bwa mem error recovery, trying to rebuild index")
+        exit_status = subprocess.call(args_index)
+        _log_exit_status("bwa index", exit_status)
+        if exit_status == 0:
+            exit_status = _align()
+            _log_exit_status("bwa mem align", exit_status)
 
 
 def filter_aligments_in_sam(sam_path, out_path, filters=[]):
@@ -176,5 +215,64 @@ def cnt_reads_in_sam(sam_path):
         total = sum(1 for _ in samfile.fetch())
     return total
 
-def extend_cigar_in_sam(sam_path_in, sam_path_out, reference, reads_fastx):
-    pass
+
+def extend_cigar(read_seq, ref_seq, cigar_pairs, mode='ints'):
+    cigar_str = butil.decompress_cigar_pairs(cigar_pairs, mode)
+
+    ref_seq = butil.reference_align_string(ref_seq, cigar_pairs)
+    read_seq = butil.query_align_string(read_seq, cigar_pairs)
+
+    assert len(ref_seq) == len(cigar_str) and len(read_seq) == len(cigar_str)
+
+    def _resolve_m(i, op):
+        if op.upper() == 'M':
+            return '=' if ref_seq[i] == read_seq[i] else 'X'
+        return op.upper()
+
+    cigar_str = ''.join(_resolve_m(*p) for p in enumerate(cigar_str))
+    pairs = butil.compress_cigar(cigar_str)
+    cigar = butil.cigar_pairs_to_str(pairs, 'chars')
+    return cigar
+
+
+def extend_cigars_in_sam(sam_in, ref_path, fastx_path, sam_out=None):
+    tmp_dir = None
+    tmp_sam_out = sam_out
+
+    if sam_out is None:
+        # inplace change using tmp file
+        tmp_dir = tempfile.mkdtemp()
+        tmp_sam_out = os.path.join(tmp_dir, 'tmp.sam')
+
+    ref = butil.read_fasta(ref_path)
+    reads = {}
+
+    with pysam.FastxFile(fastx_path, 'r') as fh:
+        for r in fh:
+            reads[r.name] = r
+
+    with pysam.AlignmentFile(sam_in, "r") as in_sam:
+        with pysam.AlignmentFile(tmp_sam_out, "w", template=in_sam) as out_sam:
+            for x in in_sam.fetch():
+                if x.query_name not in reads:
+                    logging.warning("read %s in sam not found in .fastx", x.query_name)
+                    continue
+
+                if x.is_unmapped:
+                    logging.warning("read %s is unmapped, copy to out sam as is", x.query_name)
+                    out_sam.write(x)
+                    continue
+
+                read_seq = reads[x.query_name].sequence
+                ref_seq = ref[x.reference_start:x.reference_end]
+                cigar_pairs = x.cigartuples
+
+                if x.is_reverse:
+                    read_seq = butil.reverse_complement(read_seq)
+
+                x.cigarstring = extend_cigar(read_seq, ref_seq, cigar_pairs)
+                out_sam.write(x)
+
+    if sam_out is None:
+        shutil.move(tmp_sam_out, sam_in)
+        shutil.rmtree(tmp_dir)
