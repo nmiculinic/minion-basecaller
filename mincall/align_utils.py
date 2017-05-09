@@ -8,6 +8,7 @@ import multiprocessing
 from mincall import bioinf_utils as butil
 import shutil
 import tempfile
+from tqdm import tqdm
 
 
 def get_target_sequences(sam_path):
@@ -253,7 +254,7 @@ def extend_cigars_in_sam(sam_in, ref_path, fastx_path, sam_out=None):
 
     with pysam.AlignmentFile(sam_in, "r") as in_sam:
         with pysam.AlignmentFile(tmp_sam_out, "w", template=in_sam) as out_sam:
-            for x in in_sam.fetch():
+            for x in tqdm(in_sam.fetch(), unit='reads'):
                 if x.query_name not in reads:
                     logging.warning("read %s in sam not found in .fastx", x.query_name)
                     continue
