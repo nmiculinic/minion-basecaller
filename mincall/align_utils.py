@@ -252,27 +252,28 @@ def extend_cigars_in_sam(sam_in, ref_path, fastx_path, sam_out=None):
         for r in fh:
             reads[r.name] = r
 
-    with pysam.AlignmentFile(sam_in, "r") as in_sam:
-        with pysam.AlignmentFile(tmp_sam_out, "w", template=in_sam) as out_sam:
-            for x in tqdm(in_sam.fetch(), unit='reads'):
-                if x.query_name not in reads:
-                    logging.warning("read %s in sam not found in .fastx", x.query_name)
-                    continue
+    with pysam.AlignmentFile(sam_in, "r") as in_sam, \
+            pysam.AlignmentFile(tmp_sam_out, "w", template=in_sam) as out_sam:
 
-                if x.is_unmapped:
-                    logging.warning("read %s is unmapped, copy to out sam as is", x.query_name)
-                    out_sam.write(x)
-                    continue
+        for x in tqdm(in_sam.fetch(), unit='reads'):
+            if x.query_name not in reads:
+                logging.warning("read %s in sam not found in .fastx", x.query_name)
+                continue
 
-                read_seq = reads[x.query_name].sequence
-                ref_seq = ref[x.reference_start:x.reference_end]
-                cigar_pairs = x.cigartuples
-
-                if x.is_reverse:
-                    read_seq = butil.reverse_complement(read_seq)
-
-                x.cigarstring = extend_cigar(read_seq, ref_seq, cigar_pairs)
+            if x.is_unmapped:
+                logging.warning("read %s is unmapped, copy to out sam as is", x.query_name)
                 out_sam.write(x)
+                continue
+
+            read_seq = reads[x.query_name].sequence
+            ref_seq = ref[x.reference_start:x.reference_end]
+            cigar_pairs = x.cigartuples
+
+            if x.is_reverse:
+                read_seq = butil.reverse_complement(read_seq)
+
+            x.cigarstring = extend_cigar(read_seq, ref_seq, cigar_pairs)
+            out_sam.write(x)
 
     if sam_out is None:
         shutil.move(tmp_sam_out, sam_in)
