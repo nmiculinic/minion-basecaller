@@ -74,7 +74,7 @@ class AlignedRawAbstract(InputReader):
                 'signal_len': signal_len
             }
 
-    def read_fast5_raw_ref(self, fast5_path, ref_path, block_size_x, block_size_y, num_blocks, max_n_samples_per_ref=1,
+    def read_fast5_raw_ref(self, fast5_path, ref_path, block_size_x, block_size_y, num_blocks, n_samples_per_ref=1,
                            verify_file=True):
 
         with open(ref_path, 'r') as ref_file:
@@ -117,10 +117,9 @@ class AlignedRawAbstract(InputReader):
                 np.testing.assert_string_equal("".join(bucketed_basecall), fastq[1])
                 np.testing.assert_string_equal("".join(corrected_basecalled), ref_seq)
 
-            # possible different blocks (with overlap)
             n_different_blocks = num_blocks_max-num_blocks+1
             n_different_non_overlap_blocks = n_different_blocks // num_blocks
-            n_samples = min(max_n_samples_per_ref, n_different_non_overlap_blocks)
+            n_samples = min(n_samples_per_ref, n_different_non_overlap_blocks)
 
             for i in range(n_samples):
                 x = np.zeros([block_size_x * num_blocks, 1], dtype=np.float32)
@@ -172,7 +171,7 @@ class AlignedRawAbstract(InputReader):
                         block_size_x=model.block_size_x,
                         block_size_y=model.block_size_y,
                         num_blocks=model.num_blocks,
-                        max_n_samples_per_ref=model.max_n_samples_per_ref,
+                        n_samples_per_ref=model.n_samples_per_ref,
                         verify_file=False
                     )
                     for sol in sols:

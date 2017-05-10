@@ -230,7 +230,7 @@ def extend_cigar(read_seq, ref_seq, cigar_pairs, mode='ints'):
 
     def _resolve_m(i, op):
         if op.upper() == 'M':
-            return '=' if ref_seq[i] == read_seq[i] else 'X'
+            return '=' if ref_seq[i].upper() == read_seq[i].upper() else 'X'
         return op.upper()
 
     cigar_str = ''.join(_resolve_m(*p) for p in enumerate(cigar_str))
@@ -242,8 +242,9 @@ def extend_cigar(read_seq, ref_seq, cigar_pairs, mode='ints'):
 def extend_cigars_in_sam(sam_in, ref_path, fastx_path, sam_out=None):
     tmp_dir = None
     tmp_sam_out = sam_out
+    inplace = sam_out is None
 
-    if sam_out is None:
+    if inplace:
         # inplace change using tmp file
         tmp_dir = tempfile.mkdtemp()
         tmp_sam_out = os.path.join(tmp_dir, 'tmp.sam')
@@ -278,6 +279,7 @@ def extend_cigars_in_sam(sam_in, ref_path, fastx_path, sam_out=None):
             x.cigarstring = extend_cigar(read_seq, ref_seq, cigar_pairs)
             out_sam.write(x)
 
-    if sam_out is None:
+    if inplace:
+        # clear tmp files
         shutil.move(tmp_sam_out, sam_in)
         shutil.rmtree(tmp_dir)

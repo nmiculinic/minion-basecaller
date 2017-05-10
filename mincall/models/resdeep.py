@@ -61,7 +61,7 @@ def model_setup_params(hyper):
         block_size_y=630,
         in_data=input_readers.HMMAlignedRaw(),
         num_blocks=4,
-        max_n_samples_per_ref=3,
+        n_samples_per_ref=3,
         batch_size=16,
         max_reach=8 * 20,
         queue_cap=300,
