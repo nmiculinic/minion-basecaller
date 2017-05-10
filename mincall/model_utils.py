@@ -64,7 +64,7 @@ def load_model_parms(module_name, model_dir):
 
 class Model():
     def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size_x, block_size_y, lr_fn=default_lr_fn,
-                 max_n_samples_per_ref=1,
+                 n_samples_per_ref=1,
                  log_dir=None, run_id=None, overwrite=False, reuse=False, queue_cap=None, shrink_factor=1,
                  per_process_gpu_memory_fraction=None, test_queue_cap=None, in_data=input_readers.HMMAlignedRaw(), dtype=tf.float32, hyper={}, clip_grad=2.0):
         """
@@ -109,7 +109,7 @@ class Model():
             raise ValueError("shrink factor need to divide block_size_x")
 
         self.num_blocks = num_blocks
-        self.max_n_samples_per_ref = max_n_samples_per_ref
+        self.n_samples_per_ref = n_samples_per_ref
         self.batch_size = batch_size
         self.max_reach = max_reach
         self.train_queue_cap = queue_cap or 5 * self.batch_size
