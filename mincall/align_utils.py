@@ -133,6 +133,9 @@ def align_with_bwa_mem(reads_path, ref_path, is_circular, out_sam, extended_ciga
             exit_status = _align()
             _log_exit_status("bwa mem align", exit_status)
 
+    if exit_status == 0:
+        extend_cigars_in_sam(out_sam, ref_path, reads_path)
+
 
 def filter_aligments_in_sam(sam_path, out_path, filters=[]):
     n_reads = 0
