@@ -23,15 +23,17 @@
 \tableofcontents
 
 \begin{sazetak}
-MinION je DNA citac najnovije generacije. Oxford Nanopore Technologies ga je izradio u svrhu prvog portabilnog DNA sekvencora. Proizvodi vrlo duga ocitanja (duljine i preko 100 kBp), doduse pod cijelu preciznosti. U ovom radu prezentiramo altrenativnu metodu ocitanja DNA koristenjem convolucijskim neuronskih mreza (CNN) umjesto dosadasnjeg pristupa s HMM ili RNN. Takoder cijeli postupak je istreniran od izvornog signala do ocitanih nukleoida, bez ovisnosti o umjetnoj segregaciji na dogadaje.
+    U ovom znanstvenom clanku istenirali smo model dubokog ucenja za Oxford Nanopore Tehnology's MinION portabilni DNK sekvencor. MinION potencijal je ogroman, i zbog njegove male velicina i portabilnosti, kao i dugih ocitanja senzora (ocitanja > 100kbP su primjecena). Nazalost pati od vecih gresaka u usporedbi s drugim modelima.
+
+    Kreirali smo nezavisni model pocevsi od izvornih podataka i koristili konvolucijske neuronske mreze (CNN) s CTC gubitkom te postigli mjerljive perfomanse.
 
 \kljucnerijeci{Basecaller, MinION, R9, CNN, CTC, sekvenciniranje sljedece generacije}
 \end{sazetak}
 
 \begin{abstract}
-    The MinION device by Oxford Nanopore is the first portable sequencing device. MinION is able to produce very long reads (reads over 100 kBp were reported), however, it suffers from high sequencing error rate. In this paper, we show novel model basecaller which basecalles 1D reads using gated residual convolutional neural networks (CNN) combined with Connectionist Temporal Classification (CTC) learning approach. Its performance is on par with state of the art and offers possible future improvement.
+    In this study we create end2end deep learning model for Oxford Nanopore Technology's MinION portable DNA sequencing device. The device's potential is enormous, both due to it's small size and portability and long read (over 100kBp reported). However is suffers with higher error rate compared to other methods.
 
-    The whole process is trained end-to-end from the raw signal on R9 sequencing pore and once trained it's independent of Metrichor.
+    We've created independant model starting with raw data and used Convolutional Neural Network (CNN) combined with Connectionist Temporal Classification (CTC) loss for measurable performance.
 \keywords{Basecaller, MinION, R9, CNN, CTC, Next generation sequecing}
 \end{abstract}
 
@@ -44,6 +46,8 @@ Although MinION is able to produce long reads, they have a high sequencing error
 In the MinION device, single-stranded DNA fragments move through nanopores, which causes drops in the electric current. The electric current is measured at each pore several thousand times per second. The electric current depends mostly on the context of several DNA bases passing through the pore at the time of measurement. As the DNA moves through the pore, the context shifts, and the electric current changes.
 
 A MinION device typically yields reads several thousand bases long; reads as long as 100,000 bp have been reported. 1D read has usually error rate about   10\%. (Check details!!, What is the error rate, how it's defined???) After parameter training, base calling can be performed by running the Viterbi algorithm, which will result in the sequence of states with the highest likelihood.
+
+The exact error rate metric is unreliable since multiple pipline tools could be the issue. First the sample is prepared, hopefully uncontaminated and matching reference genome as close as possile, then sequenced using the MinION device obtaining raw data. Next our model (or other groups ones) come along, basecall the sequence. To evalute error rate metric basecalled read is aligned to reference using aligners with their own erros/biases, mostly commonly used BWA-MEM and Graphmap.
 
 \chapter{Background}
 
@@ -91,7 +95,7 @@ We further have merging operator on path, $\text{merge}(x_1, x_2, \ldots, x_n)$ 
 
 Then $p(\mathbf{l}|\mathbf{x}) = \sum_{p\in\text{paths}(\mathbf{x}, \text{merged}(p) = \mathbf{l}}{P(p)}$ or less formally, $P(\mathbf{l}|\mathbf{x})$ is sum of all path probabilites which when merged give $\mathbf{l}$
 
-In out concrete $x$ aplication $\Sigma = \{\text{A G T C A' G' T' A'}\}$
+In out concrete $x$ application $\Sigma = \{\text{A G T C A' G' T' A'}\}$
 
 For decoding, we use beam search decoder, with beam width 100.
 
@@ -106,6 +110,10 @@ See \url{https://github.com/nmiculinic/minion-basecaller/blob/master/notebook/La
 This model used advance state-of-the-art gated residual convolutional neural network, with top models having 270 layers and over 3M parameters, yet improvements over Metrichorn baseline are marginal. As the conclusion, it might be that we've reached Bayesian error rate for R9 chemistry. Furthermore, R9.5 and 1D\^2 reads are under development which shall yield this paper's result obsolete quite soon, yet underlying code developed could easily be adjusted and trained on new data.
 
 Unlike Nanonet which uses custom OpenCL kernels or Albacore --- a novel ONT basecaller as of May 2017 lacking GPU support, this work used world-class computational framework tensorflow with highly optimized kernels and large development community. Therefore resulting paper's effect is showcasing Residual CNN approach or pure CNN approach with CTC loss is marginally better than already established basecaller and providing code in the contemporary framework.
+
+\chapter{Acknowledgments}
+
+TODO.
 
 \bibliographystyle{fer}
 \bibliography{refs}
