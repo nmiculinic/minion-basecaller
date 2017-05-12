@@ -322,17 +322,18 @@ def process_mpileup_line(line, coverage_threshold, fp_variant, fp_vcf):
     return skip, np.array(cnts)
 
 
-def get_consensus_report(sam_path, ref_path, is_circular, coverage_threshold=0, out_dir=None, tmp_files_dir=None):
+def get_consensus_report(sam_path, ref_path, is_circular, coverage_threshold=0, report_out_dir=None, tmp_files_dir=None):
     basename = os.path.basename(sam_path)
     file_name, ext = os.path.splitext(basename)
 
-    tmp_work_dir = tmp_files_dir
-    if tmp_files_dir is None:
-        tmp_work_dir = tempfile.mkdtemp()
-    os.makedirs(tmp_work_dir, exist_ok=True)
+    out_dir = tmp_files_dir
+    keep_tmp_files = tmp_files_dir is not None
+    if not keep_tmp_files:
+        out_dir = tempfile.mkdtemp()
 
-    tmp_bam_path = os.path.join(tmp_work_dir, file_name + '_tmp.bam')
-    bam_path = os.path.join(tmp_work_dir, file_name + '.bam')
+    os.makedirs(out_dir, exist_ok=True)
+    tmp_bam_path = os.path.join(out_dir, file_name + '_tmp.bam')
+    bam_path = os.path.join(out_dir, file_name + '.bam')
     mpileup_path = bam_path + '.bam.mpilup'
 
     logging.info("Converting sam to bam")
@@ -356,11 +357,10 @@ def get_consensus_report(sam_path, ref_path, is_circular, coverage_threshold=0, 
                   '-o', mpileup_path, catch_stdout=False)
 
     logging.info("Generating consensus and report")
-    report = process_mpileup(sam_path, ref_path, mpileup_path, coverage_threshold, out_dir)
+    report = process_mpileup(sam_path, ref_path, mpileup_path, coverage_threshold, report_out_dir)
 
-    # clean tmp files
-    if tmp_files_dir is None:
+    if not keep_tmp_files:
         logging.info("Cleaning tmp files")
-        shutil.rmtree(tmp_work_dir)
+        shutil.rmtree(out_dir)
 
     return report
