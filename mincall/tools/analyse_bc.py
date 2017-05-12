@@ -25,7 +25,8 @@ args = args.parse_args()
 
 basecallers = {
     "mincall_m270": ["nvidia-docker", "run", "--rm", "-v", "%s:/data" % args.input_folder, "-u=%d" % os.getuid(), "nmiculinic/mincall:9947283"],
-    "nanonet": ["nanonetcall", args.input_folder, "--chemistry", "r9", "--platforms", "nvidia:0:20", "--exc_opencl"]
+    "nanonet": ["nanonetcall", args.input_folder, "--chemistry", "r9", "--platforms", "nvidia:0:20", "--exc_opencl"],
+    "albacore": None
     # "nanonet": ["nanonetcall", args.input_folder, "--chemistry", "r9", "--jobs", "8"]
 }
 
