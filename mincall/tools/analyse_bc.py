@@ -87,17 +87,20 @@ for name, cmd in basecallers.items():
     logger.info("%s consensus_report:\n%s", name, consensus_report)
 
 
-fig_kde_path = os.path.join(args.out_folder, name + "reads_kde.png")
-fig_hist_path = os.path.join(args.out_folder, name + "reads_hist.png")
+fig_kde_path = os.path.join(args.out_folder, "reads_kde.png")
+fig_hist_path = os.path.join(args.out_folder, "reads_hist.png")
 
 fig_kde, axes_kde = plt.subplots(3, 2)
 fig_hist, axes_hist = plt.subplots(3, 2)
 fig_kde.set_size_inches(12, 20)
 fig_hist.set_size_inches(12, 20)
 for col, ax_kde, ax_hist in zip(next(iter(dfs.values()))._get_numeric_data(), axes_kde.ravel(), axes_hist.ravel()):
+    fig, ax = plt.subplots()
     for k in dfs.keys():
+        sns.kdeplot(dfs[k][col], shade=True, label=k, alpha=0.5, ax=ax)
         sns.kdeplot(dfs[k][col], shade=True, label=k, alpha=0.5, ax=ax_kde)
         ax_hist.hist(dfs[k][col], label=k, alpha=0.5)
+    fig.savefig(os.path.join(args.out_folder, col + ".png"))
     for ax in [ax_kde, ax_hist]:
         ax.legend()
         ax.set_title(col)
