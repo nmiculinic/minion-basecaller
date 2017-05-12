@@ -21,19 +21,21 @@
 
 \maketitle
 \tableofcontents
+% - razvio si novi base caller za 1D nanopore reads koji je temeljen na konvolucijskim neuronskim mrežama
+% - reci koliko slojeva ima model
+% - kakve si rezultate dobio te da li su bolji od postojećih.
+% - koju si razinu greške dobio
+% - daj neko ime base calleru
 
 \begin{sazetak}
-    U ovom znanstvenom clanku istenirali smo model dubokog ucenja za Oxford Nanopore Tehnology's MinION portabilni DNK sekvencor. MinION potencijal je ogroman, i zbog njegove male velicina i portabilnosti, kao i dugih ocitanja senzora (ocitanja > 100kbP su primjecena). Nazalost pati od vecih gresaka u usporedbi s drugim modelima.
-
-    Kreirali smo nezavisni model pocevsi od izvornih podataka i koristili konvolucijske neuronske mreze (CNN) s CTC gubitkom te postigli mjerljive perfomanse.
-
+    U ovoj studiji kreirali smo MinCall, cjelokupni model očitanja nukleotida za MinION, portabilni DNK sekvencer firme Oxford Nanopore Technology. Model je baziran na dubokom učenju i koristi konvolucijske neuronske mreže u svojoj implementaciji. Najperformantniji 270 slojeva dubok model postiže najbolje dosad performanse od 90.5\% preciznosti na E.Coli skupu za učenje koristeći R9 kemiju i 1D čitanja.
+    
 \kljucnerijeci{Basecaller, MinION, R9, CNN, CTC, sekvenciniranje sljedece generacije}
 \end{sazetak}
 
 \begin{abstract}
-    In this study we create end2end deep learning model for Oxford Nanopore Technology's MinION portable DNA sequencing device. The device's potential is enormous, both due to it's small size and portability and long read (over 100kBp reported). However is suffers with higher error rate compared to other methods.
+    In this study, we created MinCall, an end2end basecaller model for the MinION, an  Oxford Nanopore Technology's portable DNA sequencing device. The model is based on deep learning and uses convolutional neural networks (CNN) in its implementation. The best performing 270 layers deep model achieves state-of-the-art 90.5\% match rate on E.Coli dataset using R9 pore chemistry and 1D reads.
 
-    We've created independant model starting with raw data and used Convolutional Neural Network (CNN) combined with Connectionist Temporal Classification (CTC) loss for measurable performance.
 \keywords{Basecaller, MinION, R9, CNN, CTC, Next generation sequecing}
 \end{abstract}
 
