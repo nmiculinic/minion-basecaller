@@ -8,6 +8,7 @@ from collections import OrderedDict
 import multiprocessing
 from threading import Thread
 from time import perf_counter
+from glob import glob
 from tensorflow.python.client import timeline
 import os
 import string
@@ -30,6 +31,7 @@ from .util import decode_example, decode_sparse, breakCigar, dump_fasta
 from .ops import dense2d_to_sparse
 from . import input_readers
 import mincall.bioinf_utils as butils
+import mincall.align_utils as  autils
 
 # UGLY UGLY HACK!
 for name, logger in logging.root.manager.loggerDict.items():
@@ -40,18 +42,6 @@ hostname = os.environ.get("MINION_HOSTNAME", socket.gethostname())
 repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 log_fmt = '\r[%(levelname)s] %(name)s: %(message)s'
 logging.basicConfig(level=logging.DEBUG, format=log_fmt)
-
-
-error_rates_lookup = [
-    r"/opt/samscripts/src/errorrates.py",
-    r"/home/lpp/Downloads/git/samscripts/src/errorrates.py",
-]
-
-error_rates = None
-for path in error_rates_lookup:
-    if os.path.isfile(path):
-        error_rates = path
-
 
 def default_lr_fn(global_step):
     return tf.train.exponential_decay(1e-3, global_step, 100000, 0.01)
@@ -73,7 +63,9 @@ def load_model_parms(module_name, model_dir):
 
 
 class Model():
-    def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size_x, block_size_y, lr_fn=default_lr_fn, log_dir=None, run_id=None, overwrite=False, reuse=False, queue_cap=None, shrink_factor=1, test_queue_cap=None, in_data=input_readers.HMMAlignedRaw(), dtype=tf.float32, hyper={}, clip_grad=2.0):
+    def __init__(self, g, num_blocks, batch_size, max_reach, model_fn, block_size_x, block_size_y, lr_fn=default_lr_fn,
+                 log_dir=None, run_id=None, overwrite=False, reuse=False, queue_cap=None, shrink_factor=1,
+                 per_process_gpu_memory_fraction=None, test_queue_cap=None, in_data=input_readers.HMMAlignedRaw(), dtype=tf.float32, hyper={}, clip_grad=2.0):
         """
             Args:
                 max_reach: int, size of contextual window for convolutions etc.
@@ -122,6 +114,7 @@ class Model():
         self.test_queue_cap = test_queue_cap or self.train_queue_cap
         self.dtype = dtype
         self.g = g
+        self.per_process_gpu_memory_fraction = per_process_gpu_memory_fraction
         self.clip_grad = clip_grad
         self._setup_graph(model_fn, hyper)
 
@@ -622,6 +615,8 @@ class Model():
         acc = cigar_stat['='] / total
         nedit = result['editDistance'] / len(target)
         return nedit, acc, len(basecalled), cigar_stat
+
+
     def run_validation_full(self, frac, verbose=False, fasta_out_dir=None, ref=None):
         """
             Runs full validation on test set with whole sequence_length
@@ -629,18 +624,18 @@ class Model():
                 frac: fraction of test set to evaluate, or number of test cases if int
         """
 
-        with open(os.path.join(input_readers.root_dir_default, 'test.txt')) as f:
-            fnames = np.array(list(map(lambda x: x.strip().split()[0], f.readlines())))
-        np.random.shuffle(fnames)
+        test_root = os.path.join(input_readers.root_dir_default, 'test')
+        items = np.array(glob(os.path.join(test_root, '*.fa')))
+        np.random.shuffle(items)
 
         if isinstance(frac, (int)):
-            fnames = fnames[:frac]
+            items = items[:frac]
         else:
-            fnames = fnames[:int(len(fnames) * frac)]
-        self.logger.info("Running validation on %d examples", len(fnames))
+            items = items[:int(len(items) * frac)]
+        self.logger.info("Running validation on %d examples", len(items))
 
-        nedit = np.zeros(fnames.shape, dtype=np.float32)
-        acc = np.zeros(fnames.shape, dtype=np.float32)
+        nedit = np.zeros(items.shape, dtype=np.float32)
+        acc = np.zeros(items.shape, dtype=np.float32)
         n = len(acc)
         total_time = 0.0
         total_bases_read = 0
@@ -648,19 +643,14 @@ class Model():
 
         with self.g.as_default():
             is_training(False, session=self.sess)
-            pbar = tqdm(fnames)
-            for i, fname in enumerate(pbar):
+            pbar = tqdm(items)
+            for i, fast5_path in enumerate(pbar):
                 t = perf_counter()
                 nedit[i], acc[i], read_len, cigar_read_stat = self.get_aligement(
-                    os.path.join(
-                        input_readers.root_dir_default,
-                        'pass',
-                        fname + ".fast5"
-                    ), os.path.join(
-                        input_readers.root_dir_default,
-                        'ref',
-                        fname + ".ref"
-                    ), verbose=verbose, fasta_out_dir=fasta_out_dir, ref=ref)
+                    fast5_path,
+                    input_readers.find_ref(fast5_path),
+                    verbose=verbose, fasta_out_dir=fasta_out_dir, ref=ref
+                )
                 total_time += perf_counter() - t
                 total_bases_read += read_len
                 for k in ['=', 'X', 'I', 'D']:
@@ -669,32 +659,34 @@ class Model():
                 mu_edit, mu_acc = np.mean(nedit[:i + 1]), np.mean(acc[:i + 1])
                 std_edit, std_acc = np.std(nedit[:i + 1]), np.std(acc[:i + 1])
                 se_edit, se_acc = std_edit / np.sqrt(i + 1), std_acc / np.sqrt(i + 1)
-                pbar.set_postfix(stat="avg edit %.4f s %.4f CI <%.4f, %.4f> avg_acc %.4f s %.4f CI <%.4f, %.4f> %.2f bps" % (mu_edit, std_edit, mu_edit - 2*se_edit, mu_edit + 2*se_edit, mu_acc, std_acc, mu_acc - 2*se_acc, mu_acc + 2*se_acc, total_bases_read/total_time))
+                pbar.set_postfix(stat="avg edit %.4f s %.4f CI <%.4f, %.4f> avg_acc %.4f s %.4f CI <%.4f, %.4f> %.2f bps" %
+                                      (mu_edit, std_edit, mu_edit - 2*se_edit, mu_edit + 2*se_edit, mu_acc, std_acc,
+                                       mu_acc - 2*se_acc, mu_acc + 2*se_acc, total_bases_read/total_time))
 
         mu_edit, mu_acc = np.mean(nedit), np.mean(acc)
         std_edit, std_acc = np.std(nedit), np.std(acc)
         se_edit, se_acc = std_edit / np.sqrt(i + 1), std_acc / np.sqrt(i + 1)
 
-        self.logger.info("step: %d [samples %d] avg edit %.4f s %.4f CI <%.4f, %.4f> avg_acc %.4f s %.4f CI <%.4f, %.4f> %.3f bps", self.get_global_step(), n, mu_edit, std_edit, mu_edit - 2*se_edit, mu_edit + 2*se_edit, mu_acc, std_acc, mu_acc - 2*se_acc, mu_acc + 2*se_acc, total_bases_read/total_time)
+        self.logger.info("step: %d [samples %d] avg edit %.4f s %.4f CI <%.4f, %.4f> avg_acc %.4f s %.4f CI <%.4f, %.4f> %.3f bps",
+                         self.get_global_step(), n, mu_edit, std_edit, mu_edit - 2*se_edit, mu_edit + 2*se_edit,
+                         mu_acc, std_acc, mu_acc - 2*se_acc, mu_acc + 2*se_acc, total_bases_read/total_time)
 
         total_cigar_elements = np.sum(list(cigar_stat.values()))
         for k in ['=', 'X', 'I', 'D']:
             self.logger.info("Step %d; %s %.2f%%", self.get_global_step(), k, 100 * cigar_stat[k] / total_cigar_elements)
         self.logger.info("Speed = %.3f bases per second", total_bases_read/total_time)
 
-        # TODO fix this stuff
+        # error rates
         if ref is not None and fasta_out_dir is not None:
-            if error_rates_lookup is None:
-                self.logger.error("Cannot find errorrates.py")
-            else:
-                os.chdir(fasta_out_dir)
-                with open('all.sam', 'w') as f:
-                    subprocess.call(['cat', "*.sam"], stdout=f)
-                with open('report.log', 'w') as f:
-                    subprocess.call(['python2', error_rates, "base", ref, "all.sam"], stdout=f, stderr=subprocess.STDOUT)
-                with open('report.log', 'r') as f:
-                    for line in f.readlines():
-                        self.logger.info(line.strip())
+            total_sam_path = os.path.join(fasta_out_dir, "total", "all.sam")
+            os.makedirs(os.path.dirname(total_sam_path), exist_ok=True)
+            os.chdir(fasta_out_dir)
+
+            autils.merge_sam_files(fasta_out_dir, total_sam_path)
+            df = butils.error_rates_for_sam(total_sam_path)
+            report = str(df.describe(percentiles=[]))
+            for line in report.split("\n"):
+                self.logger.info(line.strip())
         else:
             self.logger.warn("Reference or FASTA out dir None, skipping full report")
         return {
@@ -807,16 +799,16 @@ class Model():
                     p.terminate()
             return Thread(target=thread_fn, daemon=True)
 
-        def data_thread_fn(enqueue_op, file_list):
+        def data_thread_fn(enqueue_op, subdir):
             return __queue_feeder_thread(
                 enqueue_op,
                 self.in_data.input_fn,
-                [self, file_list],
+                [self, subdir],
                 proc=proc
             )
 
-        self.feed_threads = [data_thread_fn(self.enqueue_train, 'train.txt') for _ in range(num_workers)]
-        self.feed_threads.extend([data_thread_fn(self.enqueue_test, 'test.txt') for _ in range(num_workers)])
+        self.feed_threads = [data_thread_fn(self.enqueue_train, "train") for _ in range(num_workers)]
+        self.feed_threads.extend([data_thread_fn(self.enqueue_test, "test") for _ in range(num_workers)])
         for feed_thread in self.feed_threads:
             feed_thread.start()
 
@@ -828,10 +820,11 @@ class Model():
         self.bbt_clock = perf_counter()
 
         with self.g.as_default():
-            self.sess = tf.Session(
-                graph=self.g,
-                config=tf.ConfigProto(log_device_placement=False)
-            )
+            config = tf.ConfigProto(log_device_placement=True)
+            if self.per_process_gpu_memory_fraction:
+                config.gpu_options.per_process_gpu_memory_fraction = self.per_process_gpu_memory_fraction
+
+            self.sess = tf.Session(graph=self.g, config=config)
             self.sess.run(tf.global_variables_initializer())
             self.coord = tf.train.Coordinator()
             self.threads = tf.train.start_queue_runners(sess=self.sess, coord=self.coord)

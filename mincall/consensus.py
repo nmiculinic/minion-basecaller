@@ -89,13 +89,19 @@ def process_mpileup(alignments_path, reference_path, mpileup_path, coverage_thre
         # transfrorm coverage sum to average coverage
         counts[-1] /= (i+1)
 
-        columns = ['field', 'value']
         fields = ['alignments_file', 'mpileup_file', 'coverage_threshold', 'snp_count', 'insertion_count',
                   'deletion_count', 'num_undercovered_bases', 'num_called_bases',
                   'num_correct_bases', 'average_coverage']
         values = [alignments_path, mpileup_path, coverage_threshold] + counts.tolist()
-        data = list(zip(fields, values))
-        report = pd.DataFrame(data, columns=columns)
+        report = pd.DataFrame([values], columns=fields)
+
+        for col in filter(lambda c: c.endswith('_count'), report.columns):
+            new_col = col.replace('count', 'rate')
+            report[new_col] = 100 * report[col] / report.num_called_bases
+
+        report['correct_rate'] = 100 * report.num_correct_bases / report.num_called_bases
+        report = report.transpose()
+
         if output_prefix:
             summary_file = os.path.join(output_prefix, 'cov_%d.sum.vcf' % coverage_threshold)
             report.to_csv(summary_file, sep=';', index=False)
@@ -316,7 +322,7 @@ def process_mpileup_line(line, coverage_threshold, fp_variant, fp_vcf):
     return skip, np.array(cnts)
 
 
-def get_consensus_report(sam_path, ref_path, coverage_threshold=0, out_dir=None, tmp_files_dir=None):
+def get_consensus_report(sam_path, ref_path, is_circular, coverage_threshold=0, out_dir=None, tmp_files_dir=None):
     basename = os.path.basename(sam_path)
     file_name, ext = os.path.splitext(basename)
 
@@ -339,7 +345,13 @@ def get_consensus_report(sam_path, ref_path, coverage_threshold=0, out_dir=None,
     pysam.index(bam_path, '-b')
 
     logging.info("Creating mpileup")
-    pysam.mpileup('-A', '-B', '-Q', '0',
+
+    mpileup_flags = ['-A', '-B', '-Q', '0']
+    if is_circular:
+        # use secondary aligments as well
+        mpileup_flags.extend(['--ff', '0'])
+
+    pysam.mpileup(*mpileup_flags,
                   '-f', ref_path, bam_path,
                   '-o', mpileup_path, catch_stdout=False)
 

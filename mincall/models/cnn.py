@@ -24,22 +24,12 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
         with tf.variable_scope("block%d" % block):
             for layer in range(kwargs['num_layers']):
                 with tf.variable_scope('layer_%d' % layer):
-                    res = net
-                    for sublayer in range(kwargs['num_sub_layers']):
-                        res = batch_normalization(
-                            res, scope='bn_%d' % sublayer)
-                        res = tf.nn.relu(res)
-                        res = conv_1d(
-                            res,
-                            64,
-                            3,
-                            scope="conv_1d_%d" % sublayer,
-                            weights_init=variance_scaling_initializer(
-                                dtype=dtype)
-                        )
-                    k = tf.get_variable(
-                        "k", initializer=tf.constant_initializer(1.0), shape=[])
-                    net = tf.nn.relu(k) * res + net
+                    net = batch_normalization(net)
+                    net = tf.nn.relu(net)
+                    net = conv_1d(net, 64, 3,
+                                  scope="conv_1d_%d" % layer,
+                                  weights_init=variance_scaling_initializer(dtype=dtype))
+
             net = max_pool_1d(net, 2)
         net = tf.nn.relu(net)
 
@@ -56,11 +46,11 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
 def model_setup_params(hyper):
     return dict(
         g=tf.Graph(),
-        per_process_gpu_memory_fraction=0.6,
+        per_process_gpu_memory_fraction=0.65,
         block_size_x=8 * 3 * 600 // 2,
         block_size_y=630,
         in_data=input_readers.HMMAlignedRaw(),
-        num_blocks=3,
+        num_blocks=4,
         batch_size=16,
         max_reach=8 * 20,  # 240
         queue_cap=300,
@@ -76,17 +66,12 @@ def model_setup_params(hyper):
 
 
 sigopt_params = [
-    sigopt_double('initial_lr', 1e-5, 1e-3),
-    sigopt_double('decay_factor', 1e-3, 0.5),
-    sigopt_int('num_layers', 10, 20),
-    sigopt_int('num_sub_layers', 1, 2),
 ]
 
 default_params = {
-    'initial_lr': 0.000965352400196344,
-    'decay_factor': 0.0017387361908150767,
-    'num_layers': 20,
-    'num_sub_layers': 2
+    'initial_lr': 0.0009,
+    'decay_factor': 0.002,
+    'num_layers': 5,
 }
 
 
@@ -100,7 +85,7 @@ def create_test_model(hyper, **kwargs):
     return create_train_model(hyper, **kwargs)
 
 
-default_name = "resdeep"
+default_name = "cnn_5l_64c_3"
 
 
 if __name__ == "__main__":

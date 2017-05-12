@@ -1,0 +1,11 @@
+#!/usr/bin/python3
+
+from mincall.bioinf_utils import error_rates_for_sam
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("sam_file")
+args = parser.parse_args()
+
+df = error_rates_for_sam(args.sam_file)
+print(df.describe(percentiles=[]).transpose())

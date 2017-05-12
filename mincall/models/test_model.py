@@ -54,6 +54,7 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
 def create_train_model(hyper, **kwargs):
     model_setup = dict(
         g=tf.Graph(),
+        #per_process_gpu_memory_fraction=0.6,
         block_size_x=8 * 3 * 50 // 2,
         block_size_y=80,
         num_blocks=1,

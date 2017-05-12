@@ -1,10 +1,12 @@
 import itertools
 import logging
 import pysam
+import re
 import csv
 import numpy as np
 from collections import Counter, defaultdict
 import pandas as pd
+from tqdm import tqdm
 
 CIGAR_TO_BYTE = {
     'M': 0,
@@ -26,6 +28,7 @@ CIGAR_INSERTION = 'ISH'
 CIGAR_DELETION = 'DNP'
 CIGAR_SOFTCLIP = ['S']
 CIGAR_HARDCLIP = ['H']
+CIGAR_CLIP = 'SH'
 
 BYTE_TO_CIGAR = {v: k for k, v in CIGAR_TO_BYTE.items()}
 
@@ -50,8 +53,15 @@ def cigar_int_to_c(b):
     return ret
 
 
-def cigar_pairs_to_str(cigar_pairs):
-    cigar = ('%d%s' % (cnt, cigar_int_to_c(b)) for b, cnt in cigar_pairs)
+def cigar_pairs_to_str(cigar_pairs, mode='ints'):
+    if mode == 'ints':
+        convert = cigar_int_to_c
+    elif mode == 'chars':
+        convert = lambda x: x
+    else:
+        raise ValueError('Invalid mode argument. Expected ints or chars')
+
+    cigar = ('%d%s' % (cnt, convert(b)) for b, cnt in cigar_pairs)
     return ''.join(cigar)
 
 
@@ -77,7 +87,7 @@ def decompress_cigar_pairs(cigar_pairs, mode='ints'):
     elif mode == 'chars':
         convert = lambda x: x
     else:
-        raise Exception('Invalid mode argument. Expected ints or chars')
+        raise ValueError('Invalid mode argument. Expected ints or chars')
 
     extended = (cnt * [convert(b)] for b, cnt in cigar_pairs)
     return ''.join(itertools.chain.from_iterable(extended))
@@ -86,6 +96,32 @@ def decompress_cigar_pairs(cigar_pairs, mode='ints'):
 def decompress_cigar(cigar_str):
     cigar_pairs = cigar_str_to_pairs(cigar_str)
     return decompress_cigar_pairs(cigar_pairs, mode='chars')
+
+
+def compress_cigar(cigar_str):
+    pairs = []
+    count = 1
+
+    for i in range(1, len(cigar_str)):
+        if cigar_str[i-1] == cigar_str[i]:
+            count += 1
+        else:
+            pairs.append((cigar_str[i-1], count))
+            count = 1
+    pairs.append((cigar_str[-1], count))
+    return pairs
+
+
+def ltrim_cigar(cigar):
+    for op in CIGAR_CLIP:
+        cigar = re.sub(r'^%s*' % op, r'', cigar)
+    return cigar
+
+
+def rtrim_cigar(cigar):
+    for op in CIGAR_CLIP:
+        cigar = re.sub(r'%s*$' % op, r'', cigar)
+    return cigar
 
 
 def get_ref_len_from_cigar(cigar_pairs):
@@ -109,6 +145,8 @@ def reference_align_string(ref, cigar_int_pairs):
     for b, cnt in cigar_int_pairs:
         sym = cigar_int_to_c(b) if isinstance(b, int) else b
         if sym in CIGAR_MATCH_MISSMATCH or sym in CIGAR_DELETION:
+            if ref_index + cnt > len(ref):
+                print(len(ref), ref_index + cnt )
             assert ref_index + cnt <= len(ref)
             out_ref.extend(ref[ref_index:ref_index + cnt])
             ref_index += cnt
@@ -159,8 +197,8 @@ def error_rates_from_cigar(cigar_full_str):
     read_len = n_insertions + n_missmatches + n_matches
     noncliped_len = n_all_insertions + n_missmatches + n_matches
     if cigar_len != n_deletions + n_all_insertions + n_missmatches + n_matches:
-        raise Exception("cigar_len != n_deletions + n_all_insertions + n_missmatches + n_matches "
-                        "- Expected extended cigar format")
+        raise ValueError("cigar_len != n_deletions + n_all_insertions + n_missmatches + n_matches"
+                         ";Expected extended cigar format")
 
     n_errors = n_missmatches + n_insertions + n_deletions
 
@@ -173,21 +211,26 @@ def error_rates_from_cigar(cigar_full_str):
 
 
 ERROR_RATES_COLUMNS = ['Query name', 'Error rate', 'Match rate', 'Mismatch rate',
-                       'Insertion rate', 'Deletion rate', 'Read length']
+                       'Insertion rate', 'Deletion rate', 'Read length', 'Is reversed']
 
 
 def error_rates_for_sam(sam_path):
     all_errors = []
+    unmapped = 0
     with pysam.AlignmentFile(sam_path, "r") as samfile:
-        for x in samfile.fetch():
-            qname = x.query_name
-            cigar_pairs = x.cigartuples
-            if not cigar_pairs:
-                logging.error("%s No cigar string found", x.query_name)
+        for x in tqdm(samfile.fetch(), unit='read'):
+            if x.is_unmapped:
+                logging.debug("%s is unmapped", x.query_name)
+                unmapped += 1
                 continue
 
+            qname = x.query_name
+            cigar_pairs = x.cigartuples
+
             full_cigar = decompress_cigar_pairs(cigar_pairs, mode='ints')
-            all_errors.append([qname] + list(error_rates_from_cigar(full_cigar)))
+            all_errors.append([qname] + list(error_rates_from_cigar(full_cigar)) + [x.is_reverse])
+    if unmapped > 0:
+        logging.error("%d reads were unmapped", unmapped)
     return pd.DataFrame(all_errors, columns=ERROR_RATES_COLUMNS)
 
 
