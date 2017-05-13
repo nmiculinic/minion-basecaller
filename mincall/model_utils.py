@@ -667,7 +667,7 @@ class Model():
 
         mu_edit, mu_acc = np.mean(nedit), np.mean(acc)
         std_edit, std_acc = np.std(nedit), np.std(acc)
-        se_edit, se_acc = std_edit / np.sqrt(i + 1), std_acc / np.sqrt(i + 1)
+        se_edit, se_acc = std_edit / np.sqrt(len(nedit) + 1), std_acc / np.sqrt(len(nedit) + 1)
 
         self.logger.info("step: %d [samples %d] avg edit %.4f s %.4f CI <%.4f, %.4f> avg_acc %.4f s %.4f CI <%.4f, %.4f> %.3f bps",
                          self.get_global_step(), n, mu_edit, std_edit, mu_edit - 2*se_edit, mu_edit + 2*se_edit,

@@ -153,7 +153,7 @@ def preprocess_all_ref(dataset_conf_path, only_split, align_function):
     train_root = dataset_config['DEFAULT']['train_root']
     test_root = dataset_config['DEFAULT']['test_root']
     per_genome_split_root = dataset_config['DEFAULT']['per_genome_split_root']
-
+    n_threads = int(dataset_config['DEFAULT']['n_threads'])
     for section in dataset_config.sections():
         config = dataset_config[section]
 
@@ -167,7 +167,7 @@ def preprocess_all_ref(dataset_conf_path, only_split, align_function):
             logging.info("Started %s" % section)
 
             def generate_sam_f(reads, sam_out):
-                align_function(reads, ref_path, is_circular, sam_out)
+                align_function(reads, ref_path, is_circular, sam_out, n_threads)
 
             logging.info("Started aligning")
             align_for_reference(fast5_root, ref_root, generate_sam_f, ref_path, batch_size)

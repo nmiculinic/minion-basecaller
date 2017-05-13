@@ -85,11 +85,14 @@ def _merge_circular_aligment(target_1, start_pos_1, cigar_str_1,
     return [target, start, cigar]
 
 
-def align_with_graphmap(reads_path, ref_path, is_circular, out_sam):
+def align_with_graphmap(reads_path, ref_path, is_circular, out_sam, n_threads=None):
     os.makedirs(os.path.dirname(out_sam), exist_ok=True)
     args = ["graphmap", "align", "-r", ref_path, "-d", reads_path, "-o", out_sam, "-v", "0", "--extcigar"]
     if is_circular:
         args.append("-C")
+
+    if n_threads is not None:
+        args.extend(["-t", str(n_threads)])
 
     exit_status = subprocess.call(args)
     logging.info("Graphmap exit status %d" % exit_status)
@@ -98,13 +101,15 @@ def align_with_graphmap(reads_path, ref_path, is_circular, out_sam):
         logging.warning("Graphmap exit status %d" % exit_status)
 
 
-def align_with_bwa_mem(reads_path, ref_path, is_circular, out_sam, extended_cigar=True):
+def align_with_bwa_mem(reads_path, ref_path, is_circular, out_sam, n_threads=None):
     os.makedirs(os.path.dirname(out_sam), exist_ok=True)
     if os.path.exists(out_sam):
         logging.info("Removing %s", out_sam)
         os.remove(out_sam)
 
-    n_threads = multiprocessing.cpu_count()
+    if n_threads is None:
+        n_threads = multiprocessing.cpu_count()
+
     args = ["bwa", "mem", "-x", "ont2d", "-t", str(n_threads),
             ref_path, reads_path]
     args_index = ["bwa", "index", ref_path]
