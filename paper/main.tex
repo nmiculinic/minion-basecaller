@@ -14,28 +14,35 @@
 \theoremstyle{definition}
 \newtheorem{definition}{Definition}[section]
 
-\voditelj{izv.~prof.~dr.~sc.~Mile Sikić}
-\title{MinCall --- MinION od raw signala do genoma}
-\engtitle{MinCall --- MinION end2end deep learning basecaller}
-\author{Neven Miculinić}
-
-\maketitle
-\tableofcontents
 % - razvio si novi base caller za 1D nanopore reads koji je temeljen na konvolucijskim neuronskim mrežama
 % - reci koliko slojeva ima model
 % - kakve si rezultate dobio te da li su bolji od postojećih.
 % - koju si razinu greške dobio
 % - daj neko ime base calleru
 
+\voditelj{izv.~prof.~dr.~sc.~Mile Sikić}
+\title{MinCall --- MinION basecaller model pogonjen dubokim učenjem}
+\engtitle{MinCall --- MinION end2end deep learning basecaller}
+\author{Neven Miculinić}
+
+\maketitle
+\tableofcontents
+
 \begin{sazetak}
-    U ovoj studiji kreirali smo MinCall, cjelokupni model očitanja nukleotida za MinION, portabilni DNK sekvencer firme Oxford Nanopore Technology. Model je baziran na dubokom učenju i koristi konvolucijske neuronske mreže u svojoj implementaciji. Najperformantniji 270 slojeva dubok model postiže najbolje dosad performanse od 90.5\% preciznosti na E.Coli skupu za učenje koristeći R9 kemiju i 1D čitanja.
-    
+    MinION uredaj firme Oxford Nanopore Technology je prvi portabilni DNK sekvencer. Sposoban je pročitati značajno duga čitanja, preko 100 kBp, no nažalost pati od značajno vise pogreške nego ostale metode.
+
+    U ovoj studiji kreirali smo MinCall, cjelokupni model očitanja nukleotida za MinION. Model je baziran na dubokom učenju i koristi konvolucijske neuronske mreže u svojoj implementaciji. Za najbolje performanse koristi najnovije tehnike dubokog učenja i arhitekture, specifično rezidualne neuronske mreže, normalizaciju nad grupom i CTC gubitak.
+
+    Najperformantniji 270 slojeva dubok model postiže najbolje dosad performanse od 90.5\% preciznosti na E.Coli skupu za učenje koristeći R9 kemiju i 1D čitanja.
 \kljucnerijeci{Basecaller, MinION, R9, CNN, CTC, sekvenciniranje sljedece generacije}
 \end{sazetak}
 
 \begin{abstract}
-    In this study, we created MinCall, an end2end basecaller model for the MinION, an  Oxford Nanopore Technology's portable DNA sequencing device. The model is based on deep learning and uses convolutional neural networks (CNN) in its implementation. The best performing 270 layers deep model achieves state-of-the-art 90.5\% match rate on E.Coli dataset using R9 pore chemistry and 1D reads.
+    The Oxford Nanopore Technologies's MinION is the first portable DNA sequencing device. It's capable of producing long reads, over 100 kBp were reported, however, is has significantly higher error rate than other methods.
 
+    In this study, we created MinCall, an end2end basecaller model for the MinION. The model is based on deep learning and uses convolutional neural networks (CNN) in its implementation. For extra perfomnaces is uses cutting edge deep learning techniques and architectures, notably gated residual network, batch normalization and Connectionist Temporal Classification (CTC) loss.
+
+    The best performing 270 layers deep model achieves state-of-the-art 90.5\% match rate on E.Coli dataset using R9 pore chemistry and 1D reads.
 \keywords{Basecaller, MinION, R9, CNN, CTC, Next generation sequecing}
 \end{abstract}
 
