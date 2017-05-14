@@ -50,7 +50,7 @@
 
 Oxford Nanopore Technology's MinION nanopore sequecing platform~\cite{mikheyev2014first} is the first portable DNA sequecing device. It's small weight, of only 90 grms, low capial cost, and long read length combided with high-throughtput, real time data analysis, and decent accuracy yield promissing resultins in various applications. From clinical application such as monitoring infectious desease outbreaks~\cite{judge2015early}\cite{quick2016real}, characterizing structural variants in cancer\cite{norris2016nanopore} and even full human genome assembly~\cite{jain2017nanopore}.
 
-Although MinION is able to produce long reads, they have a high sequencing error rate. This has been somewhat alleviated with new R9 pore model, replacing older R7 ones. In this paper, we show that this error rate can be reduced by replacing the default base caller provided by the manufacturer with a properly trained neural network model. In the future new R9.5 chemistry and 1D^2 reads supersede current models.
+Although MinION is able to produce long reads, they have a high sequencing error rate. This has been somewhat alleviated with new R9 pore model, replacing older R7 ones. In this paper, we show that this error rate can be reduced by replacing the default base caller provided by the manufacturer with a properly trained neural network model. In the future new R9.5 chemistry and 1D\^2 reads supersede current models.
 
 In the MinION device, single-stranded DNA fragments move through nanopores, which causes drops in the electric current. The electric current is measured at each pore several thousand times per second, 4000 times exactly in our dataset. The electric current depends mostly on the context of several DNA bases passing through the pore at the time of measurement. As the DNA moves through the pore, the context shifts, and the electric current changes.
 
@@ -115,11 +115,28 @@ Best performing model used has 270 total layers, divided into 3 90-layer blocks.
 
 Each block consists of 30 gated residual layers, each residual layer composed of 3 sequential Relu-Batch Normalization-Conv1D layers. Each convolutional layer uses receptive width of 3 with 64 chanells as output throughout the model.
 
-\subsection{E.Coli perfomnace}
+\subsection{Performance tables}
 
-TODO
+As decribed in previous section, model was tested on E.Coli test set and compared to open source Nanonet and Albacore. Albacore doesn't have specific R9 chemistry mode, thus R9.4 was used instead which explains its lower perfomances on this task. Results are in \ref{table:1}
 
-See \url{https://github.com/nmiculinic/minion-basecaller/blob/master/notebook/Lambda_nanonet_vs_m270.ipynb for preliminary results.}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{lrrrrrrr}
+\toprule
+{} &  Deletion rate &  Error rate &  Insertion rate &  Match rate &  Mismatch rate &  Read length\\
+\midrule
+albacore     &       0.060 &    0.194 &        0.070 &    0.867 &       0.063 &  9843 \\
+nanonet      &       0.088 &    0.190 &        0.040 &    0.897 &       0.062 &  5029 \\
+mincall\_m270 &       0.077 &    0.172 &        0.040 &   0.905 &       0.056 &  9378 \\
+\bottomrule
+\end{tabular}
+
+\caption{Mean performance metrics on E.Coli dataset, 5k sample}
+\label{table:1}
+\end{table}
+
+We also tested and compared models on Human genome~\cite{jain2017nanopore} chromosone Y with R9.4 chemistry. Our model was only trained on R9 chemisty which explain drop in perfomance compared to Albacore. In our tests Nanonet produces significantly shorted read then data length and generally unusable perfomance on this dataset despite supporting R9.4 chemisty used in dataset.
 
 \chapter{Conclusion and further work}
 

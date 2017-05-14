@@ -18,6 +18,7 @@ args = argparse.ArgumentParser()
 args.add_argument("input_folder", help="Input fast5 folder to basecall")
 args.add_argument("out_folder", help="Output folder for all analysis")
 args.add_argument("--ref", help="Reference genome")
+args.add_argument("--name", help="Run name")
 args.add_argument("--min_length", type=int, default=500, help="Minimum read lenght for further analysis")
 args.add_argument("-c", "--circular", help="Is genome circular", action="store_true")
 args.add_argument("--coverage_threshold", help="Minimal coverage threshold for consensus", type=float, default=0.0)
@@ -87,14 +88,28 @@ for name, cmd in basecallers.items():
     logger.info("%s consensus_report:\n%s", name, consensus_report)
 
 
-fig_kde_path = os.path.join(args.out_folder, name + "reads_kde.png")
-fig_hist_path = os.path.join(args.out_folder, name + "reads_hist.png")
+columns = list(iter(next(iter(dfs.values()))._get_numeric_data()))
+df_prep = []
+names = []
+for name, df in dfs.items():
+    names.append(name)
+    df_prep.append({col: df[col].mean() for col in columns})
+df_summary = pd.DataFrame(df_prep, index=names)
+df_summary.to_csv(os.path.join(args.out_folder, args.name + "_summary.csv"))
+df_summary.to_latex(os.path.join(args.out_folder, args.name + "_summary.tex"))
+del names
+del df_prep
+
+fig_kde_path = os.path.join(args.out_folder, args.name + "reads_kde.png")
+fig_hist_path = os.path.join(args.out_folder, args.name + "reads_hist.png")
 
 fig_kde, axes_kde = plt.subplots(3, 2)
 fig_hist, axes_hist = plt.subplots(3, 2)
 fig_kde.set_size_inches(12, 20)
 fig_hist.set_size_inches(12, 20)
-for col, ax_kde, ax_hist in zip(next(iter(dfs.values()))._get_numeric_data(), axes_kde.ravel(), axes_hist.ravel()):
+
+for col, ax_kde, ax_hist in zip(columns, axes_kde.ravel(), axes_hist.ravel()):
+    logging.info("Plotting column %s", col)
     for k in dfs.keys():
         sns.kdeplot(dfs[k][col], shade=True, label=k, alpha=0.5, ax=ax_kde)
         ax_hist.hist(dfs[k][col], label=k, alpha=0.5)
