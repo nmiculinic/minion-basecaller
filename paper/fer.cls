@@ -274,7 +274,7 @@
 			\if@radseminar \vskip 3em%
 			\else \vskip 1em%
 			\fi
-			{\huge \bfseries\sffamily \@title \par}%
+			{\huge \bfseries\sffamily \@engtitle \par}%
 			\vskip 1em%
 			{\large\sffamily\lineskip .75em%
 			\begin{tabular}[t]{c}%
