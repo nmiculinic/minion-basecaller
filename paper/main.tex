@@ -48,32 +48,30 @@
 
 \chapter{Introduction}
 
-In this paper, we introduce the base caller for the MinION nanopore sequencing platform~\cite{mikheyev2014first}. The MinION device by Oxford Nanopore, weighing only 90 grams, is currently the smallest high-throughput DNA sequencer. Thanks to its low capital costs, small size and the possibility of analyzing the data in real time as they are produced, MinION is very promising for clinical applications, such as monitoring infectious disease outbreaks~\cite{judge2015early}\cite{quick2016real}, characterizing structural variants in cancer\cite{norris2016nanopore} and even full human genome assembly~\cite{jain2017nanopore}.
+Oxford Nanopore Technology's MinION nanopore sequecing platform~\cite{mikheyev2014first} is the first portable DNA sequecing device. It's small weight, of only 90 grms, low capial cost, and long read length combided with high-throughtput, real time data analysis, and decent accuracy yield promissing resultins in various applications. From clinical application such as monitoring infectious desease outbreaks~\cite{judge2015early}\cite{quick2016real}, characterizing structural variants in cancer\cite{norris2016nanopore} and even full human genome assembly~\cite{jain2017nanopore}.
 
-Although MinION is able to produce long reads, they have a high sequencing error rate. This has been somewhat alleviated with new R9 pore model, replacing older R7 ones. In this paper, we show that this error rate can be reduced by replacing the default base caller provided by the manufacturer with a properly trained neural network model.
+Although MinION is able to produce long reads, they have a high sequencing error rate. This has been somewhat alleviated with new R9 pore model, replacing older R7 ones. In this paper, we show that this error rate can be reduced by replacing the default base caller provided by the manufacturer with a properly trained neural network model. In the future new R9.5 chemistry and 1D^2 reads supersede current models.
 
-In the MinION device, single-stranded DNA fragments move through nanopores, which causes drops in the electric current. The electric current is measured at each pore several thousand times per second. The electric current depends mostly on the context of several DNA bases passing through the pore at the time of measurement. As the DNA moves through the pore, the context shifts, and the electric current changes.
+In the MinION device, single-stranded DNA fragments move through nanopores, which causes drops in the electric current. The electric current is measured at each pore several thousand times per second, 4000 times exactly in our dataset. The electric current depends mostly on the context of several DNA bases passing through the pore at the time of measurement. As the DNA moves through the pore, the context shifts, and the electric current changes.
 
-A MinION device typically yields reads several thousand bases long; reads as long as 100,000 bp have been reported. 1D read has usually error rate about   10\%. (Check details!!, What is the error rate, how it's defined???) After parameter training, base calling can be performed by running the Viterbi algorithm, which will result in the sequence of states with the highest likelihood.
+A MinION device typically yields reads several thousand bases long; reads as long as 100,000 bp have been reported. 1D read has usually error rate about   10\%, though it varies across diferent genomes, human one being lower accuracy than E.Coli one. (Check details!!, What is the error rate, how it's defined???) After parameter training, base calling can be performed by running the Viterbi algorithm, which will result in the sequence of states with the highest likelihood.
 
-The exact error rate metric is unreliable since multiple pipline tools could be the issue. First the sample is prepared, hopefully uncontaminated and matching reference genome as close as possile, then sequenced using the MinION device obtaining raw data. Next our model (or other groups ones) come along, basecall the sequence. To evalute error rate metric basecalled read is aligned to reference using aligners with their own erros/biases, mostly commonly used BWA-MEM and Graphmap.
+The exact error rate metric is unreliable since multiple pipeline tools could be the issue. First the sample is prepared, hopefully uncontaminated and matching reference genome as close as possibe, then sequenced using the MinION device obtaining raw data. Next our model (or other groups ones) come along, basecall the sequence. To evalute error rate metric basecalled read is aligned to the reference genome using aligners with their own erros/biases, mostly commonly used BWA-MEM~\cite{li2013aligning} and Graphmap~\cite{sovic2016fast}.
 
 \chapter{Background}
 
 \section{Sequencing overview}
-Informally, the MinION sequencer works as follows. First, DNA is sheared into fragments of 8–20 kbp and adapters are ligated to either end of the fragments. The resulting DNA fragments pass through a protein embedded in a membrane via a nanometre-sized channel (this protein is the `nanopore'). A single strand of DNA passes through the pore; the optional use of a hairpin adapter at one end of the fragment allows the two strands of DNA to serially pass through the nanopore, allowing two measurements of the fragment. With hairpin, it's called 2D read, which isn't the topic of this paper. In here we focus only on 1D reads.
+Conceptually, the MinION sequencer works as follows. First, DNA is sheared into fragments of 8–20 kbp and adapters are ligated to either end of the fragments. The resulting DNA fragments pass through a protein embedded in a membrane via a nanometre-sized channel, a nanopore. A single DNA strand passes through the pore. Optionally, hairpin protein adapter can merge two DNA strands, allowing both template and complemente read passing through the nanopore sequentially for more accurate reads. This tehnique is refered as 2D reads, while we focus on 1D reads containing only template DNA and no hairpin adapter.
 
-In ONT terminology, the first strand going through the nanopore is the template, and the second is the complement. As a DNA strand passes through the pore it partially blocks the flow of electric current through the pore. The flow of current is sampled over time which is the observable output of the system. The central idea is that the single-stranded DNA product present in the nanopore affects the current in a way that is strong enough to enable decoding the electric signal data into a DNA sequence. This process, called basecalling, takes as input a list of current measurements and produces as output a list of DNA bases most likely to have generated those currents.
-
-The nanopore is 6 nucleotides wide, and eariler HMM-based models model it as such.
+Electrical current runs through the nanopore, and exact nucelotides context within influences the nanopore's resistance. This resistive effect is our sensor data, that is the current fluctuations as DNA passes though the pore. The nanopore is 6 nucleotides wide, and many models use this information in their approaches, while we're opted out of this technicality.
 
 \section{Basecalling}
 
-The core of the decoding process is the basecalling step. Official basecaller is Metrichor, previously performed in the cloud before being open-sourced under name Nanonet.
+The core of the decoding process is the basecalling step. Official basecaller is Metrichor, previously performed in the cloud before being open-sourced under name Nanonet. (Citation, whom?)
 
 Earlier models were (Hidden Markov model) HMM-based where hidden state modeled DNA sequence of length 6 (6-mer) in the nanopore. Pore models were used in computing emission probabilities.~\cite{loman2015complete,schreiber2015analysis,szalay2015novo,timp2012dna} and the recent open source HMM-based basecaller Nanocall~\cite{david2016nanocall}.
 
-Recent models opted using (Recurrent neural network) RNN, notably DeepNano~\cite{deepnano} and recently open sourced official Nanonets from ONT.
+Recent models opted using (Recurrent neural network) RNN, notably DeepNano~\cite{deepnano} and recently open sourced official Nanonet from ONT.
 
 \chapter{Method}
 
@@ -85,9 +83,10 @@ Dataset was obtained from (Ask somebody, Marko doesn't know!). In this research,
 
 The fast5 input training files were further split into smaller training blocks, consisting of fixed block size on raw signal. For each block target sequence, basecalled data is used in following way.
 
-We're using basecalled knowledge which tells us on each raw read part which 6-mer were currently in the nanopore. Using this data, we get the intermediate target sequence for each block. To correct for model errors, we use aligned information, that is reference genome and alignment data(cigar string) to correct that information, yielding finalized target sequence. For further performance we skip first and last training block, since most error aggregate on edges.
+We're using basecalled knowledge which tells us on each raw read part which 6-mer were currently in the nanopore. Using this data, we get the intermediate target sequence for each block. To correct for model errors, we use aligned information, that is reference genome and alignment data (cigar string) to correct that information, yielding finalized target sequence. For further performance we skip first and last training block, since most error aggregate on edges.
 
 Adjacent matching bases are separated with surrogate one, for example AAA -> AA'A for reasons described in the following section.
+
 \section{Residual arhitecture}
 
 We use gated residual network, that is layer function is like this: $f(x) = k g(x) + x$ Where $x$ is input layer and $k$ constant learnt during training. Specifically, $g$ used is multiple, 1--3 times in our experiments, Relu-BatchNorm-CNN layers.
@@ -109,6 +108,14 @@ In out concrete $x$ application $\Sigma = \{\text{A G T C A' G' T' A'}\}$
 For decoding, we use beam search decoder, with beam width 100.
 
 \chapter{Results}
+
+\subsection{Final model}
+
+Best performing model used has 270 total layers, divided into 3 90-layer blocks. Between each 90 layers blocks MaxPool layer is inserted with receptive width of 2 and stride 2, to ease computation effort and add precision.
+
+Each block consists of 30 gated residual layers, each residual layer composed of 3 sequential Relu-Batch Normalization-Conv1D layers. Each convolutional layer uses receptive width of 3 with 64 chanells as output throughout the model.
+
+\subsection{E.Coli perfomnace}
 
 TODO
 
