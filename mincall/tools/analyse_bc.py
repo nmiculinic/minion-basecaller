@@ -109,10 +109,13 @@ fig_kde.set_size_inches(12, 20)
 fig_hist.set_size_inches(12, 20)
 
 for col, ax_kde, ax_hist in zip(columns, axes_kde.ravel(), axes_hist.ravel()):
+    fig, ax = plt.subplots()
     logging.info("Plotting column %s", col)
     for k in dfs.keys():
+        sns.kdeplot(dfs[k][col], shade=True, label=k, alpha=0.5, ax=ax)
         sns.kdeplot(dfs[k][col], shade=True, label=k, alpha=0.5, ax=ax_kde)
         ax_hist.hist(dfs[k][col], label=k, alpha=0.5)
+    fig.savefig(os.path.join(args.out_folder, col + ".png"))
     for ax in [ax_kde, ax_hist]:
         ax.legend()
         ax.set_title(col)

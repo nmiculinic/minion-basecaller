@@ -3,11 +3,12 @@ from tflearn.layers.conv import max_pool_1d, conv_1d
 from tflearn.layers.normalization import batch_normalization
 from dotenv import load_dotenv, find_dotenv
 from tflearn.initializations import variance_scaling_initializer
-from mincall.ops import central_cut
-from mincall.util import sigopt_double
-from mincall.model_utils import Model
-from mincall.controller import control
 
+from mincall.ops import central_cut
+from mincall import input_readers
+from mincall.util import sigopt_int, sigopt_double
+from mincall.controller import control
+from mincall.model_utils import Model
 load_dotenv(find_dotenv())
 
 
@@ -21,10 +22,10 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
 
     for block in range(1, 4):
         with tf.variable_scope("block%d" % block):
-            for layer in range(1, 1 + 1):
+            for layer in range(kwargs['num_layers']):
                 with tf.variable_scope('layer_%d' % layer):
                     res = net
-                    for sublayer in [1, 2]:
+                    for sublayer in range(kwargs['num_sub_layers']):
                         res = batch_normalization(
                             res, scope='bn_%d' % sublayer)
                         res = tf.nn.relu(res)
@@ -52,16 +53,17 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
     }
 
 
-def create_train_model(hyper, **kwargs):
-    model_setup = dict(
+def model_setup_params(hyper):
+    return dict(
         g=tf.Graph(),
-        # per_process_gpu_memory_fraction=0.6,
-        # n_samples_per_ref=3,
-        block_size_x=8 * 3 * 50 // 2,
-        block_size_y=80,
-        num_blocks=1,
-        batch_size=32,
-        max_reach=8 * 20,  # 160
+        per_process_gpu_memory_fraction=0.7,
+        block_size_x=8 * 3 * 600 // 2,
+        block_size_y=630,
+        in_data=input_readers.HMMAlignedRaw(),
+        num_blocks=4,
+        n_samples_per_ref=3,
+        batch_size=16,
+        max_reach=8 * 20,
         queue_cap=300,
         overwrite=False,
         reuse=False,
@@ -72,6 +74,21 @@ def create_train_model(hyper, **kwargs):
             hyper['initial_lr'], global_step, 100000, hyper['decay_factor']),
         hyper=hyper,
     )
+
+
+sigopt_params = [
+]
+
+default_params = {
+    'initial_lr': 0.001,
+    'decay_factor': 0.001,
+    'num_layers': 10,
+    'num_sub_layers': 3
+}
+
+
+def create_train_model(hyper, **kwargs):
+    model_setup = model_setup_params(hyper)
     model_setup.update(kwargs)
     return Model(**model_setup)
 
@@ -80,17 +97,8 @@ def create_test_model(hyper, **kwargs):
     return create_train_model(hyper, **kwargs)
 
 
-sigopt_params = [
-    sigopt_double('initial_lr', 1e-5, 1e-3),
-    sigopt_double('decay_factor', 1e-3, 0.5),
-]
+default_name = "resnet"
 
-default_params = {
-    'initial_lr': 1e-3,
-    'decay_factor': 0.1,
-}
-
-default_name = "test_model"
 
 if __name__ == "__main__":
     control(globals())
