@@ -117,7 +117,7 @@ Each block consists of 30 gated residual layers, each residual layer composed of
 
 \subsection{Performance tables}
 
-As decribed in previous section, model was tested on E.Coli test set and compared to open source Nanonet and Albacore. Albacore doesn't have specific R9 chemistry mode, thus R9.4 was used instead which explains its lower perfomances on this task. Results are in \ref{table:1}
+As described in previous section, model was tested on E.Coli test set and compared to open source Nanonet and Albacore. Albacore doesn't have specific R9 chemistry mode, thus R9.4 was used instead which explains its lower perfomances on this task. Mean CIGAR operation are in table\ref{table:1} and KDE Match rate plot is in figure~\ref{fig:ecoli_match}.
 
 
 \begin{table}[h!]
@@ -136,7 +136,14 @@ mincall\_m270 &       0.077 &    0.172 &        0.040 &   0.905 &       0.056 & 
 \label{table:1}
 \end{table}
 
-We also tested and compared models on Human genome~\cite{jain2017nanopore} chromosone Y with R9.4 chemistry. Our model was only trained on R9 chemisty which explain drop in perfomance compared to Albacore. In our tests Nanonet produces significantly shorted read then data length and generally unusable perfomance on this dataset despite supporting R9.4 chemisty used in dataset.
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{ecoli_match}
+\label{fig:ecoli_match}
+\end{figure}
+
+
+% We also tested and compared models on Human genome~\cite{jain2017nanopore} chromosone Y with R9.4 chemistry. Our model was only trained on R9 chemisty which explain drop in perfomance compared to Albacore. In our tests Nanonet produces significantly shorted read then data length and generally unusable perfomance on this dataset despite supporting R9.4 chemisty used in dataset.
 
 \chapter{Conclusion and further work}
 
@@ -146,10 +153,10 @@ Unlike Nanonet which uses custom OpenCL kernels or Albacore --- a novel ONT base
 
 \chapter{Acknowledgments}
 
-TODO.
+First and foremost I'd like to thank my mentor izv.~prof.~dr.~sc.~Mile Sikić for setting up the problem, guiding us through its beginnings and providing helpful advice for its completion. Next Marko Ratkovic for its not only his insightful conversations, but also meaningful code contributions.
+
+Finally I'm thanking various other people whose code, tools and advice I've used in completing this paper: Fran Jurišić, Ana Marija Selak and Ivan Sović.
 
 \bibliographystyle{fer}
 \bibliography{refs}
-
 \end{document}
-end{document}
