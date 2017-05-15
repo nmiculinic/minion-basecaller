@@ -69,15 +69,15 @@ for name, cmd in basecallers.items():
     reads_csv = os.path.join(args.out_folder, name + "_read_data.csv")
     if os.path.isfile(reads_csv):
         logger.info("%s file exists, loading", reads_csv)
-        df = pd.read_csv(reads_csv)
+        df = pd.read_pickle(os.path.join(args.out_folder, name + "_read_summary.pkl"))
     else:
         df = error_rates_for_sam(filtered_sam)
         df.to_csv(reads_csv)
+        df.to_pickle(os.path.join(args.out_folder, name + "_read_summary.pkl"))
         desc = df.describe()
-        with open(os.path.join(args.out_folder, name + "_read_summary.tex"), 'w') as f:
-            desc.to_latex(f)
-        with open(os.path.join(args.out_folder, name + "_read_summary.txt"), 'w') as f:
-            desc.to_string(f)
+        desc.to_latex(os.path.join(args.out_folder, name + "_read_summary.tex"))
+        desc.to_string(os.path.join(args.out_folder, name + "_read_summary.txt"))
+    df = error_rates_for_sam(filtered_sam)
     logger.info("%s\n%s", name, df.describe())
     dfs[name] = df
 
