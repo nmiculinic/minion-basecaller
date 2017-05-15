@@ -93,8 +93,8 @@ for name, cmd in basecallers.items():
 
 consensus_reports = pd.concat(consensus_reports)
 logger.info("Consensus Reports \n%s", consensus_reports)
-consensus_reports.to_csv(os.path.join(args.out_dir, "consensus.csv"))
-consensus_reports.to_latex(os.path.join(args.out_dir, "consensus.tex"))
+consensus_reports.to_csv(os.path.join(args.out_folder, "consensus.csv"))
+consensus_reports.to_latex(os.path.join(args.out_folder, "consensus.tex"))
 
 columns = list(iter(next(iter(dfs.values()))._get_numeric_data()))
 df_prep = []
