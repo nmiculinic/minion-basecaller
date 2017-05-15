@@ -1,17 +1,26 @@
-<!-- slide -->
+---
+presentation:
+  width: 800
+  height: 600
+  enableSpeakerNotes: true
+---
+
+<!-- slide data-notes:"DNA, the Life&#39;s molecule. For humans it&#39;s 3 billion nucleotides determine who you are. Whether you&#39;re sport superstar, schicofrenic or simply normally maladjusted to modern life. Your eye color, height, and many other features. Its fundamenatal to our functioning and intelligence. If I were to store uncompressed raw human DNA on hard disk it&#39;s only 1 GB, same as Arch linux compressed, yet much more powerful" -->
 # MinCall --- MinION end2end deep learning basecaller
 
 **Mentor: izv. prof. dr. sc. Mile Sikić**
 
-*speaking text, to be removed:* DNA, the Life's molecule. It's 3 billion nucleotides determine who you are. Whether you're phychopath, schicofrenic or simply normally maladjusted to modern life. Your eye color, height, and many other features. It's fundamenatal to our functioning and intelligence. If I were to store uncompressed raw human DNA on hard disk it's only 1 GB, same as Arch linux compressed
 <!-- slide -->
 # Why sequence DNA
 
-* medical diagnosis
+* medical diagnosis & research
 * Virology -- tracking disease outbreaks
 * metagenomics
-* Learning how we function
 * ...
+
+<!-- slide data-notes: "Because whole genome it is too enormous, first it is copied multiple times, and than a chemical bomb is dropped, creating many small fragment. Next each some fragment is basecalled, aligned to reference genome or assambled de novo. Whole process has great challanges and uncertainties during basecaller training procedure -- Ground truth uncertainty, you don't really know what you're sequencing and hoping the sample isn't contaminated. Next this small fragments could merge in chemical soup and create chimeric reads. And of course, aligner isn't perfect and it could map small fragment to wrong reference genome part."-->
+# Shotgun sequencing
+![shotgun_sequencing](https://i.ytimg.com/vi/23iCH3mmifU/maxresdefault.jpg)
 
 <!-- slide -->
 # Challenges
@@ -23,16 +32,11 @@
 # MinION
 ![](http://www.biopsci.com/wp-content/uploads/2014/09/minIONhome_left.png)
 
-
 <!-- slide -->
 # Motivation
-* small and portable
+* Small and portable
 * Real time sequencing
 * Long read length (up to 1Mbp)
-
-<!-- slide  -->
-# Shotgun sequencing
-![shotgun_sequencing](https://i.ytimg.com/vi/23iCH3mmifU/maxresdefault.jpg)
 
 <!-- slide -->
 # Nanopore
@@ -40,6 +44,13 @@
 
 <!-- slide -->
 ![brace yourself math is comming](https://i.imgflip.com/1p0y57.jpg)
+
+<!-- slide -->
+# Just kidding
+* Deep learning
+* gated residual Convolutional neural network
+* Conv-BN-Relu residual layers
+
 <!-- slide -->
 # Deep learning
 ![deep learning overview](http://www.amax.com/blog/wp-content/uploads/2015/12/blog_deeplearning3.jpg)
@@ -53,7 +64,7 @@
 # Connectionist Temporal Classification (CTC) loss
 ![CTC loss](https://raw.githubusercontent.com/baidu-research/warp-ctc/master/doc/deep-speech-ctc-small.png)
 
-<!-- slide -->
+<!-- slide data-notes: "Explain Insertions, deletions, match. Commend on read length"-->
 # Results
 |            | Deletions | Insertions | Match  | Mismatch | Read length |
 |------------|-----------|------------|------------|----------|-------------|
@@ -66,17 +77,17 @@
 # Results
 ![kde_match plot](http://i.imgur.com/zaBWYED.png)
 
-<!-- slide -->
-# Results
+<!-- slide data-notes: "Explain what consensus is, and how it's created"-->
+# Consensus
 
-| |**average coverage**|**insertion**|**deletion**|**correct**
-:-----:|:-----:|:-----:|:-----:|:-----:
-metrichorn|10.29|2%|20%|99.78%
-nanonet|5.26|15%|75%|99.01%
-albacore|10.30|2%|9%|99.84%
-mincall|10.30|1%|13%|**99.86%**
+| |**average coverage**|**correct**
+:-----:|:-----:|:-----:|
+metrichorn|10.29|99.78%
+nanonet|5.26|99.01%
+albacore|10.30|99.84%
+mincall|10.30|**99.86%**
 
-<!-- slide -->
+<!-- slide data-notes: "Say thanks to people"-->
 # Acknowledgments
 * Mentor izv. prof. dr. sc. Mile Sikić
 * colleague Marko Ratković
