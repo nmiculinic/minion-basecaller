@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 
 
-def process_mpileup(alignments_path, reference_path, mpileup_path, coverage_threshold, output_prefix):
+def process_mpileup(name, alignments_path, reference_path, mpileup_path, coverage_threshold, output_prefix):
     def _nlines(path):
         with open(path, 'r') as f:
             n_lines = sum(1 for _ in f)
@@ -93,14 +93,13 @@ def process_mpileup(alignments_path, reference_path, mpileup_path, coverage_thre
                   'deletion_count', 'num_undercovered_bases', 'num_called_bases',
                   'num_correct_bases', 'average_coverage']
         values = [alignments_path, mpileup_path, coverage_threshold] + counts.tolist()
-        report = pd.DataFrame([values], columns=fields)
+        report = pd.DataFrame([values], columns=fields, index=[name])
 
         for col in filter(lambda c: c.endswith('_count'), report.columns):
             new_col = col.replace('count', 'rate')
             report[new_col] = 100 * report[col] / report.num_called_bases
 
         report['correct_rate'] = 100 * report.num_correct_bases / report.num_called_bases
-        report = report.transpose()
 
         if output_prefix:
             summary_file = os.path.join(output_prefix, 'cov_%d.sum.vcf' % coverage_threshold)
@@ -322,7 +321,7 @@ def process_mpileup_line(line, coverage_threshold, fp_variant, fp_vcf):
     return skip, np.array(cnts)
 
 
-def get_consensus_report(sam_path, ref_path, is_circular, coverage_threshold=0, report_out_dir=None, tmp_files_dir=None):
+def get_consensus_report(name, sam_path, ref_path, is_circular, coverage_threshold=0, report_out_dir=None, tmp_files_dir=None):
     basename = os.path.basename(sam_path)
     file_name, ext = os.path.splitext(basename)
 
@@ -357,7 +356,7 @@ def get_consensus_report(sam_path, ref_path, is_circular, coverage_threshold=0, 
                   '-o', mpileup_path, catch_stdout=False)
 
     logging.info("Generating consensus and report")
-    report = process_mpileup(sam_path, ref_path, mpileup_path, coverage_threshold, report_out_dir)
+    report = process_mpileup(name, sam_path, ref_path, mpileup_path, coverage_threshold, report_out_dir)
 
     if not keep_tmp_files:
         logging.info("Cleaning tmp files")

@@ -32,6 +32,8 @@ basecallers = {
     'metrichorn': ["poretools", "fastq", "--type fwd", args.input_folder]
 }
 
+consensus_reports = []
+
 os.makedirs(args.out_folder, exist_ok=True)
 dfs = {}
 for name, cmd in basecallers.items():
@@ -66,32 +68,33 @@ for name, cmd in basecallers.items():
         logger.info("Outputed filtered sam to %s\n%d kept, %d discarded",
                  filtered_sam, n_kept, n_discarded)
 
-    reads_csv = os.path.join(args.out_folder, name + "_read_data.csv")
-    if os.path.isfile(reads_csv):
-        logger.info("%s file exists, loading", reads_csv)
-        df = pd.read_pickle(os.path.join(args.out_folder, name + "_read_summary.pkl"))
+    reads_pkl = os.path.join(args.out_folder, name + "_read_data.pkl")
+    if os.path.isfile(reads_pkl):
+        logger.info("%s file exists, loading", reads_pkl)
+        df = pd.read_pickle(reads_pkl)
     else:
         df = error_rates_for_sam(filtered_sam)
-        df.to_csv(reads_csv)
-        df.to_pickle(os.path.join(args.out_folder, name + "_read_summary.pkl"))
-        desc = df.describe()
-        desc.to_latex(os.path.join(args.out_folder, name + "_read_summary.tex"))
-        desc.to_string(os.path.join(args.out_folder, name + "_read_summary.txt"))
-    df = error_rates_for_sam(filtered_sam)
-    logger.info("%s\n%s", name, df.describe())
+        df.to_pickle(reads_pkl)
+
+    desc = df.describe()
+    desc.to_latex(os.path.join(args.out_folder, name + "_read_summary.tex"))
+    logger.info("%s\n%s", name, desc)
     dfs[name] = df
 
-    consensus_report_path = os.path.join(args.out_folder, name + "consensus_report.csv")
+    consensus_report_path = os.path.join(args.out_folder, name + "_consensus_report.pkl")
     if os.path.isfile(consensus_report_path):
-        consensus_report = pd.read_csv(consensus_report_path)
+        consensus_report = pd.read_pickle(consensus_report_path)
         logger.info("%s exists, loading", consensus_report_path)
     else:
-        consensus_report = get_consensus_report(filtered_sam, args.ref, args.coverage_threshold)
-        consensus_report.to_csv(consensus_report_path)
-        with open(os.path.splitext(consensus_report_path)[0] + ".txt", 'w') as f:
-            consensus_report.to_string(f)
+        consensus_report = get_consensus_report(name, filtered_sam, args.ref, args.coverage_threshold)
+        consensus_report.to_pickle(consensus_report_path)
+    consensus_reports.append(consensus_report)
     logger.info("%s consensus_report:\n%s", name, consensus_report)
 
+consensus_reports = pd.concat(consensus_reports)
+logger.info("Consensus Reports \n%s", consensus_reports)
+consensus_reports.to_csv(os.path.join(args.out_dir, "consensus.csv"))
+consensus_reports.to_latex(os.path.join(args.out_dir, "consensus.tex"))
 
 columns = list(iter(next(iter(dfs.values()))._get_numeric_data()))
 df_prep = []
