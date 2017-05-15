@@ -27,8 +27,9 @@ args = args.parse_args()
 basecallers = {
     "mincall_m270": ["nvidia-docker", "run", "--rm", "-v", "%s:/data" % args.input_folder, "-u=%d" % os.getuid(), "nmiculinic/mincall:9947283"],
     "nanonet": ["nanonetcall", args.input_folder, "--chemistry", "r9", "--platforms", "nvidia:0:20", "--exc_opencl"],
-    "albacore": None
-    # "nanonet": ["nanonetcall", args.input_folder, "--chemistry", "r9", "--jobs", "8"]
+    "albacore": None,
+    # "nanonet": ["nanonetcall", args.input_folder, "--chemistry", "r9", "--jobs", "8"],
+    'metrichorn': ["poretools", "fastq", "--type fwd", args.input_folder]
 }
 
 os.makedirs(args.out_folder, exist_ok=True)
@@ -36,7 +37,8 @@ dfs = {}
 for name, cmd in basecallers.items():
     logger = logging.getLogger(name)
     fasta_path = os.path.join(args.out_folder, name + ".fa")
-    if os.path.isfile(fasta_path):
+    fastq_path = os.path.join(args.out_folder, name + ".fastq")
+    if os.path.isfile(fasta_path) or os.path.isfile(fastq_path):
         logger.info("%s exists, skipping", fasta_path)
     else:
         logger.info("Basecalling %s with %s", args.input_folder, name)
@@ -49,8 +51,11 @@ for name, cmd in basecallers.items():
     if os.path.isfile(sam_path):
         logger.info("%s exists, skipping", sam_path)
     else:
-        logger.info("Aligning %s to reference %s with graphmap", fasta_path, args.ref)
-        align_utils.align_with_graphmap(fasta_path, args.ref, args.circular, sam_path)
+        path = fasta_path
+        if os.path.exists(fastq_path):
+            path = fastq_path
+        logger.info("Aligning %s to reference %s with graphmap", path, args.ref)
+        align_utils.align_with_graphmap(path, args.ref, args.circular, sam_path)
 
     filtered_sam = os.path.join(args.out_folder, name + "_filtered.sam")
     if os.path.isfile(filtered_sam):
