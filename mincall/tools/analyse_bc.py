@@ -32,6 +32,8 @@ basecallers = {
     'metrichorn': ["poretools", "fastq", "--type fwd", args.input_folder]
 }
 
+consensus_reports = []
+
 os.makedirs(args.out_folder, exist_ok=True)
 dfs = {}
 for name, cmd in basecallers.items():
@@ -79,17 +81,20 @@ for name, cmd in basecallers.items():
     logger.info("%s\n%s", name, desc)
     dfs[name] = df
 
-    consensus_report_path = os.path.join(args.out_folder, name + "_consensus_report.csv")
+    consensus_report_path = os.path.join(args.out_folder, name + "_consensus_report.pkl")
     if os.path.isfile(consensus_report_path):
-        consensus_report = pd.read_csv(consensus_report_path)
+        consensus_report = pd.read_pickle(consensus_report_path)
         logger.info("%s exists, loading", consensus_report_path)
     else:
-        consensus_report = get_consensus_report(filtered_sam, args.ref, args.coverage_threshold)
-        consensus_report.to_csv(consensus_report_path)
-        with open(os.path.splitext(consensus_report_path)[0] + ".txt", 'w') as f:
-            consensus_report.to_string(f)
+        consensus_report = get_consensus_report(name, filtered_sam, args.ref, args.coverage_threshold)
+        consensus_report.to_pickle(consensus_report_path)
+    consensus_reports.append(consensus_report)
     logger.info("%s consensus_report:\n%s", name, consensus_report)
 
+consensus_reports = pd.concat(consensus_reports)
+logger.info("Consensus Reports \n%s", consensus_reports)
+consensus_reports.to_csv(os.path.join(args.out_dir, "consensus.csv"))
+consensus_reports.to_latex(os.path.join(args.out_dir, "consensus.tex"))
 
 columns = list(iter(next(iter(dfs.values()))._get_numeric_data()))
 df_prep = []
