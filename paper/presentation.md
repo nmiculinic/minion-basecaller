@@ -39,28 +39,29 @@
 ![nanopore](http://labiotech.eu/wp-content/uploads/2016/07/selective-nanopore-sequencing-minion-nottingham.jpg)
 
 <!-- slide -->
-![](https://i.imgflip.com/1p0y57.jpg)
+![brace yourself math is comming](https://i.imgflip.com/1p0y57.jpg)
 <!-- slide -->
 # Deep learning
-![](http://www.amax.com/blog/wp-content/uploads/2015/12/blog_deeplearning3.jpg)
+![deep learning overview](http://www.amax.com/blog/wp-content/uploads/2015/12/blog_deeplearning3.jpg)
 <!-- slide -->
 # Convolutional neural networks (CNN)
-![](http://cs231n.github.io/assets/cnn/depthcol.jpeg)
+![CNN](http://cs231n.github.io/assets/cnn/depthcol.jpeg)
 <!-- slide -->
 # Residual neural networks
-![](https://codesachin.files.wordpress.com/2017/02/screen-shot-2017-02-16-at-4-53-01-pm.png)
+![ResNet](https://codesachin.files.wordpress.com/2017/02/screen-shot-2017-02-16-at-4-53-01-pm.png)
 <!-- slide -->
 # Connectionist Temporal Classification (CTC) loss
-![](https://raw.githubusercontent.com/baidu-research/warp-ctc/master/doc/deep-speech-ctc-small.png)
+![CTC loss](https://raw.githubusercontent.com/baidu-research/warp-ctc/master/doc/deep-speech-ctc-small.png)
 
 <!-- slide -->
 # Results
-|          | Deletions | Error | Insertions | Match  | Mismatch | Read length |
-|----------|-----------|-------|------------|------------|----------|-------------|
-| albacore | 6%        | 19.4% | 7%         | 86.7%      | 6.3%     | 9843        |
-| nanonet  | 8.8%      | 19%   | 4%         | 89.7%      | 6.2%     | 5029        |
-| metrichorn  | 8.7%      | 19.1% | 4%         | 89.6%      | 6.3%     | 9262        |
-| mincall  | 7.7%      | 17.2% | 4%         | **90.5%**      | 5.6%     | 9378        |
+|            | Deletions | Insertions | Match  | Mismatch | Read length |
+|------------|-----------|------------|------------|----------|-------------|
+| albacore   | 6%        | 7%         | 86.7%      | 6.3%     | 9843        |
+| nanonet    | 8.8%      | 4%         | 89.7%      | 6.2%     | 5029        |
+| metrichorn | 8.7%      | 4%         | 89.6%      | 6.3%     | 9262        |
+| mincall    | 7.7%      | 4%         | **90.5%**  | 5.6%     | 9378        |
+
 <!-- slide -->
 # Results
 ![kde_match plot](http://i.imgur.com/zaBWYED.png)
