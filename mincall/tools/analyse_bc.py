@@ -63,11 +63,10 @@ def albacore(name):
         with open(os.path.splitext(path)[0] + ".time", 'w') as f:
             print(t, file=f)
 
-        with open(path, 'w') as out:
+        with open(path, 'wb') as out:
             for fn in glob.glob(os.path.join(args.out_folder, 'workspace', '*.fastq')):
-                with open(fn, 'r') as f:
-                    for line in f.readlines():
-                        print(line.strip(), file=out)
+                with open(fn, 'rb') as f:
+                    out.write(f.read())
     return path
 
 
