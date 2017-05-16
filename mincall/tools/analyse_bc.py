@@ -124,6 +124,8 @@ for name, cmd in basecallers.items():
     consensus_report[r'10% match'] = df['Match rate'].quantile(0.1)
     consensus_report[r'50% match'] = df['Match rate'].quantile(0.5)
     consensus_report[r'count'] = len(df)
+    with open(os.path.join(args.out_folder, name + ".time")) as f:
+        consensus_report['time'] = float(f.read().strip())
     consensus_reports.append(consensus_report)
     logger.info("%s consensus_report:\n%s", name, consensus_report)
 
