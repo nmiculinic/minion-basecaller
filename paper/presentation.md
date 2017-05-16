@@ -46,12 +46,6 @@ presentation:
 ![brace yourself math is comming](https://i.imgflip.com/1p0y57.jpg)
 
 <!-- slide -->
-# Just kidding
-* Deep learning
-* gated residual Convolutional neural network
-* Conv-BN-Relu residual layers
-
-<!-- slide -->
 # Deep learning
 ![deep learning overview](http://www.amax.com/blog/wp-content/uploads/2015/12/blog_deeplearning3.jpg)
 <!-- slide -->
