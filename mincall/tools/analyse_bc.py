@@ -9,7 +9,9 @@ from mincall.bioinf_utils import error_rates_for_sam, error_positions_report, CI
 import seaborn as sns
 import matplotlib.pyplot as plt
 from mincall.consensus import get_consensus_report
-
+from time import monotonic
+from collections import OrderedDict
+import glob
 
 log_fmt = '\r[%(levelname)s] %(name)s: %(message)s'
 logging.basicConfig(level=logging.INFO, format=log_fmt)
@@ -24,13 +26,56 @@ args.add_argument("-c", "--circular", help="Is genome circular", action="store_t
 args.add_argument("--coverage_threshold", help="Minimal coverage threshold for consensus", type=float, default=0.0)
 args = args.parse_args()
 
-basecallers = {
-    "mincall_m270": ["nvidia-docker", "run", "--rm", "-v", "%s:/data" % args.input_folder, "-u=%d" % os.getuid(), "nmiculinic/mincall:9947283"],
-    "nanonet": ["nanonetcall", args.input_folder, "--chemistry", "r9", "--platforms", "nvidia:0:20", "--exc_opencl"],
-    "albacore": None,
-    # "nanonet": ["nanonetcall", args.input_folder, "--chemistry", "r9", "--jobs", "8"],
-    'metrichorn': ["poretools", "fastq", "--type fwd", args.input_folder]
-}
+
+def cmd(command, ext="fasta"):
+    def f(name):
+        logger = logging.getLogger(name)
+        path = os.path.join(args.out_folder, name + "." + ext)
+        if os.path.isfile(path):
+            logger.info("%s exists, skipping", path)
+        else:
+            logger.info("Basecalling %s with %s", args.input_folder, name)
+            logger.info("Output file %s", path)
+            logger.info("Full command: %s", " ".join(command))
+            t = monotonic()
+            with open(path, 'w') as f:
+                subprocess.check_call(command, stdout=f)
+            t = monotonic() - t
+            with open(os.path.splitext(path)[0] + ".time", 'w') as f:
+                print(t, file=f)
+        return path
+    return f
+
+
+def albacore(name):
+    logger = logging.getLogger(name)
+    path = os.path.join(args.out_folder, name + ".fastq")
+    if os.path.isfile(path):
+        logger.info("%s exists, skipping", path)
+    else:
+        logger.info("Basecalling %s with %s", args.input_folder, name)
+        logger.info("Output file %s", path)
+        command = ["read_fast5_basecaller.py", "-i", args.input_folder, "-t", str(os.cpu_count()), "-s", args.out_folder, "--config", "r94_450bps_linear.cfg"]
+        logger.info("Full command: %s", " ".join(command))
+        t = monotonic()
+        subprocess.check_call(command)
+        t = monotonic() - t
+        with open(os.path.splitext(path)[0] + ".time", 'w') as f:
+            print(t, file=f)
+
+        with open(path, 'wb') as out:
+            for fn in glob.glob(os.path.join(args.out_folder, 'workspace', '*.fastq')):
+                with open(fn, 'rb') as f:
+                    out.write(f.read())
+    return path
+
+
+basecallers = OrderedDict([
+    ("albacore", albacore),
+    ("mincall_m270", cmd(["nvidia-docker", "run", "--rm", "-v", "%s:/data" % args.input_folder, "-u=%d" % os.getuid(), "nmiculinic/mincall:9947283"])),
+    ('metrichorn', cmd(["poretools", "fastq", "--type", "fwd", args.input_folder], ext='fastq')),
+    ("nanonet", cmd(["nanonetcall", args.input_folder, "--chemistry", "r9", "--jobs", str(os.cpu_count())])),
+])
 
 consensus_reports = []
 
@@ -38,24 +83,12 @@ os.makedirs(args.out_folder, exist_ok=True)
 dfs = {}
 for name, cmd in basecallers.items():
     logger = logging.getLogger(name)
-    fasta_path = os.path.join(args.out_folder, name + ".fa")
-    fastq_path = os.path.join(args.out_folder, name + ".fastq")
-    if os.path.isfile(fasta_path) or os.path.isfile(fastq_path):
-        logger.info("%s exists, skipping", fasta_path)
-    else:
-        logger.info("Basecalling %s with %s", args.input_folder, name)
-        logger.info("Output file %s", fasta_path)
-        logger.info("Full command: %s", " ".join(cmd))
-        with open(fasta_path, 'w') as f:
-            subprocess.check_call(cmd, stdout=f)
+    path = cmd(name)
 
     sam_path = os.path.join(args.out_folder, name + ".sam")
     if os.path.isfile(sam_path):
         logger.info("%s exists, skipping", sam_path)
     else:
-        path = fasta_path
-        if os.path.exists(fastq_path):
-            path = fastq_path
         logger.info("Aligning %s to reference %s with graphmap", path, args.ref)
         align_utils.align_with_graphmap(path, args.ref, args.circular, sam_path)
 
@@ -88,6 +121,11 @@ for name, cmd in basecallers.items():
     else:
         consensus_report = get_consensus_report(name, filtered_sam, args.ref, args.coverage_threshold)
         consensus_report.to_pickle(consensus_report_path)
+    consensus_report[r'10% match'] = df['Match rate'].quantile(0.1)
+    consensus_report[r'50% match'] = df['Match rate'].quantile(0.5)
+    consensus_report[r'count'] = len(df)
+    with open(os.path.join(args.out_folder, name + ".time")) as f:
+        consensus_report['time'] = float(f.read().strip())
     consensus_reports.append(consensus_report)
     logger.info("%s consensus_report:\n%s", name, consensus_report)
 
