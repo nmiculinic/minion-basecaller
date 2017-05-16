@@ -73,8 +73,8 @@ def albacore(name):
 basecallers = OrderedDict([
     ("albacore", albacore),
     ("mincall_m270", cmd(["nvidia-docker", "run", "--rm", "-v", "%s:/data" % args.input_folder, "-u=%d" % os.getuid(), "nmiculinic/mincall:9947283"])),
-    ("nanonet", cmd(["nanonetcall", args.input_folder, "--chemistry", "r9", "--jobs", "24"])),
     ('metrichorn', cmd(["poretools", "fastq", "--type", "fwd", args.input_folder], ext='fastq'))
+    ("nanonet", cmd(["nanonetcall", args.input_folder, "--chemistry", "r9", "--jobs", "24"])),
 ])
 
 consensus_reports = []
