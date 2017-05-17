@@ -98,6 +98,10 @@ CIGAR    : =D==XI
 
 <!-- slide data-notes: "Explain what consensus is, and how it's created"-->
 # Consensus
+![shotgun_sequencing](https://i.ytimg.com/vi/23iCH3mmifU/maxresdefault.jpg)
+
+<!-- slide data-notes: "Explain what consensus is, and how it's created"-->
+# Consensus
 
 | |**average coverage**|**correct**
 :-----:|:-----:|:-----:|
