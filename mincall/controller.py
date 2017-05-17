@@ -6,7 +6,7 @@ from sigopt import Connection
 import json
 from time import perf_counter, monotonic
 from tqdm import tqdm
-import multiprocessing as mp
+from multiprocessing.pool import ThreadPool
 
 from . import util
 from . import model_utils
@@ -88,9 +88,9 @@ def basecall(create_test_model, **kwargs):
     parser = argparse.ArgumentParser()
     parser.add_argument("model_dir", help="increase output verbosity", type=str)
     parser.add_argument("fast5_in", help="Fast5 file to basecall or dir of fast5 files", default='.', type=str)
-    parser.add_argument("out_dir", nargs='?', type=str, default=None, help='Directory for output fasta files from processed fast5 files')
     parser.add_argument("-c", "--checkpoint", help="Checkpoint to restore", type=str, default=None)
     parser.add_argument("--write_logits", help="Write logits to file", action="store_true")
+    parser.add_argument("--parallel", help="Number of parallel basecalling", type=int, default=4)
 
     args = parser.parse_args()
     if os.path.isfile(args.fast5_in):
@@ -109,46 +109,32 @@ def basecall(create_test_model, **kwargs):
     try:
         model.init_session(start_queues=False)
         model.restore(checkpoint=args.checkpoint)
-        if args.out_dir is not None:
-            os.makedirs(args.out_dir, exist_ok=True)
-        total_time = 0
-        total_bases = 0
-        raw_q = mp.Queue(5)
-        file_q = mp.Queue()
-        for f in file_list:
-            file_q.put(f)
-
-        processes = [mp.Process(target=raw_signal_producer, args=(file_q, raw_q, model.in_data.get_signal)) for _ in range(5)]
-        for p in processes:
-            p.start()
 
         pbar = tqdm(file_list, unit='reads', unit_scale=True, dynamic_ncols=True)
-        for _ in pbar:
-            try:
-                if args.out_dir is not None:
-                    out = os.path.splitext(f)[0].split('/')[-1] + ".fasta"
-                    out = os.path.join(args.out_dir, out)
-                else:
-                    out = None
-                t0 = perf_counter()
-                fn, signal, pad = raw_q.get()
-                if fn == "ERROR":
-                    raise pad
-                basecalled = model.basecall_singal(fn, signal, pad, fasta_out=out, write_logits=args.write_logits)
-                total_time += perf_counter() - t0
+        t0 = perf_counter()
+        global total_bases
+        total_bases = 0
+
+        with ThreadPool(args.parallel) as pool, pbar:
+            def callback(x):
+                global total_bases
+                f, basecalled = x
                 total_bases += len(basecalled)
-                pbar.set_postfix(speed="{:.3f} b/s".format(total_bases / total_time))
+                pbar.set_postfix(speed="{:.3f} b/s".format(total_bases / (perf_counter() - t0)))
+                pbar.update()
+                util.dump_fasta(os.path.splitext(f)[0].split(os.sep)[-1], basecalled, sys.stdout)
 
-                if out is None:
-                    util.dump_fasta(os.path.splitext(f)[0].split(os.sep)[-1], basecalled, sys.stdout)
-            except Exception as ex:
-                model.logger.error("Error happened in %s", f, exc_info=True)
+            def exc_callback(ex):
+                model.logger.error("Error happened in %s", ex, exc_info=True)
 
-        model.logger.info("Finished, closing input queues")
-        for p in processes:
-            file_q.put("POISON")
-        for p in processes:
-            p.join()
+            def func(fast5_path):
+                return fast5_path, model.basecall_sample(fast5_path)
+
+            results = [pool.apply_async(func, args=(fn,), error_callback=exc_callback, callback=callback) for fn in file_list]
+
+            for r in results:
+                r.wait()
+
     finally:
         model.close_session()
 
