@@ -23,21 +23,15 @@ presentation:
 ![shotgun_sequencing](https://i.ytimg.com/vi/23iCH3mmifU/maxresdefault.jpg)
 
 
-<!-- slide -->
+<!-- slide data-notes:"* Small and portable&#10;* Real time sequencing&#10;* Long read length (up to 1Mbp)"-->
 # MinION
 <img src=http://www.biopsci.com/wp-content/uploads/2014/09/minIONhome_left.png align="middle"  width=800px />
-
-<!-- slide -->
-# Motivation
-* Small and portable
-* Real time sequencing
-* Long read length (up to 1Mbp)
 
 <!-- slide data-notes:"Imagine this scenario, you have 4 kinds of people in the world, women, men, both young and old. They are in a line passing through a gate, holding hands. Gate which is 6 people thick. Underneath the gate is a scale, measuring their weight. As they are moving on and off the scale, or simply fiddling in place measurements change. Figure out exact people ordering only from their cumulative weights. That&apos;s our problems! The weights are electrical resistance, and people are nucleotides"-->
 # Nanopore
 <img src=http://labiotech.eu/wp-content/uploads/2016/07/selective-nanopore-sequencing-minion-nottingham.jpg width=8000/>
 
-<!-- slide -->
+<!-- slide data-notes:"Pause"-->
 <img src=https://imgs.xkcd.com/comics/machine_learning.png align="center"/>
 
 <!-- slide -->
@@ -64,7 +58,8 @@ Connectionist Temporal Classification
 * gated residual layer == 3x(Relu-BN-Conv1D)
 * 3M parameters
 
-<!-- slide -->
+<!-- slide data-notes: "Explain Insertions, deletions, match. Commend on read length"-->
+
 # CIGAR
 ```
 Reference: ACGTG_
@@ -72,7 +67,7 @@ Read     : A_GTTC
 CIGAR    : =D==XI
 ```
 
-<!-- slide data-notes: "Explain Insertions, deletions, match. Commend on read length"-->
+<!-- slide -->
 
 # Results(Mean)
 |            | Del | Ins | Match  | Mis | Read length |
@@ -100,7 +95,7 @@ CIGAR    : =D==XI
 # Consensus
 ![shotgun_sequencing](https://i.ytimg.com/vi/23iCH3mmifU/maxresdefault.jpg)
 
-<!-- slide data-notes: "Explain what consensus is, and how it's created"-->
+<!-- slide -->
 # Consensus
 
 | |**average coverage**|**correct**
@@ -110,7 +105,7 @@ nanonet|5.26|99.01%
 albacore|10.30|99.84%
 mincall|10.30|**99.86%**
 
-<!-- slide -->
+<!-- slide data-notes: "MinKNOWn, event segmentation. "-->
 
 # Speed
 
@@ -120,7 +115,6 @@ mincall|10.30|**99.86%**
 | nanonet*   | 32 core CPU  | 4243      |9.1h|
 | metrichorn*| Cloud        | unknown   |unknown|
 | mincall    | Titan X Black| 3700      |10.4h|
-
 
 
 <!-- slide data-notes: "Say thanks to people"-->
