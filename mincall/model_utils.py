@@ -520,9 +520,12 @@ class Model():
         return avg_loss, avg_edit_distance
 
     def basecall_sample(self, fast5_path, fasta_out=None, ref=None, write_logits=False):
+        signal, start_pad = self.in_data.get_signal(fast5_path)
+        self.basecall_singal(fast5_path, signal, start_pad, fasta_out, ref, write_logits)
+
+    def basecall_singal(self, fast5_path, signal, start_pad, fasta_out=None, ref=None, write_logits=None):
         with self.g.as_default():
             is_training(False, session=self.sess)
-        signal, start_pad = self.in_data.get_signal(fast5_path)
         t = perf_counter()
         feed_dict = {
             self.X_batch: signal,
@@ -822,7 +825,7 @@ class Model():
         self.bbt_clock = perf_counter()
 
         with self.g.as_default():
-            config = tf.ConfigProto(log_device_placement=True)
+            config = tf.ConfigProto(log_device_placement=False)
             if self.per_process_gpu_memory_fraction:
                 config.gpu_options.per_process_gpu_memory_fraction = self.per_process_gpu_memory_fraction
 

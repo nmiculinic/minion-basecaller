@@ -6,6 +6,7 @@ from sigopt import Connection
 import json
 from time import perf_counter, monotonic
 from tqdm import tqdm
+import multiprocessing as mp
 
 from . import util
 from . import model_utils
@@ -71,6 +72,18 @@ def eval_model(create_test_model, **kwargs):
         model.close_session()
 
 
+def raw_signal_producer(file_q, out_q, prod_fn):
+    while True:
+        el = file_q.get()
+        if el == "POISON":
+            break
+        try:
+            signal, pad = prod_fn(el)
+            out_q.put((el, signal, pad))
+        except Exception as ex:
+            out_q.put(("ERROR", str(ex), ex))
+
+
 def basecall(create_test_model, **kwargs):
     parser = argparse.ArgumentParser()
     parser.add_argument("model_dir", help="increase output verbosity", type=str)
@@ -100,8 +113,17 @@ def basecall(create_test_model, **kwargs):
             os.makedirs(args.out_dir, exist_ok=True)
         total_time = 0
         total_bases = 0
+        raw_q = mp.Queue(5)
+        file_q = mp.Queue()
+        for f in file_list:
+            file_q.put(f)
+
+        processes = [mp.Process(target=raw_signal_producer, args=(file_q, raw_q, model.in_data.get_signal)) for _ in range(5)]
+        for p in processes:
+            p.start()
+
         pbar = tqdm(file_list, unit='reads', unit_scale=True, dynamic_ncols=True)
-        for f in pbar:
+        for _ in pbar:
             try:
                 if args.out_dir is not None:
                     out = os.path.splitext(f)[0].split('/')[-1] + ".fasta"
@@ -109,7 +131,10 @@ def basecall(create_test_model, **kwargs):
                 else:
                     out = None
                 t0 = perf_counter()
-                basecalled = model.basecall_sample(f, fasta_out=out, write_logits=args.write_logits)
+                fn, signal, pad = raw_q.get()
+                if fn == "ERROR":
+                    raise pad
+                basecalled = model.basecall_singal(fn, signal, pad, fasta_out=out, write_logits=args.write_logits)
                 total_time += perf_counter() - t0
                 total_bases += len(basecalled)
                 pbar.set_postfix(speed="{:.3f} b/s".format(total_bases / total_time))
@@ -119,6 +144,11 @@ def basecall(create_test_model, **kwargs):
             except Exception as ex:
                 model.logger.error("Error happened in %s", f, exc_info=True)
 
+        model.logger.info("Finished, closing input queues")
+        for p in processes:
+            file_q.put("POISON")
+        for p in processes:
+            p.join()
     finally:
         model.close_session()
 
