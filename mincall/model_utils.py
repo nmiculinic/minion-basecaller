@@ -521,7 +521,7 @@ class Model():
 
     def basecall_sample(self, fast5_path, fasta_out=None, ref=None, write_logits=False):
         signal, start_pad = self.in_data.get_signal(fast5_path)
-        self.basecall_singal(fast5_path, signal, start_pad, fasta_out, ref, write_logits)
+        return self.basecall_singal(fast5_path, signal, start_pad, fasta_out, ref, write_logits)
 
     def basecall_singal(self, fast5_path, signal, start_pad, fasta_out=None, ref=None, write_logits=None):
         with self.g.as_default():
