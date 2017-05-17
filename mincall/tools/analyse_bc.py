@@ -96,7 +96,7 @@ for name, cmd in basecallers.items():
     if os.path.isfile(filtered_sam):
         logger.info("%s exists, skipping", filtered_sam)
     else:
-        filters = [read_len_filter(min_len=args.min_length)]
+        filters = [read_len_filter(min_len=args.min_length, max_len=50000)]
         n_kept, n_discarded = filter_aligments_in_sam(sam_path, filtered_sam, filters)
         logger.info("Outputed filtered sam to %s\n%d kept, %d discarded",
                  filtered_sam, n_kept, n_discarded)
@@ -121,6 +121,7 @@ for name, cmd in basecallers.items():
     else:
         consensus_report = get_consensus_report(name, filtered_sam, args.ref, args.coverage_threshold)
         consensus_report.to_pickle(consensus_report_path)
+    consensus_report[r'mean match'] = df['Match rate'].mean()
     consensus_report[r'10% match'] = df['Match rate'].quantile(0.1)
     consensus_report[r'50% match'] = df['Match rate'].quantile(0.5)
     consensus_report[r'count'] = len(df)
