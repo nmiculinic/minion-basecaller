@@ -69,23 +69,13 @@ CIGAR    : =D==XI
 
 <!-- slide -->
 
-# Results(Mean)
-|            | Del | Ins | Match  | Mis | Read length |
-|------------|-----------|------------|------------|----------|-------------|
-| albacore   | 6%        | 7%         | 86.7%      | 6.3%     | 9843        |
-| nanonet    | 8.8%      | 4%         | 89.7%      | 6.2%     | 5029        |
-| metrichorn | 8.7%      | 4%         | 89.6%      | 6.3%     | 9262        |
-| mincall    | 7.7%      | 4%         | **90.5%**  | 5.6%     | 9378        |
-
-<!-- slide -->
-
 # Results(Median)
-|            | Del  | Ins  | Match      | Mis      | Read length |
-|------------|------|------|------------|----------|-------------|
-| albacore   | 5.6% | 6.8% | 87.1%      | 5.9%     | 6509        |
-| nanonet    | 8.4% | 3.6% | 90.2%      | 5.9%     | 3519        |
-| metrichorn | 8.3% | 4%   | 90.2%      | 5.9%     | 6138        |
-| mincall    | 7.2% | 3.7% | **91.0%**  | 5.2%     | 6224        |
+|            | Del      | Ins      | Match      | Mis      | Read length |
+|------------|----------|----------|------------|----------|-------------|
+| albacore   | **5.6%** | 6.8%     | 87.1%      | 5.9%     | 6509        |
+| nanonet    | 8.4%     | 3.6%     | 90.2%      | 5.9%     | 3519        |
+| metrichorn | 8.3%     | 4%       | 90.2%      | 5.9%     | 6138        |
+| mincall    | 7.2%     | **3.7%** | **91.0%**  | 5.2%     | 6224        |
 
 <!-- slide -->
 # Results
@@ -110,11 +100,11 @@ mincall|10.30|**99.86%**
 # Speed
 
 |            | Type         | Speed (base pairs/second)| E. coli 30x cov|
-|------------|--------------|-----------|----|
-| albacore*  | 32 core CPU  | 39036     |1h|
-| nanonet*   | 32 core CPU  | 4243      |9.1h|
-| metrichorn*| Cloud        | unknown   |unknown|
-| mincall    | Titan X Black| 3700      |10.4h|
+|------------|--------------|--------------------------|----------------|
+| albacore*  | 32 core CPU  | 39036                    |1h              |
+| nanonet*   | 32 core CPU  | 4243                     |9.1h            |
+| metrichorn*| Cloud        | unknown                  |unknown         |
+| mincall    | Titan X Black| 3700                     |10.4h           |
 
 
 <!-- slide data-notes: "Say thanks to people"-->
