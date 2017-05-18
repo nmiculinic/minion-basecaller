@@ -102,9 +102,10 @@ mincall|10.30|**99.86%**
 |            | Type         | Speed (base pairs/second)| E. coli 30x cov|
 |------------|--------------|--------------------------|----------------|
 | albacore*  | 32 core CPU  | 39036                    |1h              |
-| nanonet*   | 32 core CPU  | 4243                     |9.1h            |
+| nanonet*   | 32 core CPU  | 4243                     |9h              |
+| nanonet*   | Titan X Black| 2020                     |19h             |
 | metrichorn*| Cloud        | unknown                  |unknown         |
-| mincall    | Titan X Black| 3700                     |10.4h           |
+| mincall    | Titan X Black| 6500                     |6h              |
 
 
 <!-- slide data-notes: "Say thanks to people"-->
