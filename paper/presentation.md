@@ -18,7 +18,7 @@ presentation:
 * metagenomics
 * ...
 
-<!-- slide data-notes: "Because whole genome it is too enormous, first it is copied multiple times, and than a chemical bomb is dropped, creating many small fragment. Next each some fragment is basecalled, aligned to reference genome or assambled de novo. Whole process has great challanges and uncertainties during basecaller training procedure -- Ground truth uncertainty, you don&apos;t really know what you&apos;re sequencing and hoping the sample isn&apos;t contaminated. Next this small fragments could merge in chemical soup and create chimeric reads. And of course, aligner isn&apos;t perfect and it could map small fragment to wrong reference genome part.&#10;Importat things to mention:&#10;    * ground truth uncertainty&#10;    * Chimeric reads&#10;    * Alignment errors"-->
+<!-- slide data-notes: "Puzzle analogy.&#10;Importat things to mention:&#10;    * ground truth uncertainty&#10;    * Chimeric reads&#10;    * Alignment errors"-->
 # Shotgun sequencing
 ![shotgun_sequencing](https://i.ytimg.com/vi/23iCH3mmifU/maxresdefault.jpg)
 
@@ -27,7 +27,7 @@ presentation:
 # MinION
 <img src=http://www.biopsci.com/wp-content/uploads/2014/09/minIONhome_left.png align="middle"  width=800px />
 
-<!-- slide data-notes:"Imagine this scenario, you have 4 kinds of people in the world, women, men, both young and old. They are in a line passing through a gate, holding hands. Gate which is 6 people thick. Underneath the gate is a scale, measuring their weight. As they are moving on and off the scale, or simply fiddling in place measurements change. Figure out exact people ordering only from their cumulative weights. That&apos;s our problems! The weights are electrical resistance, and people are nucleotides"-->
+<!-- slide data-notes:"Imagine this scenario, you have 4 kinds of people standing in the line, women, men, both young and old. They are passing through a gate, holding hands. Gate which is 6 people thick. Underneath the gate is a scale, measuring their weight. As they are moving on and off the scale, or simply fiddling in place measurements change. Figure out exact people ordering only from their cumulative weights. That&apos;s our problems! The weights are electrical resistance, and people are nucleotides"-->
 # Nanopore
 <img src=http://labiotech.eu/wp-content/uploads/2016/07/selective-nanopore-sequencing-minion-nottingham.jpg width=8000/>
 

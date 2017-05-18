@@ -159,8 +159,8 @@ for col, ax_kde, ax_hist in zip(columns, axes_kde.ravel(), axes_hist.ravel()):
     fig, ax = plt.subplots()
     logging.info("Plotting column %s", col)
     for k in dfs.keys():
-        sns.kdeplot(dfs[k][col], shade=True, label=k, alpha=0.5, ax=ax)
-        sns.kdeplot(dfs[k][col], shade=True, label=k, alpha=0.5, ax=ax_kde)
+        sns.kdeplot(dfs[k][col], shade=False, label=k, alpha=0.5, ax=ax)
+        sns.kdeplot(dfs[k][col], shade=False, label=k, alpha=0.5, ax=ax_kde)
         ax_hist.hist(dfs[k][col], label=k, alpha=0.5)
     ax.set_title(args.name + " " + col)
     fig.savefig(os.path.join(args.out_folder, col + ".png"))
