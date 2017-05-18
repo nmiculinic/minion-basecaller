@@ -103,7 +103,7 @@ mincall|10.30|**99.86%**
 |------------|--------------|--------------------------|----------------|
 | albacore*  | 32 core CPU  | 39036                    |1h              |
 | nanonet*   | 32 core CPU  | 4243                     |9h              |
-| nanonet*   | Titan X Black| 2020                     |19h             |
+| nanonet*   | Titan X Black| 9687                     |4h              |
 | metrichorn*| Cloud        | unknown                  |unknown         |
 | mincall    | Titan X Black| 6500                     |6h              |
 
