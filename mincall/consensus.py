@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import operator
 import pysam
+from mincall import bioinf_utils as butil
 import shutil
 from tqdm import tqdm
 
@@ -94,12 +95,15 @@ def process_mpileup(name, alignments_path, reference_path, mpileup_path, coverag
                   'num_correct_bases', 'average_coverage']
         values = [alignments_path, mpileup_path, coverage_threshold] + counts.tolist()
         report = pd.DataFrame([values], columns=fields, index=[name])
+        report.num_called_bases = report.num_correct_bases + report.snp_count + report.insertion_count
 
+        reference_len = len(butil.read_fasta(reference_path))
         for col in filter(lambda c: c.endswith('_count'), report.columns):
             new_col = col.replace('count', 'rate')
             report[new_col] = 100 * report[col] / report.num_called_bases
 
         report['correct_rate'] = 100 * report.num_correct_bases / report.num_called_bases
+        report['identity_percentage'] = 100 * report.num_correct_bases /reference_len
 
         if output_prefix:
             summary_file = os.path.join(output_prefix, 'cov_%d.sum.vcf' % coverage_threshold)

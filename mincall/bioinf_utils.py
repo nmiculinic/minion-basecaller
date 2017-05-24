@@ -145,8 +145,6 @@ def reference_align_string(ref, cigar_int_pairs):
     for b, cnt in cigar_int_pairs:
         sym = cigar_int_to_c(b) if isinstance(b, int) else b
         if sym in CIGAR_MATCH_MISSMATCH or sym in CIGAR_DELETION:
-            if ref_index + cnt > len(ref):
-                print(len(ref), ref_index + cnt )
             assert ref_index + cnt <= len(ref)
             out_ref.extend(ref[ref_index:ref_index + cnt])
             ref_index += cnt
@@ -174,6 +172,40 @@ def query_align_string(ref, cigar_int_pairs):
         elif sym in CIGAR_DELETION:
             out_ref.extend(['-'] * cnt)
     return ''.join(out_ref)
+
+
+def generate_md_tag(ref, cigar_str):
+    cigar_pairs = cigar_str_to_pairs(cigar_str)
+
+    md = []
+    ref_index = 0
+    prev_cnt = 0
+
+    for sym, cnt in cigar_pairs:
+        if sym in CIGAR_MATCH:
+            ref_index += cnt
+            prev_cnt += cnt
+
+        elif sym in CIGAR_MISSMATCH:
+            assert ref_index + cnt <= len(ref)
+
+            for c in ref[ref_index:ref_index + cnt]:
+                md.append(str(prev_cnt))
+                md.append(c.upper())
+                prev_cnt = 0
+
+            ref_index += cnt
+
+        elif sym in CIGAR_DELETION:
+            md.append(str(prev_cnt))
+            prev_cnt = 0
+            assert ref_index + cnt <= len(ref)
+            md.extend('^' + ref[ref_index:ref_index + cnt].upper())
+            ref_index += cnt
+
+    if prev_cnt:
+        md.append(str(prev_cnt))
+    return ''.join(md)
 
 
 def reverse_complement(seq):
