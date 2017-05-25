@@ -98,7 +98,14 @@ def decompress_cigar(cigar_str):
     return decompress_cigar_pairs(cigar_pairs, mode='chars')
 
 
-def compress_cigar(cigar_str):
+def compress_cigar(cigar_str, ret_mode='chars'):
+    if ret_mode == 'ints':
+        convert = cigar_c_to_int
+    elif ret_mode == 'chars':
+        convert = lambda x: x
+    else:
+        raise ValueError('Invalid mode argument. Expected ints or chars')
+
     pairs = []
     count = 1
 
@@ -106,9 +113,9 @@ def compress_cigar(cigar_str):
         if cigar_str[i-1] == cigar_str[i]:
             count += 1
         else:
-            pairs.append((cigar_str[i-1], count))
+            pairs.append((convert(cigar_str[i-1]), count))
             count = 1
-    pairs.append((cigar_str[-1], count))
+    pairs.append((convert(cigar_str[-1]), count))
     return pairs
 
 
@@ -124,13 +131,28 @@ def rtrim_cigar(cigar):
     return cigar
 
 
-def get_ref_len_from_cigar(cigar_pairs):
+def get_ref_len_from_cigar_pairs(cigar_pairs):
     ref_len = 0
-
     for b, cnt in cigar_pairs:
         sym = cigar_int_to_c(b) if isinstance(b, int) else b
         if sym in CIGAR_MATCH_MISSMATCH or sym in CIGAR_DELETION:
             ref_len += cnt
+    return ref_len
+
+
+def get_ref_len_from_cigar(decompressed_cigar):
+    ref_len = 0
+    for op in decompressed_cigar:
+        if op in CIGAR_MATCH_MISSMATCH or op in CIGAR_DELETION:
+            ref_len += 1
+    return ref_len
+
+
+def get_read_len_from_cigar(decompressed_cigar):
+    ref_len = 0
+    for op in decompressed_cigar:
+        if op in CIGAR_MATCH_MISSMATCH or op in CIGAR_INSERTION or op in CIGAR_CLIP:
+            ref_len += 1
     return ref_len
 
 
@@ -174,14 +196,13 @@ def query_align_string(ref, cigar_int_pairs):
     return ''.join(out_ref)
 
 
-def generate_md_tag(ref, cigar_str):
-    cigar_pairs = cigar_str_to_pairs(cigar_str)
-
+def generate_md_tag(ref, cigar_pairs=None):
     md = []
     ref_index = 0
     prev_cnt = 0
 
-    for sym, cnt in cigar_pairs:
+    for b, cnt in cigar_pairs:
+        sym = cigar_int_to_c(b) if isinstance(b, int) else b
         if sym in CIGAR_MATCH:
             ref_index += cnt
             prev_cnt += cnt
@@ -307,3 +328,4 @@ def read_fasta(fp):
             return rr(f)
     else:
         return rr(fp)
+

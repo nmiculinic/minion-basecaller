@@ -7,6 +7,7 @@ import pandas as pd
 import operator
 import pysam
 from mincall import bioinf_utils as butil
+from mincall.align_utils import split_aligments_in_sam
 import shutil
 from tqdm import tqdm
 
@@ -335,12 +336,16 @@ def get_consensus_report(name, sam_path, ref_path, is_circular, coverage_thresho
         out_dir = tempfile.mkdtemp()
 
     os.makedirs(out_dir, exist_ok=True)
+    tmp_sam_path = os.path.join(out_dir, file_name + '_tmp.sam')
     tmp_bam_path = os.path.join(out_dir, file_name + '_tmp.bam')
     bam_path = os.path.join(out_dir, file_name + '.bam')
     mpileup_path = bam_path + '.bam.mpilup'
 
+    logging.info("Split long aligments")
+    split_aligments_in_sam(sam_path, tmp_sam_path)
+
     logging.info("Converting sam to bam")
-    pysam.view('-S', sam_path, '-b', '-o', tmp_bam_path, catch_stdout=False)
+    pysam.view('-S', tmp_sam_path, '-b', '-o', tmp_bam_path, catch_stdout=False)
 
     logging.info("Sorting bam file")
     pysam.sort(tmp_bam_path, '-o', bam_path, catch_stdout=False)

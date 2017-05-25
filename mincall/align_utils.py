@@ -9,6 +9,9 @@ from mincall import bioinf_utils as butil
 import shutil
 import tempfile
 from tqdm import tqdm
+from copy import deepcopy
+
+CIGAR_OPS_LIMIT = 60000
 
 
 def get_target_sequences(sam_path):
@@ -287,4 +290,76 @@ def extend_cigars_in_sam(sam_in, ref_path, fastx_path, sam_out=None):
     if inplace:
         # clear tmp files
         shutil.move(tmp_sam_out, sam_in)
+        shutil.rmtree(tmp_dir)
+
+
+def split_aligment(x, split_length=CIGAR_OPS_LIMIT):
+    read_len = x.query_length
+    ref = x.get_reference_sequence()
+    cigar = butil.decompress_cigar_pairs(x.cigar)
+    if read_len < split_length:
+        return [x]
+
+    ret = []
+
+    prev_query_end = 0
+    ref_len = 0
+
+    for id, i in enumerate(range(0, len(cigar), split_length)):
+        prefix_cigar = cigar[i:i + split_length]
+        prefix_len = butil.get_read_len_from_cigar(prefix_cigar)
+
+        prefix = deepcopy(x)
+        prefix.reference_start += ref_len
+        prefix.cigar = butil.compress_cigar(prefix_cigar, 'ints')
+
+        prefix.set_tag('MD', butil.generate_md_tag(ref[ref_len:], prefix.cigar))
+        prefix.query_sequence = x.query_sequence[prev_query_end:prev_query_end + prefix_len]
+
+        prev_query_end += prefix_len
+        ref_len += butil.get_ref_len_from_cigar(prefix_cigar)
+
+        ret.append(prefix)
+
+    return ret
+
+
+def split_aligments_in_sam(in_sam_path, out_sam_path=None):
+    tmp_dir = None
+    tmp_sam_out = out_sam_path
+    inplace = out_sam_path is None
+
+    if inplace:
+        tmp_dir = tempfile.mkdtemp()
+        tmp_sam_out = os.path.join(tmp_dir, 'tmp.sam')
+
+    with pysam.AlignmentFile(in_sam_path, "r") as samfile, \
+            pysam.AlignmentFile(tmp_sam_out, "w", template=samfile) as out_sam:
+
+        for x in tqdm(samfile.fetch()):
+            name = x.query_name
+            if x.is_unmapped:
+                logging.warning("%s unmapped" % name)
+                out_sam.write(x)
+                continue
+            try:
+                target = x.get_reference_sequence()
+            except ValueError:
+                logging.error("%s Mapped but reference len equals 0, md tag: %s", name, x.has_tag('MD'))
+                out_sam.write(x)
+                continue
+
+            if x.reference_length < CIGAR_OPS_LIMIT:
+                out_sam.write(x)
+                continue
+            parts = split_aligment(x, CIGAR_OPS_LIMIT)
+
+            for i, r in enumerate(parts):
+                if i > 0:
+                    r.query_name = '%s_%d_suffix' % (x.query_name, i)
+                out_sam.write(r)
+
+    if inplace:
+        # clear tmp files
+        shutil.move(tmp_sam_out, in_sam_path)
         shutil.rmtree(tmp_dir)
