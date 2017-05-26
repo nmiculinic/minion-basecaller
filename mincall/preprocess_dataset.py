@@ -136,6 +136,10 @@ def _align_for_reference_batch(files_in_batch, generate_sam_f, ref_starts, out_r
 
     # cleanup
     shutil.rmtree(tmp_work_dir)
+    _dump_ref_files(result_dict, name_to_file, ref_starts, out_root)
+
+
+def _dump_ref_files(result_dict, name_to_file, ref_starts, out_root):
     for name, (target, ref_name, start_position, length, cigar) in result_dict.items():
         basename, ext = os.path.splitext(name_to_file[name])
         ref_out_name = basename + '.ref'

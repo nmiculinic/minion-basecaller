@@ -10,23 +10,37 @@ import shutil
 import tempfile
 from tqdm import tqdm
 from copy import deepcopy
-
+from collections import defaultdict
 CIGAR_OPS_LIMIT = 60000
 
 
 def get_target_sequences(sam_path):
     result_dict = {}
 
+    cnt = defaultdict(int)
     with pysam.AlignmentFile(sam_path, "r") as samfile:
-        for x in samfile.fetch():
+        for x in tqdm(samfile.fetch(), desc='Building ref'):
             name = x.query_name
+            cnt['total'] += 1
 
             if x.is_unmapped:
-                logging.warning("%s unmapped" % name)
+                cnt['unmapped'] += 1
+                #logging.warning("%s unmapped" % name)
                 continue
             try:
+                # hack to bypass segfault
+                full_cigar = butil.decompress_cigar_pairs(x.cigartuples)
+                r_len = butil.get_read_len_from_cigar(full_cigar)
+                ref_len = butil.get_ref_len_from_cigar(full_cigar)
+
+                if r_len != x.query_length or ref_len != x.reference_length:
+                    logging.error("%s cigar operations do not match alignment info in md", name)
+                    cnt['invalid_md_cigar'] += 1
+                    continue
+
                 target = x.get_reference_sequence()
             except (ValueError, AssertionError) as e:
+                cnt['missign_ref'] += 1
                 logging.error("%s Mapped but reference len equals 0, md tag: %s", name, x.has_tag('MD'))
                 continue
 
@@ -50,8 +64,9 @@ def get_target_sequences(sam_path):
 
                 target, start_pos, cigar_str = merged
                 length = len(target)
-
             result_dict[name] = [target, ref_name, start_pos, length, cigar_str]
+
+    logging.warning("Results: %s", str(cnt.items()))
     return result_dict
 
 
