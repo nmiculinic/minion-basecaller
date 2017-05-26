@@ -115,7 +115,11 @@ def _align_for_reference_batch(files_in_batch, generate_sam_f, ref_starts, out_r
         for f in files_in_batch:
             try:
                 with h5py.File(f, 'r') as h5:
-                    fastq = h5['/Analyses/Basecall_1D_000/BaseCalled_template/Fastq'][()]
+                    template_key = '/Analyses/Basecall_1D_000/BaseCalled_template/Fastq'
+                    if template_key not in h5:
+                        logging.warning("No fastq for template found in fast5 %s", f)
+                        continue
+                    fastq = h5[template_key][()]
                     read_name, *_ = fastq.strip().split(b'\n')
                     read_name = read_name[1:].split(b' ')[0].decode()
                     assert read_name not in name_to_file
