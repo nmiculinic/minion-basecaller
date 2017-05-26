@@ -26,7 +26,7 @@ def get_target_sequences(sam_path):
                 continue
             try:
                 target = x.get_reference_sequence()
-            except ValueError:
+            except (ValueError, AssertionError) as e:
                 logging.error("%s Mapped but reference len equals 0, md tag: %s", name, x.has_tag('MD'))
                 continue
 
