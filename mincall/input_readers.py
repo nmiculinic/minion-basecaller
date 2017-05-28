@@ -6,9 +6,9 @@ import h5py
 from glob import glob
 from collections import defaultdict
 
-from . import util
-from . import errors
-from .errors import MissingRNN1DBasecall, InsufficientDataBlocks, MinIONBasecallerException
+from mincall import util
+from mincall import errors
+from mincall.errors import MissingRNN1DBasecall, InsufficientDataBlocks, MinIONBasecallerException
 
 root_dir_map = {
     'karla': '/hgst8TB/fjurisic/ecoli',
@@ -48,7 +48,7 @@ class AlignedRawAbstract(InputReader):
 
     def read_fast5(self, fast5_path):
         with h5py.File(fast5_path, 'r') as h5:
-            reads = h5['Analyses/EventDetection_000/Reads']
+            reads = h5['Raw/Reads']
             target_read = list(reads.keys())[0]
             sampling_rate = h5['UniqueGlobalKey/channel_id'].attrs['sampling_rate']
 
@@ -231,6 +231,19 @@ class RNNAlignedRaw(AlignedRawAbstract):
             raise MissingRNN1DBasecall("Not found RNN component")
 
 
+class AlbacoreAlignedRaw(AlignedRawAbstract):
+    def get_basecalled_data(self, h5, target_read, sampling_rate):
+        assert "Albacore" in h5['Analyses/Basecall_1D_000'].attrs['name']
+        basecalled_events = h5['/Analyses/Basecall_1D_000/BaseCalled_template/Events']
+        adj = h5['Raw/Reads/%s' % target_read].attrs['start_time'] / sampling_rate
+        basecalled_events = np.array(basecalled_events.value[['start', 'length', 'model_state', 'move']])
+        basecalled_events['start'] -= adj
+        return (
+            basecalled_events,
+            h5['/Analyses/Basecall_1D_000/BaseCalled_template/Fastq'][()].decode().split('\n')
+        )
+
+
 def sanitize_input_line(fname):
     fname = fname.strip().split()[0]
     return fname
@@ -239,3 +252,11 @@ def sanitize_input_line(fname):
 def proc_wrapper(q, fun, *args):
     for feed in fun(*args):
         q.put(feed)
+
+if __name__=='__main__':
+    import pprint
+    pp = pprint.PrettyPrinter()
+    a = AlbacoreAlignedRaw()
+    b = a.read_fast5('/home/lpp/Downloads/minion/nanopore2_20170301_FNFAF09967_MN17024_sequencing_run_170301_MG1655_PC_RAD002_62645_ch7_read372_strand.fast5')
+
+    pp.pprint(b)
