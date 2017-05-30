@@ -37,15 +37,19 @@ def _construct_ref_files(fast5_files, sam_path, ref_starts, out_root):
     for f in pbar:
         try:
             with h5py.File(f, 'r') as h5:
-                template_key = '/Analyses/Basecall_1D_000/BaseCalled_template/Fastq'
+                template_key \
+                    = '/Analyses/Basecall_1D_000/BaseCalled_template/Fastq'
                 if template_key not in h5:
                     total_skipped += 1
                     continue
                 fastq = h5[template_key][()]
                 read_name, *_ = fastq.strip().split(b'\n')
                 read_name = read_name[1:].split(b' ')[0].decode()
-                assert read_name not in name_to_file
-                name_to_file[read_name] = os.path.basename(f)
+                f_name = os.path.basename(f)
+                if read_name in name_to_file:
+                    logging.warning("%s duplicate name", read_name)
+
+                name_to_file[read_name] = f_name
         except Exception as ex:
             logging.error('Error reading file %s', f, exc_info=True)
 

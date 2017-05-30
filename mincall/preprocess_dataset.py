@@ -122,8 +122,11 @@ def _align_for_reference_batch(files_in_batch, generate_sam_f, ref_starts, out_r
                     fastq = h5[template_key][()]
                     read_name, *_ = fastq.strip().split(b'\n')
                     read_name = read_name[1:].split(b' ')[0].decode()
-                    assert read_name not in name_to_file
-                    name_to_file[read_name] = os.path.basename(f)
+                    f_name = os.path.basename(f)
+                    if read_name in name_to_file:
+                        logging.warning("%s duplicate name", read_name)
+
+                    name_to_file[read_name] = f_name
 
                     fq_file.write(fastq)
                     fq_file.write(b'\n')
