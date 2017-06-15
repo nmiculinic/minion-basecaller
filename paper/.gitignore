@@ -60,6 +60,10 @@ acs-*.bib
 # fixme
 *.lox
 
+# Reveal.js
+revealjs_deps
+
+
 #(r)(e)ledmac/(r)(e)ledpar
 *.end
 *.?end

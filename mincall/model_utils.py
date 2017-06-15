@@ -827,8 +827,9 @@ class Model():
         with self.g.as_default():
             config = tf.ConfigProto(log_device_placement=False)
             if self.per_process_gpu_memory_fraction:
-                config.gpu_options.per_process_gpu_memory_fraction = self.per_process_gpu_memory_fraction
-                config.gpu_options.allow_growth = True
+                # config.gpu_options.per_process_gpu_memory_fraction = self.per_process_gpu_memory_fraction
+                # config.gpu_options.allow_growth = True
+                pass
 
             self.sess = tf.Session(graph=self.g, config=config)
             self.sess.run(tf.global_variables_initializer())

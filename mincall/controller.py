@@ -128,7 +128,7 @@ def basecall(create_test_model, **kwargs):
                 model.logger.error("Error happened in %s", ex, exc_info=True)
 
             def func(fast5_path):
-                return fast5_path, model.basecall_sample(fast5_path)
+                return fast5_path, model.basecall_sample(fast5_path, write_logits=args.write_logits)
 
             results = [pool.apply_async(func, args=(fn,), error_callback=exc_callback, callback=callback) for fn in file_list]
 
