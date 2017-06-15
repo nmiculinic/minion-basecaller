@@ -243,14 +243,14 @@ class Model():
         ])
 
     def _handle_logdir(self, log_dir, run_id, overwrite, reuse):
-        if run_id is None:
-            run_id = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(5))
-        self.run_id = run_id
-
         if log_dir is None:
             self.log_dir = os.path.join(repo_root, 'log', self.run_id)
         else:
             self.log_dir = log_dir
+
+        if run_id is None:
+            run_id = self.log_dir.split(os.pathsep)[-1]
+        self.run_id = run_id
 
         if os.path.exists(self.log_dir):
             if overwrite:
