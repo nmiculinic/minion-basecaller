@@ -32,6 +32,9 @@ from .ops import dense2d_to_sparse
 from . import input_readers
 import mincall.bioinf_utils as butils
 import mincall.align_utils as autils
+from haikunator import Haikunator
+
+haikunator = Haikunator()
 
 # UGLY UGLY HACK!
 for name, logger in logging.root.manager.loggerDict.items():
@@ -245,11 +248,11 @@ class Model():
 
     def _handle_logdir(self, log_dir, run_id, overwrite, reuse):
         if log_dir is None:
-            self.log_dir = os.path.join(repo_root, 'log', self.run_id)
+            if run_id is None:
+                run_id = haikunator.haikunate()
+            self.log_dir = os.path.join(repo_root, 'log', run_id)
         else:
             self.log_dir = log_dir
-
-        if run_id is None:
             run_id = self.log_dir.split(os.pathsep)[-1]
         self.run_id = run_id
 
@@ -522,25 +525,61 @@ class Model():
 
     def basecall_sample(self, fast5_path, fasta_out=None, ref=None, write_logits=False):
         signal, start_pad = self.in_data.get_signal(fast5_path)
-        return self.basecall_singal(fast5_path, signal, start_pad, fasta_out, ref, write_logits)
+        return self.basecall_singal(fast5_path, signal, start_pad, write_logits)
 
-    def basecall_singal(self, fast5_path, signal, start_pad, fasta_out=None, ref=None, write_logits=None):
+    def basecall_singal(self, fast5_path, signal, start_pad, write_logits=None, block_size=10000, pad=256, debug=False):
         with self.g.as_default():
             is_training(False, session=self.sess)
         t = perf_counter()
-        feed_dict = {
-            self.X_batch: signal,
-            self.X_batch_len: np.array(signal.shape[1]).reshape([1,]),
-            self.block_idx: 0,
-            self.batch_size_var: 1,
-            self.block_size_x_tensor: signal.shape[1]
-        }
+
+        original_len = signal.shape[1]
+        original_signal = signal
+        # print(signal.shape, original_len/block_size)
+        signal = np.pad(signal, ((0, 0), (pad, pad), (0, 0)), 'constant')
+        # print(signal.shape)
+        chunks = [
+            signal[:, i - pad:i + block_size + pad, :]
+            for i in range(pad, signal.shape[1] - 2 * pad, block_size)
+        ]
+
+        # print(len(chunks), (signal.shape[1] - 2*pad)/block_size)
+        # print("and now goes the chunks")
+        np.testing.assert_equal(np.sum([chunk.shape[1] - 2*pad for chunk in chunks]), original_len)
+
+        if debug:
+            np.testing.assert_equal(np.concatenate([c[:, pad:-pad, :] for c in chunks], axis=1), original_signal)
+
+        logits_all = []
+        for chunk in chunks:
+            logits = self.sess.run(
+                self.logits,
+                feed_dict={
+                    self.X_batch: chunk,
+                    self.X_batch_len: np.array(chunk.shape[1]).reshape([1,]),
+                    self.block_idx: 0,
+                    self.batch_size_var: 1,
+                    self.block_size_x_tensor: chunk.shape[1]
+                }
+            )
+            cut = pad // self.shrink_factor
+            logits = logits[cut:-cut]
+            logits_all.append(logits)
+
+        logits = np.concatenate(logits_all)
+        assert logits.shape[0] in [
+            original_len // self.shrink_factor,
+            original_len // self.shrink_factor + 1,
+        ]
+        basecalled = self.sess.run(
+            self.dense_pred,
+            feed_dict={
+                self.logits: logits,
+                self.X_batch_len:
+                np.array([self.shrink_factor * logits.shape[0]]).reshape([1, ])
+            }
+        ).ravel()
 
         if write_logits:
-            basecalled, logits = self.sess.run(
-                [self.dense_pred, self.logits],
-                feed_dict=feed_dict
-            )
             with h5py.File(fast5_path, 'a') as h5:
                 h5_path = 'Analyses/MinCall/Logits'
                 logits = np.squeeze(logits, (1,))
@@ -561,25 +600,9 @@ class Model():
                     for k, v in hyper.items():
                         h5[h5_path].attrs[k] = v
 
-        else:
-            basecalled = self.sess.run(
-                self.dense_pred,
-                feed_dict=feed_dict
-            )
-
-        basecalled = basecalled.ravel()
         self.logger.debug("Basecalled %s in %.3f", fast5_path, perf_counter() - t)
 
         basecalled = "".join(util.decode(basecalled))
-        if fasta_out is not None:
-            with open(fasta_out, 'w') as f:
-                dump_fasta(fast5_path, basecalled, f)
-            self.logger.debug("Saved basecalled %s to %s in %.3f ms/bp", fast5_path, fasta_out, (perf_counter() - t)*1000.0/len(basecalled))
-            if ref is not None:
-                sam_out = os.path.splitext(fasta_out)[0] + ".sam"
-                self.logger.debug("Sam out %s", sam_out)
-                subprocess.Popen(["graphmap", "align", "-r", ref, "-d", fasta_out, "-o", sam_out , "--extcigar"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
         return basecalled
 
     def skim_trainables(self):
@@ -643,7 +666,7 @@ class Model():
         nedit = np.zeros(items.shape, dtype=np.float32)
         acc = np.zeros(items.shape, dtype=np.float32)
         n = len(acc)
-        total_time = 0.0
+        total_time = 1e-6
         total_bases_read = 0
         cigar_stat = defaultdict(int)
 
@@ -682,19 +705,6 @@ class Model():
             self.logger.info("Step %d; %s %.2f%%", self.get_global_step(), k, 100 * cigar_stat[k] / total_cigar_elements)
         self.logger.info("Speed = %.3f bases per second", total_bases_read/total_time)
 
-        # error rates
-        if ref is not None and fasta_out_dir is not None:
-            total_sam_path = os.path.join(fasta_out_dir, "total", "all.sam")
-            os.makedirs(os.path.dirname(total_sam_path), exist_ok=True)
-            os.chdir(fasta_out_dir)
-
-            autils.merge_sam_files(fasta_out_dir, total_sam_path)
-            df = butils.error_rates_for_sam(total_sam_path)
-            report = str(df.describe(percentiles=[]))
-            for line in report.split("\n"):
-                self.logger.info(line.strip())
-        else:
-            self.logger.warn("Reference or FASTA out dir None, skipping full report")
         return {
             'edit': {
                 'mu': mu_edit.item(),

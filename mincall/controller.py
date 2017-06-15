@@ -125,7 +125,10 @@ def basecall(create_test_model, **kwargs):
                 util.dump_fasta(os.path.splitext(f)[0].split(os.sep)[-1], basecalled, sys.stdout)
 
             def exc_callback(ex):
-                model.logger.error("Error happened in %s", ex, exc_info=True)
+                try:
+                    raise ex
+                except Exception as e:
+                    model.logger.error(e, exc_info=True)
 
             def func(fast5_path):
                 return fast5_path, model.basecall_sample(fast5_path, write_logits=args.write_logits)
