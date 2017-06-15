@@ -737,20 +737,6 @@ class Model():
         yy, yy_len = self.sess.run([self.Y, self.Y_len])
         return decode_example(yy[idx], yy_len[idx], self.num_blocks, self.block_size_y, pad=pad)
 
-    def eval_x(self, X, X_len):
-        with self.g.as_default():
-            is_training(False, session=self.sess)
-        batch_size = X.shape[0]
-
-        feed = {
-            self.batch_size_var: batch_size,
-            self.X: X,
-            self.X_len: X_len
-        }
-
-        vals = self._rnn_roll([self.pred], feed, timeline_suffix="eval_x")
-        return np.array([decode_sparse(ff) for ff in vals]).T
-
     def save(self):
         self.saver.save(
             self.sess,
