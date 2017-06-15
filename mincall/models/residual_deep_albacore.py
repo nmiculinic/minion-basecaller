@@ -56,8 +56,7 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
 def model_setup_params(hyper):
     return dict(
         g=tf.Graph(),
-        per_process_gpu_memory_fraction=0.6,
-        block_size_x=8 * 3 * 600 // 2,
+        block_size_x=4 * 600,
         block_size_y=630,
         in_data=input_readers.AlbacoreAlignedRaw(),
         num_blocks=3,
@@ -69,6 +68,7 @@ def model_setup_params(hyper):
         shrink_factor=8,
         dtype=tf.float32,
         model_fn=model_fn,
+        n_samples_per_ref=3,
         lr_fn=lambda global_step: tf.train.exponential_decay(
             hyper['initial_lr'], global_step, 100000, hyper['decay_factor']),
         hyper=hyper,
@@ -83,10 +83,10 @@ sigopt_params = [
 ]
 
 default_params = {
-    'initial_lr': 0.000965352400196344,
-    'decay_factor': 0.0017387361908150767,
-    'num_layers': 20,
-    'num_sub_layers': 2
+    'initial_lr': 0.0022528366355169436,
+    'decay_factor': 0.000005,
+    'num_layers': 30,
+    'num_sub_layers': 3
 }
 
 
@@ -100,7 +100,7 @@ def create_test_model(hyper, **kwargs):
     return create_train_model(hyper, **kwargs)
 
 
-default_name = "resdeep"
+default_name = "resdeep_willy"
 
 
 if __name__ == "__main__":
