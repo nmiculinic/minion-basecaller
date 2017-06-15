@@ -31,17 +31,18 @@ from .util import decode_example, decode_sparse, breakCigar, dump_fasta
 from .ops import dense2d_to_sparse
 from . import input_readers
 import mincall.bioinf_utils as butils
-import mincall.align_utils as  autils
+import mincall.align_utils as autils
 
 # UGLY UGLY HACK!
 for name, logger in logging.root.manager.loggerDict.items():
-    logger.disabled=True
+    logger.disabled = True
 
 
 hostname = os.environ.get("MINION_HOSTNAME", socket.gethostname())
 repo_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 log_fmt = '\r[%(levelname)s] %(name)s: %(message)s'
 logging.basicConfig(level=logging.DEBUG, format=log_fmt)
+
 
 def default_lr_fn(global_step):
     return tf.train.exponential_decay(1e-3, global_step, 100000, 0.01)
@@ -762,7 +763,6 @@ class Model():
             iter_step = self.get_global_step()
             self.logger.info("%4d Restored to checkpoint %s" % (iter_step, checkpoint))
         return iter_step
-
 
     def _start_queues(self, num_workers, proc):
         self.logger.info("Using %s reading class", type(self.in_data).__name__)
