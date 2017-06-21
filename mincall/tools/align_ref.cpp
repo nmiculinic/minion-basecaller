@@ -1,12 +1,15 @@
 /*
 https://github.com/BlueBrain/HighFive
-clang++ -std=c++11 mincall/tools/align_ref.cpp -I ~/Desktop/HighFive/include -lhdf5 -o align_ref
+clang++ -std=c++14 mincall/tools/align_ref.cpp -I ~/Desktop/HighFive/include -lhdf5 -o align_ref
  */
 
 #include <iostream>
 #undef H5_USE_BOOST
 #define H5_USE_BOOST
 // for perfomance production only #define BOOST_DISABLE_ASSERTS
+
+#define EXTRA_ASSERT
+
 #include <highfive/H5File.hpp>
 #include <boost/multi_array.hpp>
 #include <boost/algorithm/string.hpp>
@@ -28,8 +31,6 @@ std::ostream& operator<<(std::ostream& stream,
     stream << "[" << vec.shape()[0] <<"]";
     for (int i = 0; i < vec.shape()[0]; ++i) {
         stream << vec[i] << ",";
-        // if (i % 10 == 0)
-            // stream << " ";
     }
     return stream << endl;
 }
@@ -49,7 +50,8 @@ std::ostream& operator<<(std::ostream& stream,
 
 
 const std::string DATASET_NAME("/Analyses/MinCall/Logits");
-const int GAP_WIDTH=10;
+const std::string ALIGNMENT_OUTPUT("/Analyses/MinCall/RefAlignment");
+const int GAP_WIDTH=1000;
 
 std::map<char, int> n2i {
     {'A', 0},
@@ -94,7 +96,7 @@ bool test_valid_path(const multi_array<int, 1>& path, const multi_array<int, 1>&
     return ref_pos == ref.size() - 1;
 }
 
-void calc_transition_matrix(const multi_array<int, 1>& ref, const multi_array<double, 2>& logits) {
+auto calc_best_fit_path(const multi_array<int, 1>& ref, const multi_array<double, 2>& logits) {
     multi_array<double, 2> sol(extents[ref.shape()[0]][logits.shape()[0]]);
     fill(sol.origin(), sol.origin() + sol.size(), -std::numeric_limits<double>::infinity());
     multi_array<int, 2>   back(extents[ref.shape()[0]][logits.shape()[0]]); // For backtracing dp matrix
@@ -120,7 +122,7 @@ void calc_transition_matrix(const multi_array<int, 1>& ref, const multi_array<do
             if (center[i - 1] - GAP_WIDTH <= j - 1 && j - 1 <= center[i - 1] + GAP_WIDTH) {
                 proxy(sol, i, j) = proxy(sol, i - 1, j - 1) + logits[j][ref[i]];
                 proxyI(back, i, j) = i - 1;
-                cout << format("MOV (%1%, %2%) <- (%3%, %4%)") % i % j % (i-1) % (j-1);
+                // cout << format("MOV (%1%, %2%) <- (%3%, %4%)") % i % j % (i-1) % (j-1);
             }
 
 
@@ -140,7 +142,7 @@ void calc_transition_matrix(const multi_array<int, 1>& ref, const multi_array<do
                     proxyI(back, i, j) = i;
                 }
             }
-            cout << " " << proxyI(back, i, j) << ", " << j - 1 << endl;
+            // cout << " " << proxyI(back, i, j) << ", " << j - 1 << endl;
         }
     }
 
@@ -148,18 +150,21 @@ void calc_transition_matrix(const multi_array<int, 1>& ref, const multi_array<do
     int ref_pos = ref.shape()[0] - 1;
     for (int log_pos = logits.shape()[0] - 1; log_pos >= 0; --log_pos) {
         path[log_pos] = ref[ref_pos];
-        cout << ref_pos - proxyI(back, ref_pos, log_pos);
+        // cout << ref_pos - proxyI(back, ref_pos, log_pos);
         ref_pos = proxyI(back, ref_pos, log_pos);
-        std::cout << "(" << ref_pos << ", " << log_pos << ")" << endl;
+        // std::cout << "(" << ref_pos << ", " << log_pos << ")" << endl;
+        #ifdef EXTRA_ASSERT
+        if (!(ref_pos <= log_pos)) {
+            throw std::runtime_error("Refpos must be less or equal than log_pos; internal error");
+        }
+        #endif
     }
 
-
-    cout << endl << path;
-    cout << center << endl;
-    cout << "Is Path valid: " << test_valid_path(path, ref);
     if (!test_valid_path(path, ref)) {
         throw std::runtime_error("Invalid path found, internal error!");
     }
+    // cout << path << endl;
+    return path;
 }
 
 void process(const std::string fast5_file) {
@@ -172,16 +177,22 @@ void process(const std::string fast5_file) {
     std::cout << "Processing: " << fast5_file << std::endl;
 
     try {
-        File file(fast5_file, File::ReadOnly);
+        File file(fast5_file, File::ReadWrite);
         multi_array<double, 2> logits;
         DataSet dataset = file.getDataSet(DATASET_NAME);
         dataset.read(logits);
         auto ref = read_ref(ref_file);
 
-        std::cout << logits.shape()[0] << " " << logits.shape()[1] << std::endl;
-        std::cout << ref << std::endl;
+        // std::cout << logits.shape()[0] << " " << logits.shape()[1] << std::endl;
+        // std::cout << ref << std::endl;
 
-        calc_transition_matrix(ref, logits);
+        auto path = calc_best_fit_path(ref, logits);
+        if (file.exist(ALIGNMENT_OUTPUT)) {
+            dataset = file.getDataSet(ALIGNMENT_OUTPUT);
+        } else {
+            dataset = file.createDataSet<int>(ALIGNMENT_OUTPUT, DataSpace::From(path));
+        }
+        dataset.write(path);
 
     } catch(Exception & err){
         std::cerr << "Error during processing " << fast5_file << " :" << err.what() << std::endl;
