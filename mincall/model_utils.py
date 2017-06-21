@@ -32,9 +32,9 @@ from .ops import dense2d_to_sparse
 from . import input_readers
 import mincall.bioinf_utils as butils
 import mincall.align_utils as autils
-from haikunator import Haikunator
+# from haikunator import Haikunator
 
-haikunator = Haikunator()
+# haikunator = Haikunator()
 
 # UGLY UGLY HACK!
 for name, logger in logging.root.manager.loggerDict.items():
@@ -527,7 +527,7 @@ class Model():
         signal, start_pad = self.in_data.get_signal(fast5_path)
         return self.basecall_singal(fast5_path, signal, start_pad, write_logits)
 
-    def basecall_singal(self, fast5_path, signal, start_pad, write_logits=None, block_size=10000, pad=256, debug=False):
+    def basecall_singal(self, fast5_path, signal, start_pad, write_logits=None, block_size=100000, pad=512, debug=False):
         with self.g.as_default():
             is_training(False, session=self.sess)
         t = perf_counter()

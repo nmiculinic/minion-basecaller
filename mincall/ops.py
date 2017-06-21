@@ -133,6 +133,19 @@ def dense2d_to_sparse(dense_input, length, name=None, dtype=None):
         return tf.SparseTensor(indices, values, tf.to_int64(tf.shape(dense_input)))
 
 
+# (2) use SELUs
+def selu(x):
+    with tf.name_scope('selu'):
+        alpha = 1.6732632423543772848170429916717
+        scale = 1.0507009873554804934193349852946
+        return scale * tf.where(x >= 0.0, x, alpha * tf.nn.elu(x))
+
+
+# (3) initialize weights with stddev sqrt(1/n)
+# e.g. use:
+# selu_initializer = tf.layers.variance_scaling_initializer(factor=1.0, mode='FAN_IN')
+
+
 if __name__ == '__main__':
     from model_small import model
     print(read_model_vars(model))

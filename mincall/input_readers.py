@@ -13,7 +13,8 @@ from mincall.errors import MissingRNN1DBasecall, InsufficientDataBlocks, MinIONB
 root_dir_map = {
     'karla': '/hgst8TB/fjurisic/ecoli',
     'protagonist': '/home/lpp/Downloads/minion',
-    'inspiron5520': '/data'
+    'inspiron5520': '/data',
+    'r9': '/data/r9'
 }
 root_dir_default = root_dir_map.get(socket.gethostname(), '/data')
 
