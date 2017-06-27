@@ -51,7 +51,7 @@ std::ostream& operator<<(std::ostream& stream,
 
 const std::string DATASET_NAME("/Analyses/MinCall/Logits");
 const std::string ALIGNMENT_OUTPUT("/Analyses/MinCall/RefAlignment");
-const int GAP_WIDTH=100;
+const int GAP_WIDTH=1000;
 
 std::map<char, int> n2i {
     {'A', 0},
