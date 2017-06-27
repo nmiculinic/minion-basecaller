@@ -314,7 +314,7 @@ class MinCallAlignedRaw(InputReader):
                 for i in range(num_blocks):
                     prev = -1
                     mult = block_size_x // shrink_factor
-                    for b in range(start_block * mult, mult * (start_block + num_blocks)):
+                    for b in range(mult * (start_block + i), mult * (start_block + i + 1)):
                         if h5_refalignment[b] != prev:
                             y[i * block_size_y + y_len[i]] = h5_refalignment[b]
                             y_len[i] += 1
