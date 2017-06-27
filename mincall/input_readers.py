@@ -318,6 +318,7 @@ class MinCallAlignedRaw(InputReader):
                         if h5_refalignment[b] != prev:
                             y[i * block_size_y + y_len[i]] = h5_refalignment[b]
                             y_len[i] += 1
+                            prev = h5_refalignment[b]
 
                 yield x, x_len, y, y_len
 
