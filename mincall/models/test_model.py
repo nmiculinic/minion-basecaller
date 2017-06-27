@@ -7,6 +7,7 @@ from mincall.ops import central_cut
 from mincall.util import sigopt_double
 from mincall.model_utils import Model
 from mincall.controller import control
+from mincall import input_readers
 
 load_dotenv(find_dotenv())
 
@@ -23,22 +24,7 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
         with tf.variable_scope("block%d" % block):
             for layer in range(1, 1 + 1):
                 with tf.variable_scope('layer_%d' % layer):
-                    res = net
-                    for sublayer in [1, 2]:
-                        res = batch_normalization(
-                            res, scope='bn_%d' % sublayer)
-                        res = tf.nn.relu(res)
-                        res = conv_1d(
-                            res,
-                            64,
-                            3,
-                            scope="conv_1d_%d" % sublayer,
-                            weights_init=variance_scaling_initializer(
-                                dtype=dtype)
-                        )
-                    k = tf.get_variable(
-                        "k", initializer=tf.constant_initializer(1.0), shape=[])
-                    net = tf.nn.relu(k) * res + net
+                    net = conv_1d(net, 32, 3)
             net = max_pool_1d(net, 2)
         net = tf.nn.relu(net)
 
@@ -68,6 +54,7 @@ def create_train_model(hyper, **kwargs):
         shrink_factor=8,
         dtype=tf.float32,
         model_fn=model_fn,
+        in_data=input_readers.MinCallAlignedRaw(),
         lr_fn=lambda global_step: tf.train.exponential_decay(
             hyper['initial_lr'], global_step, 100000, hyper['decay_factor']),
         hyper=hyper,
