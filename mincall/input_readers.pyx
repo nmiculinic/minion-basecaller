@@ -10,6 +10,8 @@ import sys
 from mincall import util
 from mincall import errors
 from mincall.errors import *
+cimport numpy as np
+
 
 root_dir_map = {
     'karla': '/hgst8TB/fjurisic/ecoli',
@@ -273,6 +275,7 @@ class MinCallAlignedRaw(InputReader):
     def read_fast5_raw_ref(self, fast5_path, ref_path, block_size_x, block_size_y, num_blocks, n_samples_per_ref=1,
                            verify_file=True):
 
+        cdef int i, b, prev, mult
         with h5py.File(fast5_path, 'r') as h5:
             reads = h5['Raw/Reads']
             target_read = list(reads.keys())[0]
