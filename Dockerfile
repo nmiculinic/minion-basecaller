@@ -1,4 +1,4 @@
-FROM nvidia/cuda:8.0-cudnn5-devel
+FROM tensorflow/tensorflow:1.2.0-devel-gpu-py3
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
@@ -27,7 +27,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libhdf5-serial-dev \
         git \
         cmake \
-        sshfs \
         autoconf \
         libbz2-dev \
         liblzma-dev \
@@ -35,9 +34,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-
-RUN pip3 --no-cache-dir install git+https://github.com/tflearn/tflearn.git Pillow h5py python-dotenv sigopt edlib slacker-log-handler pysam tqdm seaborn pandas
-RUN pip3 --no-cache-dir install tensorflow-gpu==1.0.0
 
 WORKDIR /opt
 ENV TENSORFLOW_SRC_PATH=/opt/tensorflow
@@ -67,13 +63,18 @@ RUN mkdir build
 WORKDIR /opt/warp-ctc/build
 RUN cmake .. && make
 WORKDIR /opt/warp-ctc/tensorflow_binding
-RUN python3 setup.py install
+
+RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
+RUN LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs/:$LD_LIBRARY_PATH python3 setup.py install
+RUN rm /usr/local/cuda/lib64/stubs/libcuda.so.1
+
+WORKDIR /opt/graphmap
+RUN make && make install
 
 # For CUDA profiling, TensorFlow requires CUPTI.
 ENV LD_LIBRARY_PATH /opt/warp-ctc/build:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
 
-WORKDIR /opt/graphmap
-RUN make && make install
+RUN pip3 --no-cache-dir install tflearn Pillow h5py python-dotenv sigopt edlib slacker-log-handler pysam tqdm seaborn pandas cython
 
 WORKDIR /
 RUN mkdir /code
