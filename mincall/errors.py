@@ -24,3 +24,11 @@ class ZeroLenY(MinIONBasecallerException):
 
 class RefFileNotFound(MinIONBasecallerException):
     pass
+
+
+class MissingMincallLogits(MinIONBasecallerException):
+    pass
+
+
+class MissingMincallAlignedRef(MinIONBasecallerException):
+    pass

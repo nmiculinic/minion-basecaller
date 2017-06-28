@@ -593,6 +593,7 @@ class Model():
                 h5[h5_path].attrs['model_logdir'] = self.log_dir
                 h5[h5_path].attrs['run_id'] = self.run_id
                 h5[h5_path].attrs['in_data_classname'] = type(self.in_data).__name__
+                h5[h5_path].attrs['shrink_factor'] = self.shrink_factor
 
                 fname = os.path.join(self.log_dir, 'model_hyperparams.json')
                 with open(fname, 'r') as f:

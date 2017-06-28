@@ -20,7 +20,7 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
         logits -> Unscaled logits tensor in time_major form, (block_size, batch_size, out_classes)
     """
 
-    net = batch_normalization(net, decay=0.99, scope="bn")
+    net = batch_normalization(net, decay=0.999, scope="bn")
 
     for block in range(1, 3):
         with tf.variable_scope("block%d" % block):
@@ -45,7 +45,7 @@ def model_setup_params(hyper):
         g=tf.Graph(),
         block_size_x=4 * 600,
         block_size_y=630,
-        in_data=input_readers.HMMAlignedRaw(),
+        in_data=input_readers.MinCallAlignedRaw(),
         num_blocks=3,
         batch_size=16,
         max_reach=8 * 20,  # 240
@@ -72,7 +72,7 @@ sigopt_params = [
 default_params = {
     'initial_lr': 0.0022528366355169436,
     'decay_factor': 0.000005,
-    'num_layers': 30,
+    'num_layers': 5,
 }
 
 

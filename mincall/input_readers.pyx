@@ -5,10 +5,13 @@ import numpy as np
 import h5py
 from glob import glob
 from collections import defaultdict
+import sys
 
 from mincall import util
 from mincall import errors
-from mincall.errors import MissingRNN1DBasecall, InsufficientDataBlocks, MinIONBasecallerException
+from mincall.errors import *
+cimport numpy as np
+
 
 root_dir_map = {
     'karla': '/hgst8TB/fjurisic/ecoli',
@@ -31,8 +34,12 @@ def find_ref(fast5_path):
 
     return ref_path
 
+
 class InputReader():
     def input_fn(self):
+        raise NotImplemented
+
+    def get_signal(self, fast5_path):
         raise NotImplemented
 
 
@@ -188,8 +195,8 @@ class AlignedRawAbstract(InputReader):
                     model.logger.error('in filename %s \n' % fast5_path, exc_info=True)
 
                 if total % 10000 == 0 or total in [10, 100, 200, 1000]:
-                    model.logger.debug(
-                        "read %d datapoints: %s ",
+                    model.logger.info(
+                        "{%s} read %d datapoints: %s ", subdir,
                         total,
                         " ".join(["{}: {:.2f}%".format(key, 100 * errors[key] / total) for key in sorted(errors.keys())])
                     )
@@ -245,6 +252,91 @@ class AlbacoreAlignedRaw(AlignedRawAbstract):
         )
 
 
+class MinCallAlignedRaw(InputReader):
+    def input_fn(self, *args, **kwargs):
+        return AlignedRawAbstract.input_fn(self, *args, **kwargs)
+
+    def preprocessSignal(self, signal):
+        return (signal - 646.11133) / 75.673653
+
+    def get_signal(self, fast5_path):
+        with h5py.File(fast5_path, 'r') as h5:
+            reads = h5['Raw/Reads']
+            target_read = list(reads.keys())[0]
+            h5_logits = h5['Analyses/MinCall/Logits']
+            shrink_factor = h5_logits.attrs.get("shrink_factor", 8)  # Default 8..TODO
+            signal_len = h5_logits.shape[0] * shrink_factor
+            signal = h5['Raw/Reads/' + target_read]['Signal']
+            start_pad = h5_logits.attrs['start_pad']
+            signal = signal[start_pad:start_pad + signal_len]
+
+        return self.preprocessSignal(signal).reshape(1, -1, 1), start_pad
+
+    def read_fast5_raw_ref(self, fast5_path, ref_path, block_size_x, block_size_y, num_blocks, n_samples_per_ref=1,
+                           verify_file=True):
+
+        cdef int i, b, prev, mult
+        with h5py.File(fast5_path, 'r') as h5:
+            reads = h5['Raw/Reads']
+            target_read = list(reads.keys())[0]
+            try:
+                h5_logits = h5['Analyses/MinCall/Logits']
+            except:
+                raise MissingMincallLogits()
+
+            try:
+                h5_refalignment = h5['Analyses/MinCall/RefAlignment']
+            except:
+                raise MissingMincallAlignedRef()
+
+            shrink_factor = h5_logits.attrs.get("shrink_factor", 8)  # Default 8..TODO
+
+            signal = h5['Raw/Reads/' + target_read]['Signal']
+            start_pad = h5_logits.attrs['start_pad']
+            signal_len = h5_logits.shape[0] * shrink_factor
+            signal = signal[start_pad:start_pad + signal_len]
+            signal = self.preprocessSignal(signal)
+
+            # -2 for first and last that are always skipped
+            num_blocks_max = signal_len // block_size_x - 2
+            if num_blocks_max < num_blocks:
+                raise InsufficientDataBlocks("Has only {} blocks, while requesting {} + first and last"
+                                             .format(num_blocks_max, num_blocks))
+
+            n_different_blocks = num_blocks_max - num_blocks + 1
+            n_different_non_overlap_blocks = n_different_blocks // num_blocks
+            n_samples = min(n_samples_per_ref, n_different_non_overlap_blocks)
+
+            for _ in range(n_samples):
+                x = np.zeros([block_size_x * num_blocks, 1], dtype=np.float32)
+                x_len = min(len(signal), block_size_x * num_blocks)
+
+                # start from i-th block
+                # does not guarantee non overlapping blocks but ok enough
+                start_block = randint(1, n_different_blocks)
+                x_offset = start_block * block_size_x
+
+                x[:x_len, 0] = signal[x_offset:x_offset + x_len]
+
+                y = np.full([block_size_y * num_blocks], 9, dtype=np.uint8)
+                y_len = np.zeros([num_blocks], dtype=np.int32)
+
+                for i in range(num_blocks):
+                    prev = -1
+                    mult = block_size_x // shrink_factor
+                    for b in range(mult * (start_block + i), mult * (start_block + i + 1)):
+                        if h5_refalignment[b] != prev:
+                            y[i * block_size_y + y_len[i]] = h5_refalignment[b]
+                            y_len[i] += 1
+                            prev = h5_refalignment[b]
+                            if y_len[i] > block_size_y:
+                                raise BlockSizeYTooSmall()
+
+                yield x, x_len, y, y_len
+
+    in_dim = 1
+
+
 def sanitize_input_line(fname):
     fname = fname.strip().split()[0]
     return fname
@@ -257,7 +349,7 @@ def proc_wrapper(q, fun, *args):
 if __name__=='__main__':
     import pprint
     pp = pprint.PrettyPrinter()
-    a = AlbacoreAlignedRaw()
     b = a.read_fast5('/home/lpp/Downloads/minion/nanopore2_20170301_FNFAF09967_MN17024_sequencing_run_170301_MG1655_PC_RAD002_62645_ch7_read372_strand.fast5')
+    a = ()
 
     pp.pprint(b)
