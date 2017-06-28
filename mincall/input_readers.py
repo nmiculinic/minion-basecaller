@@ -295,7 +295,7 @@ class MinCallAlignedRaw(InputReader):
             signal = self.preprocessSignal(signal)
 
             # -2 for first and last that are always skipped
-            num_blocks_max = h5_logits.shape[0] * shrink_factor // block_size_x - 2
+            num_blocks_max = signal_len // block_size_x - 2
             if num_blocks_max < num_blocks:
                 raise InsufficientDataBlocks("Has only {} blocks, while requesting {} + first and last"
                                              .format(num_blocks_max, num_blocks))
@@ -304,7 +304,7 @@ class MinCallAlignedRaw(InputReader):
             n_different_non_overlap_blocks = n_different_blocks // num_blocks
             n_samples = min(n_samples_per_ref, n_different_non_overlap_blocks)
 
-            for i in range(n_samples):
+            for _ in range(n_samples):
                 x = np.zeros([block_size_x * num_blocks, 1], dtype=np.float32)
                 x_len = min(len(signal), block_size_x * num_blocks)
 
