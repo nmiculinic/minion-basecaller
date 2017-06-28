@@ -351,15 +351,16 @@ def split_aligments_in_sam(in_sam_path, out_sam_path=None):
     with pysam.AlignmentFile(in_sam_path, "r") as samfile, \
             pysam.AlignmentFile(tmp_sam_out, "w", template=samfile) as out_sam:
 
-        for x in tqdm(samfile.fetch()):
+        for idx, x in enumerate(samfile.fetch()):
             name = x.query_name
+
             if x.is_unmapped:
                 logging.warning("%s unmapped" % name)
                 out_sam.write(x)
                 continue
             try:
                 target = x.get_reference_sequence()
-            except ValueError:
+            except (ValueError , AssertionError, Exception):
                 logging.error("%s Mapped but reference len equals 0, md tag: %s", name, x.has_tag('MD'))
                 out_sam.write(x)
                 continue
