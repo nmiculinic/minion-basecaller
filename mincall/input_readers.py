@@ -9,7 +9,7 @@ import sys
 
 from mincall import util
 from mincall import errors
-from mincall.errors import MissingRNN1DBasecall, InsufficientDataBlocks, MinIONBasecallerException
+from mincall.errors import *
 
 root_dir_map = {
     'karla': '/hgst8TB/fjurisic/ecoli',
@@ -193,8 +193,8 @@ class AlignedRawAbstract(InputReader):
                     model.logger.error('in filename %s \n' % fast5_path, exc_info=True)
 
                 if total % 10000 == 0 or total in [10, 100, 200, 1000]:
-                    model.logger.debug(
-                        "read %d datapoints: %s ",
+                    model.logger.info(
+                        "{%s} read %d datapoints: %s ", subdir,
                         total,
                         " ".join(["{}: {:.2f}%".format(key, 100 * errors[key] / total) for key in sorted(errors.keys())])
                     )
@@ -276,8 +276,15 @@ class MinCallAlignedRaw(InputReader):
         with h5py.File(fast5_path, 'r') as h5:
             reads = h5['Raw/Reads']
             target_read = list(reads.keys())[0]
-            h5_logits = h5['Analyses/MinCall/Logits']
-            h5_refalignment = h5['Analyses/MinCall/RefAlignment']
+            try:
+                h5_logits = h5['Analyses/MinCall/Logits']
+            except:
+                raise MissingMincallLogits()
+
+            try:
+                h5_refalignment = h5['Analyses/MinCall/RefAlignment']
+            except:
+                raise MissingMincallAlignedRef()
 
             shrink_factor = h5_logits.attrs.get("shrink_factor", 8)  # Default 8..TODO
 
