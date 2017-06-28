@@ -19,6 +19,8 @@
 # *.eps
 # *.pdf
 
+main.xdv
+
 *.ipynb_checkpoints
 *__pycache__*
 

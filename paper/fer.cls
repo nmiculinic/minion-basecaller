@@ -69,7 +69,6 @@
 \else \if@enccp \RequirePackage[cp1250]{inputenc} \fi
 \fi
 
-% \RequirePackage[croatian]{babel}
 \RequirePackage[T1]{fontenc}
 \RequirePackage{graphicx} % Uključeno jer je često korišteno
 \RequirePackage{amssymb} % Uključeno jer je često korišteno
@@ -113,10 +112,6 @@
 % 1.5 prored, 1.3 je faktor za množenje
 \linespread{1.3}
 
-% Promjena naziva poglavlja ``Bibliografija'' -> ``Literatura''
-% \addto\captionscroatian{%
-	% \def\bibname{Bibliography}
-% }
 
 % Podešavanje oznaka kod listi (1. razina je crtica, 2. puni krug)
 \renewcommand{\labelitemi}{\textendash}
@@ -264,9 +259,9 @@
 		\let\footnoterule\relax
 
 		\begin{center}
-			{\large\sffamily SVEU\v{C}ILI\v{S}TE U ZAGREBU}
+			{\large\sffamily UNIVERSITY OF ZAGREB}
 
-			{\large\bfseries\sffamily FAKULTET ELEKTROTEHNIKE I RA\v{C}UNARSTVA}
+			{\large\bfseries\sffamily FACULTY OF ELECTRICAL ENGINEERING AND COMPUTING}
 		\end{center}
 		\vfill
 		\begin{center}%
@@ -279,13 +274,13 @@
 			\if@radseminar \vskip 3em%
 			\else \vskip 1em%
 			\fi
-			{\huge \bfseries\sffamily \@title \par}%
+			{\huge \bfseries\sffamily \@engtitle \par}%
 			\vskip 1em%
 			{\large\sffamily\lineskip .75em%
 			\begin{tabular}[t]{c}%
 	        	\if@radseminar%
 	        	  {\itshape \@author} \\
-	        	  Voditelj: {\itshape \@voditelj}
+	        	  Mentor: {\itshape \@voditelj}
 	        	\else
 				    \@author
 				\fi
@@ -295,8 +290,8 @@
 		\begin{center}
 			{\sffamily\large Zagreb,
 			\ifcase\month\or
-				sije\v{c}anj\or velja\v{c}a\or o\v{z}ujak\or travanj\or svibanj\or
-	   	 		lipanj\or srpanj\or kolovoz\or rujan\or listopad\or studeni\or
+				sije\v{c}anj\or velja\v{c}a\or o\v{z}ujak\or travanj\or May\or
+	   	 		June\or July\or kolovoz\or rujan\or listopad\or studeni\or
 	    			prosinac\fi \space \number\year.%
 	    	}
 		\end{center}
