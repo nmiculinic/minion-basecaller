@@ -1,41 +1,29 @@
-\documentclass[times, utf8, seminar, numeric]{fer}
+\documentclass[runningheads,a4paper]{llncs}
+\usepackage{makeidx}
 \usepackage{booktabs}
-\usepackage{mathtools, amsmath,amsfonts,amssymb, amsthm}
+\usepackage{mathtools}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+% \usepackage{amssymb}
+% \usepackage{amsthm}
 \usepackage{acronym}
 \usepackage{geometry}
 \usepackage{hyperref}
 \usepackage{float}
 \usepackage{graphicx}
+\usepackage{cite}
+
 \graphicspath{ {Figures/} }
-
-\usepackage{tikz}
-\usetikzlibrary{shapes,arrows}
 \begin{document}
-\theoremstyle{definition}
-\newtheorem{definition}{Definition}[section]
 
-% - razvio si novi base caller za 1D nanopore reads koji je temeljen na konvolucijskim neuronskim mrežama
-% - reci koliko slojeva ima model
-% - kakve si rezultate dobio te da li su bolji od postojećih.
-% - koju si razinu greške dobio
-% - daj neko ime base calleru
+\frontmatter
 
-\voditelj{izv.~prof.~dr.~sc.~Mile Sikić}
-\title{MinCall --- MinION basecaller model pogonjen dubokim učenjem}
-\engtitle{MinCall --- MinION end2end deep learning basecaller}
-\author{Neven Miculinić}
-
+\title{MinCall --- MinION end2end deep learning basecaller}
+\author{Neven Miculinić \and Marko Ratković \and Mile Sikić}
+\institute{Faculty of
+Electrical Engineering and Computing (FER), Zagreb, Croatia}
 \maketitle
-\tableofcontents
-
-\begin{sazetak}
-Uređaj MinION firme Oxford Nanopore Technology prvi je prenosivi sekvencer DNA. Sposoban je pročitati nizove značajno velike duljine, preko 100 kBp, no nažalost pati od značajno vise pogrešaka nego ostale metode sekvenciranja.
-
-U ovoj studiji kreirali smo MinCall, cjelokupni model očitanja nukleotida za MinION. Model je baziran na metodama dubokog učenja i koristi konvolucijske neuronske mreže u svojoj implementaciji. Za najbolje performanse koristi najnovije tehnike dubokog učenja i arhitekture, specifično rezidualne neuronske mreže, normalizaciju nad grupom i gubitak vezane vremenske klasifikacije.
-
-Najuspješniji model, u koji je uključeno 270 slojeva neurona, postiže najbolje dosad zabilježene performan- se od 90.5\% preciznosti na skupu za učenje iz E. coli koristeći R9-kemiju nanopore i 1D-čitanja.
-\kljucnerijeci{Basecaller, MinION, R9, CNN, CTC, sekvenciniranje sljedece generacije}
-\end{sazetak}
+% \tableofcontents
 
 \begin{abstract}
     The Oxford Nanopore Technologies's MinION is the first portable DNA sequencing device. It's capable of producing long reads, over 100 kBp were reported, however, is has significantly higher error rate than other methods.
@@ -46,7 +34,7 @@ Najuspješniji model, u koji je uključeno 270 slojeva neurona, postiže najbolj
 \keywords{Basecaller, MinION, R9, CNN, CTC, Next generation sequecing}
 \end{abstract}
 
-\chapter{Introduction}
+\section{Introduction}
 
 Oxford Nanopore Technology's MinION nanopore sequencing platform~\cite{mikheyev2014first} is the first portable DNA sequencing device. It's small weight, of only 90 grams, low capital cost, and long read length combined with high-throughput, real-time data analysis, and decent accuracy yield promising results in various applications. From clinical application such as monitoring infectious disease outbreaks~\cite{judge2015early}\cite{quick2016real}, characterizing structural variants in cancer\cite{norris2016nanopore} and even full human genome assembly~\cite{jain2017nanopore}.
 
@@ -58,7 +46,7 @@ A MinION device typically yields reads several thousand bases long; reads as lon
 
 The exact error rate metric is unreliable since multiple pipeline tools could be the issue. First the sample is prepared, hopefully, uncontaminated and matching reference genome as close as possible, then sequenced using the MinION device obtaining raw data. Next, our model (or other groups ones) come along, basecall the sequence. To evaluate error rate metric basecalled read is aligned to the reference genome using aligners with their own errors/biases, mostly commonly used BWA-MEM~\cite{li2013aligning} and Graphmap~\cite{sovic2016fast}.
 
-\chapter{Background}
+\section{Background}
 
 \section{Sequencing overview}
 Conceptually, the MinION sequencer works as follows. First, DNA is sheared into fragments of 8–20 kbp and adapters are ligated to either end of the fragments. The resulting DNA fragments pass through a protein embedded in a membrane via a nanometre-sized channel, a nanopore. A single DNA strand passes through the pore. Optionally, hairpin protein adapter can merge two DNA strands, allowing both template and complement read passing through the nanopore sequentially for more accurate reads. This technique is referred as 2D reads, while we focus on 1D reads containing only template DNA and no hairpin adapter.
@@ -73,7 +61,7 @@ Earlier models were (Hidden Markov model) HMM-based where hidden state modeled D
 
 Recent models opted using (Recurrent neural network) RNN, notably, DeepNano~\cite{deepnano} and recently open sourced official Nanonet from ONT.
 
-\chapter{Method}
+\section{Method}
 
 Instead of opting for the traditional path using HMM or RNN we tried using CNN~(Convolutional neural networks)~\cite{lecun-98}, that is their residual version~\cite{he2016deep}. We opted out for gated residual network variant~\cite{savarese2016learning}. For loss, we used CTC (Connectionist temporal classification)~\cite{graves2006connectionist} between basecalled and the target sequence. The implementation used is open source warp-ctc~\cite{warpctc}. Main computation framework is tensorflow~\cite{tensorflow2015-whitepaper}
 
@@ -107,7 +95,7 @@ In out concrete $x$ application $\Sigma = \{\text{A G T C A' G' T' A'}\}$
 
 For decoding, we use beam search decoder, with beam width 100.
 
-\chapter{Results}
+\section{Results}
 
 \subsection{Final model}
 
@@ -160,18 +148,17 @@ mincall\_m270 &       3774 \\
 
 % We also tested and compared models on Human genome~\cite{jain2017nanopore} chromosome Y with R9.4 chemistry. Our model was only trained on R9 chemistry which explain the drop in performance compared to Albacore. In our tests, Nanonet produces significantly shorter read then data length and generally unusable performance on this dataset despite supporting R9.4 chemistry used in the dataset.
 
-\chapter{Conclusion and further work}
+\section{Conclusion and further work}
 
 This model used advance state-of-the-art gated residual convolutional neural network, with top models having 270 layers and over 3M parameters, yet improvements over Metrichorn baseline are marginal. As the conclusion, it might be that we've reached Bayesian error rate for R9 chemistry. Furthermore, R9.5 and 1D\^2 reads are under development which shall yield this paper's result obsolete quite soon, yet underlying code developed could easily be adjusted and trained on new data.
 
 Unlike Nanonet which uses custom OpenCL kernels or Albacore --- a novel ONT basecaller as of May 2017 lacking GPU support, this work used world-class computational framework tensorflow with highly optimized kernels and large development community. Therefore resulting paper's effect is showcasing Residual CNN approach or pure CNN approach with CTC loss is marginally better than already established basecaller and providing code in the contemporary framework.
 
-\chapter{Acknowledgments}
+\section{Acknowledgments}
 
 First and foremost I'd like to thank my mentor izv.~prof.~dr.~sc.~Mile Sikić for setting up the problem, guiding us through its beginnings and providing helpful advice for its completion. Next Marko Ratkovic for his not only insightful conversations, but also meaningful code contributions.
 
 Finally, I'm thanking various other people whose code, tools and advice I've used in completing this paper: Fran Jurišić, Ana Marija Selak, Ivan Sović and Martin Šošić.
 
-\bibliographystyle{fer}
 \bibliography{refs}
 \end{document}
