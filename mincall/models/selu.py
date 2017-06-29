@@ -1,3 +1,5 @@
+import pyximport; pyximport.install()
+
 import tensorflow as tf
 from tflearn.layers.conv import max_pool_1d, conv_1d
 from tflearn.layers.normalization import batch_normalization
@@ -55,7 +57,7 @@ def model_setup_params(hyper):
         shrink_factor=4,
         dtype=tf.float32,
         model_fn=model_fn,
-        n_samples_per_ref=3,
+        n_samples_per_ref=5,
         lr_fn=lambda global_step: tf.train.exponential_decay(
             hyper['initial_lr'], global_step, 100000, hyper['decay_factor']),
         hyper=hyper,

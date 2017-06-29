@@ -8,7 +8,7 @@ __pycache__/
 
 # C extensions
 *.so
-
+mincall/input_readers.c
 # Distribution / packaging
 .Python
 env/

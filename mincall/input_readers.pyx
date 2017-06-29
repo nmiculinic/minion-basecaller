@@ -275,7 +275,8 @@ class MinCallAlignedRaw(InputReader):
     def read_fast5_raw_ref(self, fast5_path, ref_path, block_size_x, block_size_y, num_blocks, n_samples_per_ref=1,
                            verify_file=True):
 
-        cdef int i, b, prev, mult
+        cdef int i, b, prev, mult, x_len
+        cdef np.ndarray signal, refalignment, x, y, y_len
         with h5py.File(fast5_path, 'r') as h5:
             reads = h5['Raw/Reads']
             target_read = list(reads.keys())[0]
@@ -285,13 +286,13 @@ class MinCallAlignedRaw(InputReader):
                 raise MissingMincallLogits()
 
             try:
-                h5_refalignment = h5['Analyses/MinCall/RefAlignment']
+                refalignment = np.array(h5['Analyses/MinCall/RefAlignment'])
             except:
                 raise MissingMincallAlignedRef()
 
             shrink_factor = h5_logits.attrs.get("shrink_factor", 8)  # Default 8..TODO
 
-            signal = h5['Raw/Reads/' + target_read]['Signal']
+            signal = np.array(h5['Raw/Reads/' + target_read]['Signal'])
             start_pad = h5_logits.attrs['start_pad']
             signal_len = h5_logits.shape[0] * shrink_factor
             signal = signal[start_pad:start_pad + signal_len]
@@ -325,10 +326,10 @@ class MinCallAlignedRaw(InputReader):
                     prev = -1
                     mult = block_size_x // shrink_factor
                     for b in range(mult * (start_block + i), mult * (start_block + i + 1)):
-                        if h5_refalignment[b] != prev:
-                            y[i * block_size_y + y_len[i]] = h5_refalignment[b]
+                        if refalignment[b] != prev:
+                            y[i * block_size_y + y_len[i]] = refalignment[b]
                             y_len[i] += 1
-                            prev = h5_refalignment[b]
+                            prev = refalignment[b]
                             if y_len[i] > block_size_y:
                                 raise BlockSizeYTooSmall()
 
