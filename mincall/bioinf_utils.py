@@ -248,6 +248,7 @@ def error_rates_from_cigar(cigar_full_str):
     n_matches = get_cnt(CIGAR_MATCH)
 
     read_len = n_insertions + n_missmatches + n_matches
+    target_len = n_deletions + n_missmatches + n_matches
     noncliped_len = n_all_insertions + n_missmatches + n_matches
     if cigar_len != n_deletions + n_all_insertions + n_missmatches + n_matches:
         raise ValueError("cigar_len != n_deletions + n_all_insertions + n_missmatches + n_matches"
@@ -255,16 +256,18 @@ def error_rates_from_cigar(cigar_full_str):
 
     n_errors = n_missmatches + n_insertions + n_deletions
 
-    error_rate = n_errors / read_len
-    match_rate = n_matches / read_len
-    missmatch_rate = n_missmatches / read_len
-    ins_rate = n_insertions / read_len
-    del_rate = n_deletions / read_len
-    return error_rate, match_rate, missmatch_rate, ins_rate, del_rate, noncliped_len
+    error_rate =100* n_errors / read_len
+    match_rate = 100* n_matches / read_len
+    missmatch_rate = 100* n_missmatches / read_len
+    ins_rate = 100*n_insertions / read_len
+    del_rate = 100*n_deletions / read_len
+    identity_rate = 100*n_matches / cigar_len
+
+    return error_rate, match_rate, missmatch_rate, ins_rate, del_rate, identity_rate, noncliped_len
 
 
-ERROR_RATES_COLUMNS = ['Query name', 'Error rate', 'Match rate', 'Mismatch rate',
-                       'Insertion rate', 'Deletion rate', 'Read length', 'Is reversed']
+ERROR_RATES_COLUMNS = ['Query name', 'Error %', 'Match %', 'Mismatch %',
+                       'Insertion %', 'Deletion %', 'Identity %', 'Read length', 'Is reversed']
 
 
 def error_rates_for_sam(sam_path):
