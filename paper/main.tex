@@ -13,7 +13,7 @@
 \usepackage{graphicx}
 \usepackage{cite}
 
-\graphicspath{ {Figures/} }
+\graphicspath{ {Figures/}{imgs/} }
 \begin{document}
 
 \frontmatter
@@ -49,9 +49,30 @@ The exact error rate metric is unreliable since multiple pipeline tools could be
 \section{Background}
 
 \section{Sequencing overview}
-Conceptually, the MinION sequencer works as follows. First, DNA is sheared into fragments of 8–20 kbp and adapters are ligated to either end of the fragments. The resulting DNA fragments pass through a protein embedded in a membrane via a nanometre-sized channel, a nanopore. A single DNA strand passes through the pore. Optionally, hairpin protein adapter can merge two DNA strands, allowing both template and complement read passing through the nanopore sequentially for more accurate reads. This technique is referred as 2D reads, while we focus on 1D reads containing only template DNA and no hairpin adapter.
+Conceptually, the MinION sequencer works as follows. First, DNA is sheared into smaller DNA fragments and adapters are ligated to either end of the fragments. The resulting DNA fragments pass through a protein embedded in a membrane via a nanometre-sized channel, a nanopore. A single DNA strand passes through the pore. Optionally, hairpin protein adapter can merge two DNA strands, allowing both template and complement read passing through the nanopore sequentially for more accurate reads. This technique is referred as 2D reads, while we focus on 1D reads containing only template DNA and no hairpin adapter.
 
 Electrical current runs through the nanopore and exact nucleotides context within influences the nanopore's resistance. This resistive effect is our sensor data, that is the current fluctuations as DNA passes though the pore. The nanopore is 6 nucleotides wide, and many models use this information in their approaches, while we're opted out of this technicality.
+
+
+
+\begin{figure}[!ht]
+	\begin{center}
+		\includegraphics[width=0.6\textwidth]{./imgs/sequencing.png}
+		\caption{Depiction of shotgun sequencing}
+		\label{fg:sequencing}
+	\end{center}
+\end{figure}
+
+
+\begin{figure}[!ht]
+	\begin{center}
+		\includegraphics[width=0.7\textwidth]{./imgs/nanopore.png}
+
+		\caption[DNA strain being pulled through a nanopore]{DNA strain being pulled through a nanopore \protect\footnotemark}
+		\label{fg:nanopore}
+	\end{center}
+\end{figure}
+\footnotetext{Figure adapted from https://nanoporetech.com/how-it-works}
 
 \section{Basecalling}
 
