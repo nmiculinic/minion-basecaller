@@ -67,7 +67,6 @@ Electrical current runs through the nanopore and exact nucleotides context withi
 \begin{figure}[!ht]
 	\begin{center}
 		\includegraphics[width=0.7\textwidth]{./imgs/nanopore.png}
-
 		\caption[DNA strain being pulled through a nanopore]{DNA strain being pulled through a nanopore \protect\footnotemark}
 		\label{fg:nanopore}
 	\end{center}
@@ -76,15 +75,27 @@ Electrical current runs through the nanopore and exact nucleotides context withi
 
 \section{Basecalling}
 
-The core of the decoding process is the basecalling step. Official basecaller is Metrichor, previously performed in the cloud before being open-sourced under name Nanonet. (Citation, whom?)
+The core of the decoding process is the basecalling step. Nowdays there's multiple basecalling options, what official and unoffical ones.
 
-Earlier models were (Hidden Markov model) HMM-based where hidden state modeled DNA sequence of length 6 (6-mer) in the nanopore. Pore models were used in computing emission probabilities.~\cite{loman2015complete,schreiber2015analysis,szalay2015novo,timp2012dna} and the recent open source HMM-based basecaller Nanocall~\cite{david2016nanocall}.
+Earlier models were Hidden Markov model(HMM)-based where hidden state modeled DNA sequence of length 6 (6-mer) in the nanopore. Pore models were used in computing emission probabilities.~\cite{loman2015complete,schreiber2015analysis,szalay2015novo,timp2012dna} and the recent open source HMM-based basecaller Nanocall~\cite{david2016nanocall}.
 
-Recent models opted using (Recurrent neural network) RNN, notably, DeepNano~\cite{deepnano} and recently open sourced official Nanonet from ONT.
+\textit{Metrichor} is an Oxford Nanopore company that offers cloud-based platform \textit{EPI2ME} for analysis of nanopore data.
+Initially, base calling was only available by uploading data to the platform - that being the reason why this basecaller is often called Metrichor even though it is a name of the company.
+
+With the release of R9 chemistry, this model was replaced by a more accurate recurrent neural network (RNN) implementation. Currently, Oxford Nanopore offers several RNN-based local basecaller versions under different names: Albacore, Nanonet and basecaller integrated into MinKNOW \cite{ont-basecallers}.
+
+\textit{Albacore} is basecaller by Oxford Nanopore Technologies ready for production and actively supported.
+It is available to the Nanopore Community served as a binary. The source code of Albacore was not provided and is only available through the ONT Developer Channel. Tool supports only R9.4 and future R9.5 version of the chemistry. For R9 tests in this paper we used R9.4 chemisty setting as instructed on ONT forums.
+
+\textit{Nanonet}\footnote{\url{https://github.com/nanoporetech/nanonet/}} uses the same neural network that is used in Albacore but it is continually under development and does contain features such as error handling or logging needed for production use. It uses \textit{CURRENNT} library for running neural networks. It supportes basecalling of both R9 and R9.4 chemistry versions. However in our experiments it was painfully slow, which was as expected due to it's classification as not production ready.
+
+\textit{Scrappie}\footnote{\url{https://github.com/nanoporetech/scrappie}} is another basecaller by Oxford Nanopore Technologies. Similar to Nanonet, it is the platform for ongoing development. Scrappie is reported to be the first basecaller  that specifically address homopolymer base calling. It became publicly available just recently in June, 2017 and supports R9.4 and future R9.5 data.
+
+\textit{DeepNano}~\cite{deepnano} is open source RNN basecalled whose model are trained with older R7 chemisty, and thus are excluded from later analysis, yet it's mentioned here for completeness (or attempt thereof).
 
 \section{Method}
 
-Instead of opting for the traditional path using HMM or RNN we tried using CNN~(Convolutional neural networks)~\cite{lecun-98}, that is their residual version~\cite{he2016deep}. We opted out for gated residual network variant~\cite{savarese2016learning}. For loss, we used CTC (Connectionist temporal classification)~\cite{graves2006connectionist} between basecalled and the target sequence. The implementation used is open source warp-ctc~\cite{warpctc}. Main computation framework is tensorflow~\cite{tensorflow2015-whitepaper}
+Instead of opting for the traditional path using HMM or newly adopted RNN we tried using CNN~(Convolutional neural networks)~\cite{lecun-98}, that is their residual version~\cite{he2016deep}. We opted out for gated residual network variant~\cite{savarese2016learning}. For loss, we used CTC (Connectionist temporal classification)~\cite{graves2006connectionist} between basecalled and the target sequence. The implementation used is open source warp-ctc~\cite{warpctc}. Main computation framework is tensorflow~\cite{tensorflow2015-whitepaper}
 
 \section{Data preprocessing}
 
@@ -185,6 +196,5 @@ Finally, I'm thanking various other people whose code, tools and advice I've use
 % set style - not sure which one is official for papers
 % spbasic (springer basic makes sense)
 \bibliographystyle{spbasic}
-% name your BibTeX data base
 \bibliography{refs}
 \end{document}
