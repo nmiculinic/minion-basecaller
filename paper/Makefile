@@ -20,6 +20,7 @@ $(TARGET): $(TARGET).tex $(BIB).bib
 .PHONY: clean
 
 clean:
+	latexmk -c $(TARGET).tex
 	rm -vf *.aux *.blg *.bbl *.log \
 			*.out *.brf *.idx *.ilg \
 			*.ind *.lof *.lol *.lot \
