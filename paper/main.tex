@@ -101,8 +101,8 @@ Dataset used were E.Coli K-12 strands from~\cite{loman1-100k} and Lamba basecall
 			\toprule
 			{} &  \thead{Number of reads} &   \thead{Total bases \lbrack bp\rbrack\footnote{Total number of bases calle by Metrichor}} &    \thead{Whole genome size \lbrack bp\rbrack} \\
 			\midrule
-			\textit{{E. Coli}}\footnote{R9 sequencing data from \url{http://lab.loman.net/2016/07/30/nanopore-r9-data-release/}, reference taken from \url{https://www.ncbi.nlm.nih.gov/nuccore/48994873}} & 164471 & 1 481 687 490 & 4 639 675\\
-			\textit{lambda}\footnote{Internal dataset acquired from doc.~dr.sc.~Petra Korać and dr.sc.~Paula Dobrinić, reference taken from \url{https://www.ncbi.nlm.nih.gov/nuccore/NC_001416.1}}   & 86 &  466 465 & 48 502  \\
+			\emph{{E. Coli}}\footnote{R9 sequencing data from \url{http://lab.loman.net/2016/07/30/nanopore-r9-data-release/}, reference taken from \url{https://www.ncbi.nlm.nih.gov/nuccore/48994873}} & 164471 & 1 481 687 490 & 4 639 675\\
+			\emph{lambda}\footnote{Internal dataset acquired from doc.~dr.sc.~Petra Korać and dr.sc.~Paula Dobrinić, reference taken from \url{https://www.ncbi.nlm.nih.gov/nuccore/NC_001416.1}}   & 86 &  466 465 & 48 502  \\
 			\bottomrule
 		\end{tabular}
 	\end{table}
@@ -110,7 +110,7 @@ Dataset used were E.Coli K-12 strands from~\cite{loman1-100k} and Lamba basecall
 
 \subsection{Data preprocessing}
 
-To help training process, the raw signal is split into smaller blocks that are used as inputs. For each Metrichor basecalled event is easy to determine the block it falls into using \textit{start} field. Using this information output given by Metrichor can be determined for each block.
+To help training process, the raw signal is split into smaller blocks that are used as inputs. For each Metrichor basecalled event is easy to determine the block it falls into using \emph{start} field. Using this information output given by Metrichor can be determined for each block.
 To correct errors produced by Metrichor and possibly increase the quality of data, each read is aligned to the reference. This is done using aligner GraphMap~\cite{sovic2016fast} that returns the best position in the genome, hopefully, the part of the genome from which read came from.
 Alignment part in the genome is used as a target. Using CIGAR string returned by aligner we can correct Metrichor data and get target output for each block. This process is shown in figure~\ref{fg:data_correction}.
 
@@ -177,10 +177,12 @@ Developed tool was compared with other available basecallers that support R9 che
 The fact that ground truth is not known makes evaluation difficult.
 Different methods for evaluation were used to get clearer information about each basecaller.
 
+\subsection{Per read metrics}
+\label{subs:read_metrics}
 A portion of the read length that aligns as correctly is called match\_rate. Same goes for mismatches and insertions.
-Sum of all matches, mismatches, and insertions is equal to the reads length \ref{eq:read_len}. For specific details see appendix~\ref{app:evaluation:CIGAR}. Results on E.Coli test set with Graphmap aligner are shown in table~\ref{tbl:ecoli_rates}. Evaluation with BWM-MEM and on lambda can be found in appendix~\ref{app:evaluation:CIGAR} under tables~\ref{tbl:ecoli_rates_bwa},~\ref{tbl:lambda_rates} and~\ref{tbl:lambda_rates_bwa}. Furthermore we plot Kernel Density estimation(KDE) plots for each mentioned statistic on E.Coli dataset in figure~\ref{fg:ecoli_kde}.
+Sum of all matches, mismatches, and insertions is equal to the reads length \ref{eq:read_len}. For specific details see Appendix~\ref{app:evaluation:CIGAR}. Results on E.Coli test set with Graphmap aligner are shown in table~\ref{tbl:ecoli_rates}. Evaluation with BWM-MEM and on lambda can be found in appendix~\ref{app:evaluation:CIGAR} under tables~\ref{tbl:ecoli_rates_bwa},~\ref{tbl:lambda_rates} and~\ref{tbl:lambda_rates_bwa}. Furthermore we plot Kernel Density estimation(KDE) plots for each mentioned statistic on E.Coli dataset in figure~\ref{fg:ecoli_kde}.
 
-In appendix~\ref{app:evaluation:CIGAR} the histogram figure~\ref{fg:cigar_op_dist} shows how matches, mismatches, insertions, and deletions are distributed across the reads. It is shown that mismatches and insertion occur more frequently at the beginnings and the ends of the reads. This is not only the case for the developed basecaller, but all other show the same property. This could be due to lack of context information from both sides when edges are base called.
+In Appendix~\ref{app:evaluation:CIGAR} the histogram figure~\ref{fg:cigar_op_dist} shows how matches, mismatches, insertions, and deletions are distributed across the reads. It is shown that mismatches and insertion occur more frequently at the beginnings and the ends of the reads. This is not only the case for the developed basecaller, but all other show the same property. This could be due to lack of context information from both sides when edges are base called.
 
 \begin{table}[]
 	\caption{Alignment specifications of Ecoli R9 basecalled reads using GraphMap}
@@ -198,13 +200,74 @@ In appendix~\ref{app:evaluation:CIGAR} the histogram figure~\ref{fg:cigar_op_dis
 	\end{tabular}
 \end{table}
 
-\begin{figure}[!htb]
+\begin{figure}[]
 	\begin{center}
 		\includegraphics[width=0.8\textwidth]{./imgs/results/ecoli/kde_cigar.png}
 		\caption{KDE plot for distribution of percentage of alimnment operations for ecoli}
 		\label{fg:ecoli_kde}
 	\end{center}
 \end{figure}
+
+
+\subsection{Consensus metrics}
+
+In Subsection~\ref{subs:read_metrics} we showed metrics after the read is aligned of reference genome. However, if basecalled simply yield A irrespective of ground truth, it shall have 100\% match rate since it will definitely align somewhere. Therefore we reconstruct original genome from basecalled reads. Specific metrics definitions analysed are in Appendix~\ref{app:evaluation:consensus}.
+
+\subsubsection{Consensus from pileup}
+
+Instead of going through the whole assembly process, as we know the reference genome of the data used in these tests, we simply align all the reads to the genome, stack them on top of each other forming pileup of read bases. Using majority vote, dominant bases are called on each position. The resulting sequence is called consensus. When calling consensus for deletions,  there has to be a majority of deletions of the same length. Calling insertions has the additional condition, the majority has to agree on both length and the bases of insertion. Figure~\ref{fg:consensus} shows how consensus is called from pileup created from aligned reads. Pileup is stored in mpileup format.
+
+All models show a slight bias towards deletions than insertions, but this may be the limitation of technology as it has been reported that deletion and mismatch rates for nanopore data are ordinarily higher than insertion rates~\cite{sovic2016fast}. Results are shown in table~\ref{tbl:spec_ecoli}. Lambda table is deferred to appendix in table~\ref{tbl:spec_lambda}.
+
+\begin{figure}[]
+   \begin{center}
+       \includegraphics[width=0.8\textwidth]{./imgs/consnesus.png}
+       \caption{Consensus from pileup}
+       \label{fg:consensus}
+   \end{center}
+\end{figure}
+
+\begin{table}[]
+	\caption{Consensus specifications of Ecoli R9 basecalled reads}
+	\label{tbl:spec_ecoli}
+	\centering
+	\begin{tabular}{lcccccc}
+		\toprule
+		{} &  \thead{Total called\\\lbrack bp\rbrack} &  \thead{Correctly called\\\lbrack bp\rbrack} &  \thead{Match\\\%} &  \thead{Snp\\\%} &  \thead{Insertion\\\%} &  \thead{Deletion\\\%} \\
+		\midrule
+		DeepNano  &                  1510244.0 &                      1493242.0 &          98.8742 &         1.0044 &               0.1214 &              0.9041 \\
+		Metrichor &                  1515893.0 &                      1502588.0 &          99.1223 &         0.7464 &               0.1313 &              0.6300 \\
+		Nanonet   &                  1414237.0 &                      1385515.0 &          97.9691 &         1.5700 &               0.4609 &              1.5158 \\
+		resdeep   &                  1517828.0 &                      1506233.0 &          \textbf{99.2361} &         \textbf{0.6474} &               \textbf{0.1165} &             \textbf{ 0.5510 }\\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+
+\subsubsection{Consensus from de novo assembly}
+In this evaluation method, consensus sequence is not calculated from pileup, but by de novo genome assembly. For this task, fast and accurate de novo genome assembler \emph{ra}\footnote{\url{https://github.com/rvaser/ra}}~\cite{vaser} was used and obtained consensus sequence is compared to the reference using dnadiff present in the Mumer\footnote{\url{https://github.com/garviz/MUMmer}}.
+The length of the reference, consensus sequence, number of contigs and percentages of aligned bases from the reference to the query and vice versa are shown in the table \ref{tbl:assembly}. Average identity summarizes how closely does the assembled sequence match the reference. This is run on full ecoli sequence run for 1D template reads (\textasciitilde 160k reads), for both developed tools, Nanonet and Metrichor. Developed tool has shown a small increase in quality of the assembled sequence over Metrichor by offering longer consensus, higher identity percentage, and overall smaller edit distance\footnote{Calculated using \url{https://github.com/isovic/racon/blob/master/scripts/edcontigs.py}}.
+
+
+\begin{table}[htb]
+	\caption{Assembly and consensus results for ecoli}
+	\label{tbl:assembly}
+	\centering
+\begin{tabular}{lccc}
+\toprule
+&         Metrichor &           MinCall &          Nanonet \\
+\midrule
+\thead{Ref. genome size (bp)} &           4639675 &           4639675 &            4639675 \\
+\thead{Total bases (bp)}      &           4604806 &           \textbf{4614354} &          4600056 \\
+\thead{Contigs [\#]}           &                 1 &                 1 &                1 \\
+\thead{Aln. bases ref. (bp)}  &  4639641(100.00\%) &  4639612(100.00\%) &  4639031(99.99\%) \\
+\thead{Aln. bases query (bp)} &  4604787(100.00\%) &  4614351(100.00\%) &  4599745(99.99\%) \\
+\thead{Avg. Identity}         &             98.76 &             \textbf{99.06} &            98.47 \\
+\thead{Edit distance}         &             60418 &             \textbf{46686 }&            74341 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 
 \section{Conclusion and further work}
 
@@ -230,22 +293,22 @@ Also some data were obtained in cooperation with Biologists doc. dr. sc. Petra K
 Here is currated basecaller list:
 
 \subsection{Official}
-\textit{Metrichor} is an Oxford Nanopore company that offers cloud-based platform \textit{EPI2ME} for analysis of nanopore data.
+\emph{Metrichor} is an Oxford Nanopore company that offers cloud-based platform \emph{EPI2ME} for analysis of nanopore data.
 Initially, base calling was only available by uploading data to the platform - that being the reason why this basecaller is often called Metrichor even though it is a name of the company.
 
 With the release of R9 chemistry, this model was replaced by a more accurate recurrent neural network (RNN) implementation. Currently, Oxford Nanopore offers several RNN-based local basecaller versions under different names: Albacore, Nanonet and basecaller integrated into MinKNOW \cite{ont-basecallers}.
 
-\textit{Albacore} is basecaller by Oxford Nanopore Technologies ready for production and actively supported.
+\emph{Albacore} is basecaller by Oxford Nanopore Technologies ready for production and actively supported.
 It is available to the Nanopore Community served as a binary. The source code of Albacore was not provided and is only available through the ONT Developer Channel. Tool supports only R9.4 and future R9.5 version of the chemistry. For R9 tests in this paper we used R9.4 chemisty setting as instructed on ONT forums.
 
-\textit{Nanonet}\footnote{\url{https://github.com/nanoporetech/nanonet/}} uses the same neural network that is used in Albacore but it is continually under development and does contain features such as error handling or logging needed for production use. It uses \textit{CURRENNT} library for running neural networks. It supportes basecalling of both R9 and R9.4 chemistry versions. However in our experiments it was painfully slow, which was as expected due to it's classification as not production ready.
+\emph{Nanonet}\footnote{\url{https://github.com/nanoporetech/nanonet/}} uses the same neural network that is used in Albacore but it is continually under development and does contain features such as error handling or logging needed for production use. It uses \emph{CURRENNT} library for running neural networks. It supportes basecalling of both R9 and R9.4 chemistry versions. However in our experiments it was painfully slow, which was as expected due to it's classification as not production ready.
 
-\textit{Scrappie}\footnote{\url{https://github.com/nanoporetech/scrappie}} is another basecaller by Oxford Nanopore Technologies. Similar to Nanonet, it is the platform for ongoing development. Scrappie is reported to be the first basecaller  that specifically address homopolymer base calling. It became publicly available just recently in June, 2017 and supports R9.4 and future R9.5 data.
+\emph{Scrappie}\footnote{\url{https://github.com/nanoporetech/scrappie}} is another basecaller by Oxford Nanopore Technologies. Similar to Nanonet, it is the platform for ongoing development. Scrappie is reported to be the first basecaller  that specifically address homopolymer base calling. It became publicly available just recently in June, 2017 and supports R9.4 and future R9.5 data.
 
 \subsection{Third-party basecallers}
-\textit{Nanocall}~\cite{David046086} was the first third-party open source basecaller for nanopore data. It uses HMM approach like the original R7 Metrichor. Nanocall does not support newer chemistries after R7.3.
+\emph{Nanocall}~\cite{David046086} was the first third-party open source basecaller for nanopore data. It uses HMM approach like the original R7 Metrichor. Nanocall does not support newer chemistries after R7.3.
 
-\textit{DeepNano}~\cite{Boza2017}  was the first open-source basecaller based on neural networks. It uses bidirectional recurrent neural networks implemented in Python, using the Theano library. When released, originally only supported R7 chemistry, but support for R9 and R9.4 was added recently.
+\emph{DeepNano}~\cite{Boza2017}  was the first open-source basecaller based on neural networks. It uses bidirectional recurrent neural networks implemented in Python, using the Theano library. When released, originally only supported R7 chemistry, but support for R9 and R9.4 was added recently.
 
 \section{Evaluation metrics}
 
@@ -350,6 +413,56 @@ deletion\_rate = \dfrac{n\_deletion}{read\_length}
 		\label{fg:cigar_op_dist}
 	\end{center}
 \end{figure}
+
+\subsection{Consensus metrics}
+\label{app:evaluation:consensus}
+
+Similarly, as before, match rate, mismatch rate, insertion and deletion rates are calculated but this time for whole consensus sequence. In this context, mismatches are called \emph{single nucleotide polymorphisms} (snp).
+
+\begin{equation}
+\begin{gathered}
+match\_rate = \dfrac{n\_correct\_bases}{consensus\_length}
+\end{gathered}
+\end{equation}
+\begin{equation}
+\begin{gathered}
+snp\_rate = \dfrac{n\_snp}{consensus\_length}
+\end{gathered}
+\end{equation}
+\begin{equation}
+\begin{gathered}
+insertion\_rate = \dfrac{n\_insertions}{consensus\_length}
+\end{gathered}
+\end{equation}
+
+\begin{equation}
+\begin{gathered}
+match\_rate  + snp\_rate + insertion\_rate = 1
+\end{gathered}
+\end{equation}
+
+
+\begin{equation}
+\begin{gathered}
+deletion\_rate = \dfrac{n\_deletion}{consensus\_length}
+\end{gathered}
+\end{equation}
+
+\begin{table}[]
+	\caption{Consensus specifications of lambda R9 basecalled reads}
+	\label{tbl:spec_lambda}
+	\centering
+	\begin{tabular}{lcccccc}
+		\toprule
+		{} &  \thead{Total called\\\lbrack bp\rbrack} &  \thead{Correctly called\\\lbrack bp\rbrack} &  \thead{Match\\\%} &  \thead{Snp\\\%} &  \thead{Insertion\\\%} &  \thead{Deletion\\\%} \\
+		\midrule
+		DeepNano  &                    48342.0 &                        48025.0 &          99.3443 &         0.6433 &               \textbf{0.0124} &              0.2648 \\
+		Metrichor &                    48469.0 &                        48257.0 &          \textbf{99.5626} &         \textbf{0.4188} &               0.0186 &              \textbf{0.1465} \\
+		Nanonet   &                    48438.0 &                        48168.0 &          99.4426 &         0.5409 &               0.0165 &              0.1961 \\
+		resdeep   &                    48385.0 &                        48163.0 &          99.5412 &         0.4402 &               0.0186 &              0.1976 \\
+		\bottomrule
+	\end{tabular}
+\end{table}
 
 
 \end{document}
