@@ -38,7 +38,7 @@ Electrical Engineering and Computing (FER), Zagreb, Croatia}
 
     In this study, we created MinCall, an end2end basecaller model for the MinION. The model is based on deep learning and uses convolutional neural networks (CNN) in its implementation. For extra performances is uses cutting edge deep learning techniques and architectures, batch normalization and Connectionist Temporal Classification (CTC) loss.
 
-    The best performing 270 layers deep model achieves state-of-the-art 90.5\% match rate on E.Coli dataset using R9 pore chemistry and 1D reads.
+    The best performing deep learning model achieves state-of-the-art median 91.4\% match rate on E.Coli dataset using R9 pore chemistry and 1D reads.
 \keywords{Basecaller, MinION, R9, CNN, CTC, Next generation sequecing}
 \end{abstract}
 
@@ -271,9 +271,13 @@ The length of the reference, consensus sequence, number of contigs and percentag
 
 \section{Conclusion and further work}
 
-This model used advance state-of-the-art gated residual convolutional neural network, with top models having 270 layers and over 3M parameters, yet improvements over Metrichorn baseline are marginal. As the conclusion, it might be that we've reached Bayesian error rate for R9 chemistry. Furthermore, R9.5 and 1D\^2 reads are under development which shall yield this paper's result obsolete quite soon, yet underlying code developed could easily be adjusted and trained on new data.
+In this paper we used CNN instead of already tried RNN or HMM approaches, which yielded higher accuracy than previously tried models. Unlike HMM and RNN, there's no explicit dependency on previous hidden state, therefore this model is massively parallizible and more sensible given data nature --- that is we're dealing with signal processing, not heavily context depended language modeling.
 
-Unlike Nanonet which uses custom OpenCL kernels or Albacore --- a novel ONT basecaller as of May 2017 lacking GPU support, this work used world-class computational framework tensorflow with highly optimized kernels and large development community. Therefore resulting paper's effect is showcasing Residual CNN approach or pure CNN approach with CTC loss is marginally better than already established basecaller and providing code in the contemporary framework.
+All test are done on data for R9 chemistry, but the developed open source code could easily be adjusted and trained on R9.4 and newest R9.5 data when it becomes publicly available.
+
+Currently, without support for newer sequencing data, this model has limited application. It can be used as a demonstration of a different approach to base calling which yields promising results.  As newer versions of basecallers by Oxford Nanopore do not offer any support for data sequenced with previous version of chemistries, this tool can be used to re-basecall that data and improvement of the quality of reads retrospectively.
+
+Future work includes experiments with recently proposed Scaled exponential linear units (SELU)~\cite{selu} that eliminates the need for normalization techniques such as used batch normalization. Possible improvements of the model include the combination of convolutions and attention mechanism proposed just recently in the paper~\cite{facebook} showing excellent results in both speed and accuracy, for tasks of language translation. Last approach could use stacked simpled models, such as logistic regression and SVM to predict each nucleotide given raw signal context, similar to our deep learning model pre-CTC layer, and use linear chain CRF for full sequence basecalling. Approaches are many, and the time is limited.
 
 \section{Acknowledgments}
 
@@ -281,7 +285,7 @@ First and foremost I'd like to thank my mentor izv.~prof.~dr.~sc.~Mile Sikić fo
 
 Finally, I'm thanking various other people whose code, tools and advice I've used in completing this paper: Fran Jurišić, Ana Marija Selak, Ivan Sović and Martin Šošić.
 
-Also some data were obtained in cooperation with Biologists doc. dr. sc. Petra Korać and dr.sc. Paula Dobrinić. Other were procured publicly shared from Loman labs~\cite{loman1-100k}
+Also some data were obtained in cooperation with Biologists doc.~dr.~sc. Petra Korać and dr.sc. Paula Dobrinić. Other were procured publicly shared from Loman labs~\cite{loman1-100k}
 
 % set style - not sure which one is official for papers
 % spbasic (springer basic makes sense)
