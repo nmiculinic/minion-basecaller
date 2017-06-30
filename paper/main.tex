@@ -169,9 +169,40 @@ Each convolutional layer in this models uses 64 chanells with receptive field of
 
 Training the model is the minimization of previously described CTC loss. It was done using Adam~\cite{adam} with default parameters, and exponentially decaying learning rate starting from 1e-3 and decay rate of 5e-6 over 100k steps\footnote{We use tf.train.exponential\_decay where current learning rate, lr is $lr=\text{initial\_lr} \cdot \text{decay\_rate}^\frac{\text{global\_step}}{\text{decay\_step}}$} and minibatch size 8. To prevent gradients exploding on bad inputs, they were clipped to a range [-2, 2]. We observed no overfitting due to large dataset size.
 
-During testing we tried ReLu and PrELU~\cite{prelu} with no significat result difference. We also tried different channel numbers, receptive field width and various other hyperparameters during hyperparameter optimization and conclude after enough complexity, that is sufficient layers, all choices were performing similarly. 
+During testing we tried ReLu and PrELU~\cite{prelu} with no significat result difference. We also tried different channel numbers, receptive field width and various other hyperparameters during hyperparameter optimization and conclude after enough complexity, that is sufficient layers, all choices were performing similarly.
 
 \section{Results}
+
+Developed tool was compared with other available basecallers that support R9 chemistry. This includes third-party basically DeepNano and official basecallers by Oxford Nanopore (cloud-based Metrichor and Nanonet).
+The fact that ground truth is not known makes evaluation difficult.
+Different methods for evaluation were used to get clearer information about each basecaller.
+
+A portion of the read length that aligns as correctly is called match\_rate. Same goes for mismatches and insertions.
+Sum of all matches, mismatches, and insertions is equal to the reads length \ref{eq:read_len}. For specific details see appendix~\ref{app:evaluation:CIGAR}. Results on E.Coli test set with Graphmap aligner are shown in table~\ref{tbl:ecoli_rates}. Evaluation with BWM-MEM and on lambda can be found in appendix~\ref{app:evaluation:CIGAR} under tables~\ref{tbl:ecoli_rates_bwa},~\ref{tbl:lambda_rates} and~\ref{tbl:lambda_rates_bwa}. Furthermore we plot Kernel Density estimation(KDE) plots for each mentioned statistic on E.Coli dataset in figure~\ref{fg:ecoli_kde}.
+
+\begin{table}[]
+	\caption{Alignment specifications of Ecoli R9 basecalled reads using GraphMap}
+	\label{tbl:ecoli_rates}
+	\centering
+	\begin{tabular}{lcccc}
+		\toprule
+		{} &  \thead{Match \% \\(median)} &  \thead{Mismatch \% \\(median)} &  \thead{Insertion \% \\(median)} &  \thead{Deletion \% \\(median)} \\
+		\midrule
+		DeepNano   &                  90.254762 &                      6.452852 &                       \textbf{3.274420} &                     11.829965 \\
+		Metrichor  &                  90.560455 &                      5.688105 &                       3.660381 &                      8.328271 \\
+		Nanonet    &                  90.607674 &                      5.608912 &                       3.652791 &                      8.299046 \\
+		MinCall    &                  \textbf{91.408591} &                     \textbf{ 5.019141} &                       3.477739 &                      \textbf{7.471608 }\\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+\begin{figure}[!htb]
+	\begin{center}
+		\includegraphics[width=0.8\textwidth]{./imgs/results/ecoli/kde_cigar.png}
+		\caption{KDE plot for distribution of percentage of alimnment operations for ecoli}
+		\label{fg:ecoli_kde}
+	\end{center}
+\end{figure}
 
 \section{Conclusion and further work}
 
@@ -213,5 +244,100 @@ It is available to the Nanopore Community served as a binary. The source code of
 \textit{Nanocall}~\cite{David046086} was the first third-party open source basecaller for nanopore data. It uses HMM approach like the original R7 Metrichor. Nanocall does not support newer chemistries after R7.3.
 
 \textit{DeepNano}~\cite{Boza2017}  was the first open-source basecaller based on neural networks. It uses bidirectional recurrent neural networks implemented in Python, using the Theano library. When released, originally only supported R7 chemistry, but support for R9 and R9.4 was added recently.
+
+\section{Evaluation metrics}
+
+\subsection{CIGAR derived metrics}
+\label{app:evaluation:CIGAR}
+
+A portion of the read length that aligns as correctly is called match\_rate. Same goes for mismatches and insertions.
+Sum of all matches, mismatches, and insertions is equal to the reads length \ref{eq:read_len}.
+Here is the specific equation list:
+
+\begin{equation}
+\begin{gathered}
+\label{eq:read_len}
+read\_len =  n\_matches + n\_mismatches + n\_insertions
+\end{gathered}
+\end{equation}
+\begin{equation}
+\begin{gathered}
+match\_rate = \dfrac{n\_matches}{read\_length}
+\end{gathered}
+\end{equation}
+\begin{equation}
+\begin{gathered}
+missmatch\_rate = \dfrac{n\_mismatches}{read\_length}
+\end{gathered}
+\end{equation}
+\begin{equation}
+\begin{gathered}
+insertion\_rate = \dfrac{n\_insertions}{read\_length}
+\end{gathered}
+\end{equation}
+
+\begin{equation}
+\begin{gathered}
+match\_rate  + snp\_rate + insertion\_rate = 1
+\end{gathered}
+\end{equation}
+
+Deletion rate is defined as a total number of deletions in the alignment over the length of the aligned read.
+
+\begin{equation}
+\begin{gathered}
+deletion\_rate = \dfrac{n\_deletion}{read\_length}
+\end{gathered}
+\end{equation}
+
+
+\begin{table}[]
+	\caption{Alignment specifications of Ecoli R9 basecalled reads using BWA mem}
+	\label{tbl:ecoli_rates_bwa}
+	\centering
+	\begin{tabular}{lcccc}
+		\toprule
+		{} &  \thead{Match \% \\(median)} &  \thead{Mismatch \% \\(median)} &  \thead{Insertion \% \\(median)} &  \thead{Deletion \% \\(median)} \\
+		\midrule
+		DeepNano   &                  90.254762 &                      6.452852 &                       3.274420 &                     11.829965 \\
+		Metrichor  &                  90.595441 &                      6.869543 &                       2.531646 &                      7.567381 \\
+		Nanonet    &                  90.988989 &                      6.674760 &                     \textbf{  2.348552} &                      7.698530 \\
+		MinCall    &                 \textbf{ 91.470588} &                      \textbf{5.929204 }&                       2.477283 &                     \textbf{ 6.970362} \\
+		\bottomrule
+	\end{tabular}
+
+\end{table}
+\begin{table}[]
+	\caption{Alignment specifications of Lambda basecalled reads using GraphMap}
+	\label{tbl:lambda_rates}
+	\centering
+	\begin{tabular}{lcccc}
+		\toprule
+		{} &  \thead{Match \% \\(median)} &  \thead{Mismatch \% \\(median)} &  \thead{Insertion \% \\(median)} &  \thead{Deletion \% \\(median)} \\
+		\midrule
+		DeepNano   &                  86.997687 &                      9.623494 &                       3.442490 &                     16.052830 \\
+		Metrichor  &                  87.714988 &                      7.835052 &                       4.093851 &                     \textbf{10.757491} \\
+		Nanonet    &                  88.415611 &                      8.178372 &                       3.629653 &                     11.793022 \\
+		MinCall    &                 \textbf{ 89.694482} &                     \textbf{ 7.238095} &                       \textbf{3.078796} &                     13.450292 \\
+		\bottomrule
+	\end{tabular}
+
+\end{table}
+\begin{table}[]
+	\caption{Alignment specifications of lambda R9 basecalled reads using BWA mem}
+	\label{tbl:lambda_rates_bwa}
+	\centering
+	\begin{tabular}{lcccc}
+		\toprule
+		{} &  \thead{Match \% \\(median)} &  \thead{Mismatch \% \\(median)} &  \thead{Insertion \% \\(median)} &  \thead{Deletion \% \\(median)} \\
+		\midrule
+
+		DeepNano   &                  86.625973 &                     11.288361 &                       2.098225 &                     14.648308 \\
+		Metrichor  &                  87.294093 &                     10.109186 &                       2.376476 &                      \textbf{9.645323 }\\
+		Nanonet    &                  87.767037 &                     10.017598 &                       2.354248 &                     10.597232 \\
+		MinCall    &                 \textbf{ 89.049870} &                     \textbf{ 9.480883} &                       \textbf{1.615188 }&                     12.962441 \\
+		\bottomrule
+	\end{tabular}
+\end{table}
 
 \end{document}
