@@ -48,18 +48,15 @@ In this paper, we present application of deep learning in the field of  Bioinfor
 
 Oxford Nanopore Technology's MinION nanopore sequencing platform~\cite{mikheyev2014first} is the first portable DNA sequencing device. It's small weight, of only 90 grams, low capital cost, and long read length combined with high-throughput, real-time data analysis, and decent accuracy yield promising results in various applications. From clinical application such as monitoring infectious disease outbreaks~\cite{judge2015early}\cite{quick2016real}, characterizing structural variants in cancer\cite{norris2016nanopore} and even full human genome assembly~\cite{jain2017nanopore}.
 
-Although MinION is able to produce long reads~\cite{loman1-100k,loman2-800k}, they have a high sequencing error rate. This has been somewhat alleviated with new R9 pore model, replacing older R7 ones. In this paper, we show that this error rate can be reduced by replacing the default base caller provided by the manufacturer with a properly trained neural network model. In the future new R9.5 chemistry and 1D\^2 reads should supersede current models.
-
-In the MinION device, single-stranded DNA fragments move through nanopores, which causes drops in the electric current. The electric current is measured at each pore several thousand times per second, 4000 times exactly in our dataset. The electric current depends mostly on the context of several DNA bases passing through the pore at the time of measurement. As the DNA moves through the pore, the context shifts, and the electric current changes.
-
-The MinION device typically yields reads several thousands bases long, even couple hundred thousand bases long reads were repoted~\cite{loman1-100k,loman2-800k}. However the cost in on accuracy, signicifantly lower than older, more reliable and expensive sequencing methods.
+Although MinION is able to produce long reads, even up to 882 kb~\cite{loman1-100k,loman2-800k}, they have a high sequencing error rate. This has been somewhat alleviated with new R9 pore model, replacing older R7 ones. In this paper, we show that this error rate can be reduced by our approach with properly trained neural network model.
 
 The exact error rate metric is unreliable since multiple pipeline tools could be the issue. First the sample is prepared, hopefully, uncontaminated and matching reference genome as close as possible, then sequenced using the MinION device obtaining raw data. Next, our model (or other groups ones) come along, basecall the sequence. To evaluate error rate metric basecalled read is aligned to the reference genome using aligners with their own errors/biases, mostly commonly used BWA-MEM~\cite{li2013aligning} and Graphmap~\cite{sovic2016fast}.
 
 \section{Sequencing overview}
 Conceptually, the MinION sequencer works as follows. It's variation on now standard shotgun sequecing approach. First, DNA is sheared into smaller DNA fragments and adapters are ligated to either end of the fragments. The resulting DNA fragments pass through a protein embedded in a membrane via a nanometre-sized channel, a nanopore. A single DNA strand passes through the pore. Optionally, hairpin protein adapter can merge two DNA strands, allowing both template and complement read passing through the nanopore sequentially for more accurate reads. This technique is referred as 2D reads, while we focus on 1D reads containing only template DNA and no hairpin adapter.
 
-Electrical current runs through the nanopore and exact nucleotides context within influences the nanopore's resistance. This resistive effect is our sensor data, that is the current fluctuations as DNA passes though the pore. The nanopore is 6 nucleotides wide, and many models use this information in their approaches, while we're opted out of this technicality.
+As DNA strand pass through the nanopore, they are propelled by the current. However this current varies depending on specific DNA nucletide context within the nanopore, changing its resistance. We sample the curreny multiple times per second, 4000Hz in our dataset, and from this data we deduce passing DNA fragement. By design, nanopore is 6 nucleotides wide, and many models use this information internally, yet we opted our of it in hopes of simpler model, less feature engineering and better homopolymer detection.
+
 
 % \begin{figure}[!ht]
 % 	\begin{center}
@@ -79,8 +76,7 @@ Electrical current runs through the nanopore and exact nucleotides context withi
 \footnotetext{Figure adapted from https://nanoporetech.com/how-it-works}
 
 \section{Basecalling}
-
-The core of the decoding process is the basecalling step. Nowdays there's multiple basecalling options, what official and unoffical ones.
+The core of the decoding process is the basecalling step, that is translating the current sample to passed nucleotided sequence. Nowdays there's multiple basecalling options, what official and unoffical ones.
 
 Earlier models were Hidden Markov model(HMM)-based where hidden state modeled DNA sequence of length 6 (6-mer) in the nanopore. Pore models were used in computing emission probabilities.~\cite{loman2015complete,schreiber2015analysis,szalay2015novo,timp2012dna} and the recent open source HMM-based basecaller Nanocall~\cite{david2016nanocall}. Modern basecallers use RNN base models, and we opted out using CNN instead with beam search.
 
