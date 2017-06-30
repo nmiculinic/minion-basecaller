@@ -86,8 +86,6 @@ Earlier models were Hidden Markov model(HMM)-based where hidden state modeled DN
 
 We compared our model on R9 chemistry with Metrichorn (HMM based approach) and Albacore (RNN based approach). For detailed basecaller overview see the appendix~\ref{app:basecallers}.
 
-\section{Method}
-Instead of opting for the traditional path using HMM or newly adopted RNN we tried using CNN~(Convolutional neural networks)~\cite{lecun-98}, that is their residual version~\cite{he2016deep}. For loss, we used CTC (Connectionist temporal classification)~\cite{graves2006connectionist} between basecalled and the target sequence. The implementation used is open source warp-ctc~\cite{warpctc}. Main computation framework is tensorflow~\cite{tensorflow2015-whitepaper}.
 
 \section{Dataset}
 
@@ -109,6 +107,8 @@ Dataset used were E.Coli K-12 strands from~\cite{loman1-100k} and Lamba basecall
 		\end{tabular}
 	\end{table}
 \end{savenotes}
+
+\subsection{Data preprocessing}
 
 To help training process, the raw signal is split into smaller blocks that are used as inputs. For each Metrichor basecalled event is easy to determine the block it falls into using \textit{start} field. Using this information output given by Metrichor can be determined for each block.
 To correct errors produced by Metrichor and possibly increase the quality of data, each read is aligned to the reference. This is done using aligner GraphMap~\cite{sovic2016fast} that returns the best position in the genome, hopefully, the part of the genome from which read came from.
@@ -150,58 +150,26 @@ Overview of the entire learning pipeline is shown in figure~\ref{fg:train_pipe}.
 
 Due to CTC merged nature during decoding, that is in best matched path adjacent duplicates are merged into one, we preprocess the target nucleotide sequence with surrogate nucleotides, such that each second repeated nucleotide is its surrogate. Example provided in figure~\ref{fig:data_preprocessing}. All raw input data were normalized to zero mean and unit variance as it yield superiour perfomance with neural networks.
 
+\section{Method}
+Instead of opting for the traditional path using HMM or newly adopted RNN we tried using CNN~(Convolutional neural networks)~\cite{lecun-98}, that is their residual version~\cite{he2016deep}. For loss, we used CTC (Connectionist temporal classification)~\cite{graves2006connectionist} between basecalled and the target sequence. Other building blocks used are Batch normalization(BN)~\cite{BNORM} and pooling layers. No dropout~\cite{srivastava2014dropout} were used. We used open source warp-ctc~\cite{warpctc} GPU CTC loss implementaion and tensorflow~\cite{tensorflow2015-whitepaper}.
+
+The final model is a residual neural network consisting of 72 residual blocks BN\footnote{Batch normalization}-ELU\footnote{Exponential Linear Unit
+
+\begin{equation*}
+\text{ELU}(x)=
+    \begin{cases}
+        x, & \text{if}\ x>0 \\
+        \alpha (exp(x) - 1), & \text{otherwise}
+        \end{cases}    \\
+\end{equation*}
+
+}-CONV\footnote{1D convolutional layer}-BN-ELU-CONV, to grand total of 2 million parameters. The used model is a variant of architecture proposed in paper~\cite{identitet} with the difference of ELU being used as activation instead of ReLU as it is reported \cite{resnet-elu} to speeds up the learning process and improve accuracy as the depth increase.
+
+Each convolutional layer in this models uses 64 chanells with receptive field of 3. Because sequenced read is always shorter than the raw signal, pooling with kernel size two is used every 24 layers resulting in a reduction of dimensionality by factor 8. This is beneficial in faster learning, better generalization and increased basecalling speed.
+
+Training the model is the minimization of previously described CTC loss. It was done using Adam \cite{adam} with default parameters, and minibatch size 8. To prevent gradients exploding on bad inputs, they were clipped to a range [-2, 2]. We observed no overfitting due to large dataset size.
+
 \section{Results}
-
-\subsection{Final model}
-
-Best performing model used has 270 total layers, divided into 3 90-layer blocks. Between each 90 layers blocks, MaxPool layer is inserted with the receptive width of 2 and stride 2, to ease computation effort and add precision.
-
-Each block consists of 30 gated residual layers, each residual layer composed of 3 sequential Relu-Batch Normalization-Conv1D layers. Each convolutional layer uses the receptive width of 3 with 64 channels as output throughout the model.
-
-\subsection{Performance tables}
-
-As described in the previous section, the model was tested on E.Coli test set and compared to open source Nanonet and Albacore. Albacore doesn't have specific R9 chemistry mode, thus R9.4 was used instead which explains its lower performance on this task. Mean CIGAR operation are in table\ref{table:1} and KDE Match rate plot is in figure~\ref{fig:ecoli_match}.
-
-
-\begin{table}[h!]
-\centering
-\begin{tabular}{lrrrrrrr}
-\toprule
-{} &  Deletion rate &  Error rate &  Insertion rate &  Match rate &  Mismatch rate &  Read length\\
-\midrule
-albacore     &       0.060 &    0.194 &        0.070 &    0.867 &       0.063 &  9843 \\
-nanonet      &       0.088 &    0.190 &        0.040 &    0.897 &       0.062 &  5029 \\
-mincall\_m270 &       0.077 &    0.172 &        0.040 &   0.905 &       0.056 &  9378 \\
-\bottomrule
-\end{tabular}
-
-\caption{Mean performance metrics on E.Coli dataset, 5k sample}
-\label{table:1}
-\end{table}
-
-\begin{table}[h!]
-\centering
-\begin{tabular}{lr}
-\toprule
-{} &  Base pairs/second\\
-\midrule
-albacore      &      38000 \\
-nanonet       &       Slow \\
-mincall\_m270 &       3774 \\
-\bottomrule
-\end{tabular}
-\caption{Speed}
-\label{table:speed}
-\end{table}
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=\textwidth]{ecoli_match}
-\label{fig:ecoli_match}
-\end{figure}
-
-
-% We also tested and compared models on Human genome~\cite{jain2017nanopore} chromosome Y with R9.4 chemistry. Our model was only trained on R9 chemistry which explain the drop in performance compared to Albacore. In our tests, Nanonet produces significantly shorter read then data length and generally unusable performance on this dataset despite supporting R9.4 chemistry used in the dataset.
 
 \section{Conclusion and further work}
 
