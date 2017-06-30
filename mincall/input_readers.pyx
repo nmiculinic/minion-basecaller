@@ -257,7 +257,7 @@ class MinCallAlignedRaw(InputReader):
         return AlignedRawAbstract.input_fn(self, *args, **kwargs)
 
     def preprocessSignal(self, signal):
-        return (signal - 646.11133) / 75.673653
+        return (signal - 652.56447114751563) / 189.0927367080821
 
     def get_signal(self, fast5_path):
         with h5py.File(fast5_path, 'r') as h5:
