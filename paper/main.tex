@@ -180,6 +180,8 @@ Different methods for evaluation were used to get clearer information about each
 A portion of the read length that aligns as correctly is called match\_rate. Same goes for mismatches and insertions.
 Sum of all matches, mismatches, and insertions is equal to the reads length \ref{eq:read_len}. For specific details see appendix~\ref{app:evaluation:CIGAR}. Results on E.Coli test set with Graphmap aligner are shown in table~\ref{tbl:ecoli_rates}. Evaluation with BWM-MEM and on lambda can be found in appendix~\ref{app:evaluation:CIGAR} under tables~\ref{tbl:ecoli_rates_bwa},~\ref{tbl:lambda_rates} and~\ref{tbl:lambda_rates_bwa}. Furthermore we plot Kernel Density estimation(KDE) plots for each mentioned statistic on E.Coli dataset in figure~\ref{fg:ecoli_kde}.
 
+In appendix~\ref{app:evaluation:CIGAR} the histogram figure~\ref{fg:cigar_op_dist} shows how matches, mismatches, insertions, and deletions are distributed across the reads. It is shown that mismatches and insertion occur more frequently at the beginnings and the ends of the reads. This is not only the case for the developed basecaller, but all other show the same property. This could be due to lack of context information from both sides when edges are base called.
+
 \begin{table}[]
 	\caption{Alignment specifications of Ecoli R9 basecalled reads using GraphMap}
 	\label{tbl:ecoli_rates}
@@ -339,5 +341,15 @@ deletion\_rate = \dfrac{n\_deletion}{read\_length}
 		\bottomrule
 	\end{tabular}
 \end{table}
+
+
+\begin{figure}[!ht]
+	\begin{center}
+		\includegraphics[width=1\textwidth]{./imgs/operation_distributed_r9.png}
+		\caption{Histogram of alignment operations over relative position inside of read}
+		\label{fg:cigar_op_dist}
+	\end{center}
+\end{figure}
+
 
 \end{document}
