@@ -167,7 +167,7 @@ The final model is a residual neural network consisting of 72 residual blocks BN
 
 Each convolutional layer in this models uses 64 chanells with receptive field of 3. Because sequenced read is always shorter than the raw signal, pooling with kernel size two is used every 24 layers resulting in a reduction of dimensionality by factor 8. This is beneficial in faster learning, better generalization and increased basecalling speed.
 
-Training the model is the minimization of previously described CTC loss. It was done using Adam \cite{adam} with default parameters, and minibatch size 8. To prevent gradients exploding on bad inputs, they were clipped to a range [-2, 2]. We observed no overfitting due to large dataset size.
+Training the model is the minimization of previously described CTC loss. It was done using Adam~\cite{adam} with default parameters, and exponentially decaying learning rate starting from 1e-3 and decay rate of 5e-6 over 100k steps\footnote{We use tf.train.exponential\_decay where current learning rate, lr is $lr=\text{initial\_lr} \cdot \text{decay\_rate}^\frac{\text{global\_step}}{\text{decay\_step}}$} and minibatch size 8. To prevent gradients exploding on bad inputs, they were clipped to a range [-2, 2]. We observed no overfitting due to large dataset size.
 
 \section{Results}
 
