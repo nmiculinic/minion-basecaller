@@ -1,7 +1,10 @@
 \documentclass[runningheads,a4paper]{llncs}
 \usepackage{makeidx}
+\usepackage{makecell}
 \usepackage{booktabs}
 \usepackage{mathtools}
+\usepackage{footnote}
+\usepackage{nccmath}
 \usepackage{amsmath}
 \usepackage{amsfonts}
 % \usepackage{amssymb}
@@ -9,12 +12,13 @@
 \usepackage[utf8]{inputenc}
 \usepackage{acronym}
 \usepackage{geometry}
-\usepackage{hyperref}
+\usepackage[hidelinks]{hyperref}
+% \hypersetup{pdftex,colorlinks=true,allcolors=blue
 \usepackage{float}
 \usepackage{graphicx}
 \usepackage{cite}
-\usepackage{hyperref}
-% \hypersetup{pdftex,colorlinks=true,allcolors=blue
+\usepackage{verbatimbox}
+
 
 \graphicspath{ {Figures/}{imgs/} }
 \begin{document}
@@ -87,16 +91,66 @@ We compared our model on R9 chemistry with Metrichorn (HMM based approach) and A
 \section{Method}
 Instead of opting for the traditional path using HMM or newly adopted RNN we tried using CNN~(Convolutional neural networks)~\cite{lecun-98}, that is their residual version~\cite{he2016deep}. For loss, we used CTC (Connectionist temporal classification)~\cite{graves2006connectionist} between basecalled and the target sequence. The implementation used is open source warp-ctc~\cite{warpctc}. Main computation framework is tensorflow~\cite{tensorflow2015-whitepaper}.
 
-\section{Data}
+\section{Dataset}
 
-Dataset used were E.Coli K-12 strands from~\cite{loman1-100k} and Lamba basecalling\footnote{Acquired from doc. dr. sc. Petra Korać i dr.sc. Paula Dobrinić}. In this research, models were trained on the E. Coli K-12 strand. (Should I cite someone for strand). Data was split into train and test subset, such that aligned reads map to different reference genome parts. For initial model data bootstrapping metrichorn was used, version (Ask Someone?).
+Dataset used were E.Coli K-12 strands from~\cite{loman1-100k} and Lamba basecalling\footnote{Acquired from doc. dr. sc. Petra Korać i dr.sc. Paula Dobrinić}. Both used datasets show in table \ref{tbl:datasets} have been previously have passed through MinKNOW and had been basecalled by Metrichor. As 1D read analysis was the focus of this paper, only those reads were used.
 
-The fast5 input training files were further split into smaller training blocks, consisting of fixed block size on raw signal. For each block target sequence, basecalled data is used in following way.
+\begin{savenotes}
+	\begin{table}[htb]
+		\caption{Used datasets}
+		\label{tbl:datasets}
+		\centering
 
-We're using basecalled knowledge which tells us on each raw read part which 6-mer were currently in the nanopore. Using this data, we get the intermediate target sequence for each block. To correct for model errors, we use aligned information, that is reference genome and alignment data (cigar string) to correct that information, yielding finalized target sequence. For further performance, we skip first and last training block, since most error aggregate on edges.
+		\begin{tabular}{lcc| c}
+			\toprule
+			{} &  \thead{Number of reads} &   \thead{Total bases \lbrack bp\rbrack\footnote{Total number of bases calle by Metrichor}} &    \thead{Whole genome size \lbrack bp\rbrack} \\
+			\midrule
+			\textit{{E. Coli}}\footnote{R9 sequencing data from \url{http://lab.loman.net/2016/07/30/nanopore-r9-data-release/}, reference taken from \url{https://www.ncbi.nlm.nih.gov/nuccore/48994873}} & 164471 & 1 481 687 490 & 4 639 675\\
+			\textit{lambda}\footnote{Internal dataset acquired from doc.~dr.sc.~Petra Korać and dr.sc.~Paula Dobrinić, reference taken from \url{https://www.ncbi.nlm.nih.gov/nuccore/NC_001416.1}}   & 86 &  466 465 & 48 502  \\
+			\bottomrule
+		\end{tabular}
+	\end{table}
+\end{savenotes}
 
-Adjacent matching bases are separated with surrogate one, for example, AAA -> AA'A for reasons described in the following section.
+To help training process, the raw signal is split into smaller blocks that are used as inputs. For each Metrichor basecalled event is easy to determine the block it falls into using \textit{start} field. Using this information output given by Metrichor can be determined for each block.
+To correct errors produced by Metrichor and possibly increase the quality of data, each read is aligned to the reference. This is done using aligner GraphMap~\cite{sovic2016fast} that returns the best position in the genome, hopefully, the part of the genome from which read came from.
+Alignment part in the genome is used as a target. Using CIGAR string returned by aligner we can correct Metrichor data and get target output for each block. This process is shown in figure~\ref{fg:data_correction}.
 
+\begin{figure}[!ht]
+	\begin{center}
+		\includegraphics[width=1\textwidth]{./imgs/train_data_correction.png}
+		\caption{Dataset preparation}
+		\label{fg:data_correction}
+	\end{center}
+\end{figure}
+
+
+To eliminate the possibility of overfitting to the known reference, the model is trained and tested on reads from different organisms. Due to limited amount of public available raw nanopore sequence data, ecoli was \emph{divided} into two regions.
+Reads were split into train and test portions, depending on which region of ecoli they align.
+If read aligns inside first 70\% of the ecoli, it is placed into train set, and if it aligns to the second portion, it is placed into test set. Reads whose alignment overlaps train and test region are not used. Important to note that ecoli genome, and genomes of the majority of other bacteria, is cyclical, so reads with alignments that wrap over edges are also discarded. Total train set consist of over 110 thousand reads.
+Overview of the entire learning pipeline is shown in figure \ref{fg:train_pipe}.
+
+\begin{figure}[!ht]
+	\begin{center}
+		\includegraphics[width=0.7\textwidth]{./imgs/train_pipeline.png}
+		\caption{Training pipeline overview}
+		\label{fg:train_pipe}
+	\end{center}
+\end{figure}
+
+\begin{verbbox}
+    Target      :  A  G  A  A  A
+    Preprocessed:  A  G  A  A' A
+\end{verbbox}
+
+\begin{figure}[!h]
+    \centering
+    \theverbbox
+    \caption{Target nucleotide sequence preprocessing. A' is surrogate nucleotide during training. After basecalling surrogate nucleotied are converted to original form.}
+    \label{fig:data_preprocessing}
+\end{figure}
+
+Due to CTC merged nature during decoding, that is in best matched path adjacent duplicates are merged into one, we preprocess the target nucleotide sequence with surrogate nucleotides, such that each second repeated nucleotide is its surrogate. Example provided in figure~\ref{fig:data_preprocessing}.
 
 \section{Results}
 
