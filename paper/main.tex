@@ -55,7 +55,6 @@ In the MinION device, single-stranded DNA fragments move through nanopores, whic
 The MinION device typically yields reads several thousands bases long, even couple hundred thousand bases long reads were repoted~\cite{loman1-100k,loman2-800k}. However the cost in on accuracy, signicifantly lower than older, more reliable and expensive sequencing methods.
 
 The exact error rate metric is unreliable since multiple pipeline tools could be the issue. First the sample is prepared, hopefully, uncontaminated and matching reference genome as close as possible, then sequenced using the MinION device obtaining raw data. Next, our model (or other groups ones) come along, basecall the sequence. To evaluate error rate metric basecalled read is aligned to the reference genome using aligners with their own errors/biases, mostly commonly used BWA-MEM~\cite{li2013aligning} and Graphmap~\cite{sovic2016fast}.
-\section{Background}
 
 \section{Sequencing overview}
 Conceptually, the MinION sequencer works as follows. First, DNA is sheared into smaller DNA fragments and adapters are ligated to either end of the fragments. The resulting DNA fragments pass through a protein embedded in a membrane via a nanometre-sized channel, a nanopore. A single DNA strand passes through the pore. Optionally, hairpin protein adapter can merge two DNA strands, allowing both template and complement read passing through the nanopore sequentially for more accurate reads. This technique is referred as 2D reads, while we focus on 1D reads containing only template DNA and no hairpin adapter.
@@ -127,7 +126,7 @@ Alignment part in the genome is used as a target. Using CIGAR string returned by
 To eliminate the possibility of overfitting to the known reference, the model is trained and tested on reads from different organisms. Due to limited amount of public available raw nanopore sequence data, ecoli was \emph{divided} into two regions.
 Reads were split into train and test portions, depending on which region of ecoli they align.
 If read aligns inside first 70\% of the ecoli, it is placed into train set, and if it aligns to the second portion, it is placed into test set. Reads whose alignment overlaps train and test region are not used. Important to note that ecoli genome, and genomes of the majority of other bacteria, is cyclical, so reads with alignments that wrap over edges are also discarded. Total train set consist of over 110 thousand reads.
-Overview of the entire learning pipeline is shown in figure \ref{fg:train_pipe}.
+Overview of the entire learning pipeline is shown in figure~\ref{fg:train_pipe}.
 
 \begin{figure}[!ht]
 	\begin{center}
@@ -149,7 +148,7 @@ Overview of the entire learning pipeline is shown in figure \ref{fg:train_pipe}.
     \label{fig:data_preprocessing}
 \end{figure}
 
-Due to CTC merged nature during decoding, that is in best matched path adjacent duplicates are merged into one, we preprocess the target nucleotide sequence with surrogate nucleotides, such that each second repeated nucleotide is its surrogate. Example provided in figure~\ref{fig:data_preprocessing}.
+Due to CTC merged nature during decoding, that is in best matched path adjacent duplicates are merged into one, we preprocess the target nucleotide sequence with surrogate nucleotides, such that each second repeated nucleotide is its surrogate. Example provided in figure~\ref{fig:data_preprocessing}. All raw input data were normalized to zero mean and unit variance.
 
 \section{Results}
 
