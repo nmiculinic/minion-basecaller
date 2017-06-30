@@ -148,7 +148,7 @@ Overview of the entire learning pipeline is shown in figure~\ref{fg:train_pipe}.
     \label{fig:data_preprocessing}
 \end{figure}
 
-Due to CTC merged nature during decoding, that is in best matched path adjacent duplicates are merged into one, we preprocess the target nucleotide sequence with surrogate nucleotides, such that each second repeated nucleotide is its surrogate. Example provided in figure~\ref{fig:data_preprocessing}. All raw input data were normalized to zero mean and unit variance.
+Due to CTC merged nature during decoding, that is in best matched path adjacent duplicates are merged into one, we preprocess the target nucleotide sequence with surrogate nucleotides, such that each second repeated nucleotide is its surrogate. Example provided in figure~\ref{fig:data_preprocessing}. All raw input data were normalized to zero mean and unit variance as it yield superiour perfomance with neural networks.
 
 \section{Results}
 
