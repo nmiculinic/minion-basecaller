@@ -57,17 +57,17 @@ The MinION device typically yields reads several thousands bases long, even coup
 The exact error rate metric is unreliable since multiple pipeline tools could be the issue. First the sample is prepared, hopefully, uncontaminated and matching reference genome as close as possible, then sequenced using the MinION device obtaining raw data. Next, our model (or other groups ones) come along, basecall the sequence. To evaluate error rate metric basecalled read is aligned to the reference genome using aligners with their own errors/biases, mostly commonly used BWA-MEM~\cite{li2013aligning} and Graphmap~\cite{sovic2016fast}.
 
 \section{Sequencing overview}
-Conceptually, the MinION sequencer works as follows. First, DNA is sheared into smaller DNA fragments and adapters are ligated to either end of the fragments. The resulting DNA fragments pass through a protein embedded in a membrane via a nanometre-sized channel, a nanopore. A single DNA strand passes through the pore. Optionally, hairpin protein adapter can merge two DNA strands, allowing both template and complement read passing through the nanopore sequentially for more accurate reads. This technique is referred as 2D reads, while we focus on 1D reads containing only template DNA and no hairpin adapter.
+Conceptually, the MinION sequencer works as follows. It's variation on now standard shotgun sequecing approach. First, DNA is sheared into smaller DNA fragments and adapters are ligated to either end of the fragments. The resulting DNA fragments pass through a protein embedded in a membrane via a nanometre-sized channel, a nanopore. A single DNA strand passes through the pore. Optionally, hairpin protein adapter can merge two DNA strands, allowing both template and complement read passing through the nanopore sequentially for more accurate reads. This technique is referred as 2D reads, while we focus on 1D reads containing only template DNA and no hairpin adapter.
 
 Electrical current runs through the nanopore and exact nucleotides context within influences the nanopore's resistance. This resistive effect is our sensor data, that is the current fluctuations as DNA passes though the pore. The nanopore is 6 nucleotides wide, and many models use this information in their approaches, while we're opted out of this technicality.
 
-\begin{figure}[!ht]
-	\begin{center}
-		\includegraphics[width=0.6\textwidth]{./imgs/sequencing.png}
-		\caption{Depiction of shotgun sequencing}
-		\label{fg:sequencing}
-	\end{center}
-\end{figure}
+% \begin{figure}[!ht]
+% 	\begin{center}
+% 		\includegraphics[width=0.6\textwidth]{./imgs/sequencing.png}
+% 		\caption{Depiction of shotgun sequencing}
+% 		\label{fg:sequencing}
+% 	\end{center}
+% \end{figure}
 
 \begin{figure}[!ht]
 	\begin{center}
