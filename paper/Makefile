@@ -10,10 +10,11 @@ TARGET=main
 all: $(TARGET)
 
 $(TARGET): $(TARGET).tex $(BIB).bib
-	$(LATEXCOMPILER) $(TARGET).tex
-	$(BIBCOMPILER) $(TARGET)
-	$(LATEXCOMPILER) $(TARGET).tex
-	$(LATEXCOMPILER) $(TARGET).tex
+	# $(LATEXCOMPILER) $(TARGET).tex
+	# $(BIBCOMPILER) $(TARGET)
+	# $(LATEXCOMPILER) $(TARGET).tex
+	# $(LATEXCOMPILER) $(TARGET).tex
+	latexmk -pdf $(TARGET).tex
 
 
 .PHONY: clean

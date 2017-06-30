@@ -23,12 +23,11 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
     """
 
     net = batch_normalization(net, decay=0.999, scope="bn")
-
     for block in range(1, 3):
         with tf.variable_scope("block%d" % block):
             for layer in range(kwargs['num_layers']):
                 with tf.variable_scope('layer_%d' % layer):
-                    net = conv_1d(net, 64, 3)
+                    net = conv_1d(net, 64, 5)
                     net = selu(net)
             net = max_pool_1d(net, 2)
 
@@ -48,7 +47,7 @@ def model_setup_params(hyper):
         block_size_x=4 * 600,
         block_size_y=630,
         in_data=input_readers.MinCallAlignedRaw(),
-        num_blocks=3,
+        num_blocks=1,
         batch_size=16,
         max_reach=8 * 20,  # 240
         queue_cap=300,
@@ -57,7 +56,7 @@ def model_setup_params(hyper):
         shrink_factor=4,
         dtype=tf.float32,
         model_fn=model_fn,
-        n_samples_per_ref=5,
+        n_samples_per_ref=7,
         lr_fn=lambda global_step: tf.train.exponential_decay(
             hyper['initial_lr'], global_step, 100000, hyper['decay_factor']),
         hyper=hyper,
@@ -74,7 +73,7 @@ sigopt_params = [
 default_params = {
     'initial_lr': 0.0022528366355169436,
     'decay_factor': 0.000005,
-    'num_layers': 5,
+    'num_layers': 30,
 }
 
 
