@@ -81,10 +81,13 @@ Earlier models were Hidden Markov model(HMM)-based where hidden state modeled DN
 
 We compared our model on R9 chemistry with Metrichorn (HMM based approach) and Albacore (RNN based approach). For detailed basecaller overview  see the appendix~\ref{app:basecallers}.
 
-
 \section{Method}
 
-Instead of opting for the traditional path using HMM or newly adopted RNN we tried using CNN~(Convolutional neural networks)~\cite{lecun-98}, that is their residual version~\cite{he2016deep}. We opted out for gated residual network variant~\cite{savarese2016learning}. For loss, we used CTC (Connectionist temporal classification)~\cite{graves2006connectionist} between basecalled and the target sequence. The implementation used is open source warp-ctc~\cite{warpctc}. Main computation framework is tensorflow~\cite{tensorflow2015-whitepaper}
+Instead of opting for the traditional path using HMM or newly adopted RNN we tried using CNN~(Convolutional neural networks)~\cite{lecun-98}, that is their residual version~\cite{he2016deep}. We opted out for gated residual network variant~\cite{savarese2016learning}. For loss, we used CTC (Connectionist temporal classification)~\cite{graves2006connectionist} between basecalled and the target sequence. The implementation used is open source warp-ctc~\cite{warpctc}. Main computation framework is tensorflow~\cite{tensorflow2015-whitepaper}.
+
+\subsection{CTC}
+In this subsection we go into more detail outlining CTC loss and how we applied it.
+
 
 \section{Data preprocessing}
 
@@ -198,11 +201,14 @@ With the release of R9 chemistry, this model was replaced by a more accurate rec
 
 \textit{Albacore} is basecaller by Oxford Nanopore Technologies ready for production and actively supported.
 It is available to the Nanopore Community served as a binary. The source code of Albacore was not provided and is only available through the ONT Developer Channel. Tool supports only R9.4 and future R9.5 version of the chemistry. For R9 tests in this paper we used R9.4 chemisty setting as instructed on ONT forums.
+
 \textit{Nanonet}\footnote{\url{https://github.com/nanoporetech/nanonet/}} uses the same neural network that is used in Albacore but it is continually under development and does contain features such as error handling or logging needed for production use. It uses \textit{CURRENNT} library for running neural networks. It supportes basecalling of both R9 and R9.4 chemistry versions. However in our experiments it was painfully slow, which was as expected due to it's classification as not production ready.
+
 \textit{Scrappie}\footnote{\url{https://github.com/nanoporetech/scrappie}} is another basecaller by Oxford Nanopore Technologies. Similar to Nanonet, it is the platform for ongoing development. Scrappie is reported to be the first basecaller  that specifically address homopolymer base calling. It became publicly available just recently in June, 2017 and supports R9.4 and future R9.5 data.
 
 \subsection{Third-party basecallers}
-\textit{Nanocall} \cite{David046086} was the first third-party open source basecaller for nanopore data. It uses HMM approach like the original R7 Metrichor. Nanocall does not support newer chemistries after R7.3.
-\textit{DeepNano} \cite{Boza2017}  was the first open-source basecaller based on neural networks. It uses bidirectional recurrent neural networks implemented in Python, using the Theano library. When released, originally only supported R7 chemistry, but support for R9 and R9.4 was added recently.
+\textit{Nanocall}~\cite{David046086} was the first third-party open source basecaller for nanopore data. It uses HMM approach like the original R7 Metrichor. Nanocall does not support newer chemistries after R7.3.
+
+\textit{DeepNano}~\cite{Boza2017}  was the first open-source basecaller based on neural networks. It uses bidirectional recurrent neural networks implemented in Python, using the Theano library. When released, originally only supported R7 chemistry, but support for R9 and R9.4 was added recently.
 
 \end{document}
