@@ -46,11 +46,9 @@ Electrical Engineering and Computing (FER), Zagreb, Croatia}
 In recent years, deep learning methods significantly improved the state-of-the-art in multiple domains such as computer vision, speech recognition, and natural language processing \cite{LeCun:1998:CNI:303568.303704}\cite{NIPS2012_4824}.
 In this paper, we present application of deep learning in the field of  Bioinformatics for DNA basecalling problem.
 
-Oxford Nanopore Technology's MinION nanopore sequencing platform~\cite{mikheyev2014first} is the first portable DNA sequencing device. It's small weight, of only 90 grams, low capital cost, and long read length combined with high-throughput, real-time data analysis, and decent accuracy yield promising results in various applications. From clinical application such as monitoring infectious disease outbreaks~\cite{judge2015early}\cite{quick2016real}, characterizing structural variants in cancer\cite{norris2016nanopore} and even full human genome assembly~\cite{jain2017nanopore}.
+Oxford Nanopore Technology's MinION nanopore sequencing platform~\cite{mikheyev2014first} is the first portable DNA sequencing device. It's light, only 90 grams. It's has low capital cost. It's featuring long read length combined with high-throughput, real-time data analysis, and decent accuracy. Therefore it yields promising results in various applications. From clinical application such as monitoring infectious disease outbreaks~\cite{judge2015early}\cite{quick2016real}, characterizing structural variants in cancer\cite{norris2016nanopore} and even full human genome assembly~\cite{jain2017nanopore}.
 
 Although MinION is able to produce long reads, even up to 882 kb~\cite{loman1-100k,loman2-800k}, they have a high sequencing error rate. This has been somewhat alleviated with new R9 pore model, replacing older R7 ones. In this paper, we show that this error rate can be reduced by our approach with the properly trained neural network model.
-
-The exact error rate metric is unreliable since multiple pipeline tools could be the issue. First the sample is prepared, hopefully, uncontaminated and matching reference genome as close as possible then sequenced using the MinION device obtaining raw data. Next, our model (or any other) comes along and basecalls the sequences. To evaluate error rate metric basecalled read is aligned to the reference genome using aligners with their own errors/biases, most commonly used BWA-MEM~\cite{li2013aligning} and Graphmap~\cite{sovic2016fast}.
 
 \subsection{Sequencing overview}
 Conceptually, the MinION sequencer works as follows. It's a variation on now standard shotgun sequencing approach. First, DNA is sheared into smaller DNA fragments and adapters are ligated to either end of the fragments. The resulting DNA fragments pass through a protein embedded in a membrane via a nanometre-sized channel, a nanopore. A single DNA strand passes through the pore. Optionally, hairpin protein adapter can merge two DNA strands, allowing both template and complement read passing through the nanopore sequentially for more accurate reads. This technique is referred as 2D reads, while we focus on 1D reads containing only template DNA and no hairpin adapter.
@@ -75,7 +73,7 @@ As DNA strand passes through the nanopore, they are propelled by the current. Ho
 \end{figure}
 \footnotetext{Figure adapted from https://nanoporetech.com/how-it-works}
 
-\section{Related work}
+\subsection{Related work}
 The core of the decoding process is the basecalling step, that is translating the current samples to the nucleotide sequence. Nowadays there are multiple basecalling options, what official and unofficial ones.
 
 Earlier models were Hidden Markov model (HMM)-based where hidden state modeled DNA sequence of length 6 (6-mer) in the nanopore. Pore models were used in computing emission probabilities.~\cite{loman2015complete,schreiber2015analysis,szalay2015novo,timp2012dna} and the recent open source HMM-based basecaller Nanocall~\cite{david2016nanocall}. Modern basecallers use RNN base models, and we opted out using CNN instead with beam search.
@@ -107,7 +105,9 @@ Dataset used were E.Coli K-12 strands from~\cite{loman1-100k} and Lamba basecall
 \subsection{Data preprocessing}
 
 To help training process, the raw signal is split into smaller blocks that are used as inputs. For each Metrichor basecalled event is easy to determine the block it falls into using \emph{start} field. Using this information output given by Metrichor can be determined for each block.
+
 To correct errors produced by Metrichor and possibly increase the quality of data, each read is aligned to the reference. This is done using aligner GraphMap~\cite{sovic2016fast} that returns the best position in the genome, hopefully, the part of the genome from which read came from.
+
 Alignment part in the genome is used as a target. Using CIGAR string returned by aligner we can correct Metrichor data and get target output for each block. This process is shown in figure~\ref{fg:data_correction}.
 
 \begin{figure}[!ht]
@@ -171,8 +171,10 @@ During testing, we tried ReLu and PrELU~\cite{prelu} with no significant result 
 \section{Results}
 
 Developed tool was compared with other available basecallers that support R9 chemistry. This includes third-party basically DeepNano and official basecallers by Oxford Nanopore (cloud-based Metrichor and Nanonet).
-The fact that ground truth is not known makes evaluation difficult.
-Different methods for evaluation were used to get clearer information about each basecaller.
+
+The exact error rate metric is unreliable since multiple pipeline tools could be the issue. First the sample is prepared, hopefully, uncontaminated and matching reference genome as close as possible then sequenced using the MinION device obtaining raw data. Next, our model (or any other) comes along and basecalls the sequences. To evaluate error rate metric basecalled read is aligned to the reference genome using aligners with their own errors/biases. We used standard BWA-MEM~\cite{li2013aligning} and Graphmap~\cite{sovic2016fast}.
+
+The fact that ground truth is not known makes evaluation difficult. Different methods for evaluation were used to get clearer information about each basecaller.
 
 \subsection{Per read metrics}
 \label{subs:read_metrics}
