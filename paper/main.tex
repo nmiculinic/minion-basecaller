@@ -34,7 +34,7 @@ Electrical Engineering and Computing (FER), Zagreb, Croatia}
 % \tableofcontents
 
 \begin{abstract}
-    The Oxford Nanopore Technologies's MinION is the first portable DNA sequencing device. It's capable of producing long reads, over 100 kBp were reported, however, is has significantly higher error rate than other methods.
+    The Oxford Nanopore Technologies's MinION is the first portable DNA sequencing device. It's capable of producing long reads, over 100 kBp were reported, however, it has significantly higher error rate than other methods.
 
     In this study, we created MinCall, an end2end basecaller model for the MinION. The model is based on deep learning and uses convolutional neural networks (CNN) in its implementation. For extra performances is uses cutting edge deep learning techniques and architectures, batch normalization and Connectionist Temporal Classification (CTC) loss.
 
@@ -50,12 +50,12 @@ Oxford Nanopore Technology's MinION nanopore sequencing platform~\cite{mikheyev2
 
 Although MinION is able to produce long reads, even up to 882 kb~\cite{loman1-100k,loman2-800k}, they have a high sequencing error rate. This has been somewhat alleviated with new R9 pore model, replacing older R7 ones. In this paper, we show that this error rate can be reduced by our approach with properly trained neural network model.
 
-The exact error rate metric is unreliable since multiple pipeline tools could be the issue. First the sample is prepared, hopefully, uncontaminated and matching reference genome as close as possible, then sequenced using the MinION device obtaining raw data. Next, our model (or other groups ones) come along, basecall the sequence. To evaluate error rate metric basecalled read is aligned to the reference genome using aligners with their own errors/biases, mostly commonly used BWA-MEM~\cite{li2013aligning} and Graphmap~\cite{sovic2016fast}.
+The exact error rate metric is unreliable since multiple pipeline tools could be the issue. First the sample is prepared, hopefully, uncontaminated and matching reference genome as close as possible, then sequenced using the MinION device obtaining raw data. Next, our model (or any other) comes along and basecalls the sequences. To evaluate error rate metric basecalled read is aligned to the reference genome using aligners with their own errors/biases, most commonly used BWA-MEM~\cite{li2013aligning} and Graphmap~\cite{sovic2016fast}.
 
 \section{Sequencing overview}
-Conceptually, the MinION sequencer works as follows. It's variation on now standard shotgun sequecing approach. First, DNA is sheared into smaller DNA fragments and adapters are ligated to either end of the fragments. The resulting DNA fragments pass through a protein embedded in a membrane via a nanometre-sized channel, a nanopore. A single DNA strand passes through the pore. Optionally, hairpin protein adapter can merge two DNA strands, allowing both template and complement read passing through the nanopore sequentially for more accurate reads. This technique is referred as 2D reads, while we focus on 1D reads containing only template DNA and no hairpin adapter.
+Conceptually, the MinION sequencer works as follows. It's a variation on now standard shotgun sequencing approach. First, DNA is sheared into smaller DNA fragments and adapters are ligated to either end of the fragments. The resulting DNA fragments pass through a protein embedded in a membrane via a nanometre-sized channel, a nanopore. A single DNA strand passes through the pore. Optionally, hairpin protein adapter can merge two DNA strands, allowing both template and complement read passing through the nanopore sequentially for more accurate reads. This technique is referred as 2D reads, while we focus on 1D reads containing only template DNA and no hairpin adapter.
 
-As DNA strand pass through the nanopore, they are propelled by the current. However this current varies depending on specific DNA nucletide context within the nanopore, changing its resistance. We sample the curreny multiple times per second, 4000Hz in our dataset, and from this data we deduce passing DNA fragement. By design, nanopore is 6 nucleotides wide, and many models use this information internally, yet we opted our of it in hopes of simpler model, less feature engineering and better homopolymer detection.
+As DNA strand passes through the nanopore, they are propelled by the current. However, this current varies depending on specific nucleotide context within the nanopore, changing its resistance. We sample the currency multiple times per second, 4000Hz in our dataset, and from this data, we deduce passing DNA fragment. By design, the nanopore is 6 nucleotides wide, and many models use this information internally, yet we opted ours of it in hopes of a simpler model, less feature engineering, and better homopolymer detection.
 
 
 % \begin{figure}[!ht]
@@ -76,16 +76,16 @@ As DNA strand pass through the nanopore, they are propelled by the current. Howe
 \footnotetext{Figure adapted from https://nanoporetech.com/how-it-works}
 
 \section{Basecalling}
-The core of the decoding process is the basecalling step, that is translating the current sample to passed nucleotided sequence. Nowdays there's multiple basecalling options, what official and unoffical ones.
+The core of the decoding process is the basecalling step, that is translating the current samples to the nucleotide sequence. Nowadays there are multiple basecalling options, what official and unofficial ones.
 
 Earlier models were Hidden Markov model(HMM)-based where hidden state modeled DNA sequence of length 6 (6-mer) in the nanopore. Pore models were used in computing emission probabilities.~\cite{loman2015complete,schreiber2015analysis,szalay2015novo,timp2012dna} and the recent open source HMM-based basecaller Nanocall~\cite{david2016nanocall}. Modern basecallers use RNN base models, and we opted out using CNN instead with beam search.
 
-We compared our model on R9 chemistry with Metrichorn (HMM based approach) and Albacore (RNN based approach). For detailed basecaller overview see the appendix~\ref{app:basecallers}.
+We compared our model on R9 chemistry with Metrichor (HMM based approach), Nanonet and DeepNano (RNN based approaches). For detailed basecaller overview see the appendix~\ref{app:basecallers}.
 
 
 \section{Dataset}
 
-Dataset used were E.Coli K-12 strands from~\cite{loman1-100k} and Lamba basecalling\footnote{Acquired from doc. dr. sc. Petra Korać i dr.sc. Paula Dobrinić}. Both used datasets show in table \ref{tbl:datasets} have been previously have passed through MinKNOW and had been basecalled by Metrichor. As 1D read analysis was the focus of this paper, only those reads were used.
+Dataset used were E.Coli K-12 strands from~\cite{loman1-100k} and Lamba basecalling\footnote{Acquired from doc. dr. sc. Petra Korać i dr.sc. Paula Dobrinić}. Both used datasets show in table \ref{tbl:datasets} have been previously passed through MinKNOW and had been basecalled by Metrichor. As 1D read analysis was the focus of this paper, only those reads were used.
 
 \begin{savenotes}
 	\begin{table}[htb]
@@ -119,9 +119,9 @@ Alignment part in the genome is used as a target. Using CIGAR string returned by
 \end{figure}
 
 
-To eliminate the possibility of overfitting to the known reference, the model is trained and tested on reads from different organisms. Due to limited amount of public available raw nanopore sequence data, ecoli was \emph{divided} into two regions.
-Reads were split into train and test portions, depending on which region of ecoli they align.
-If read aligns inside first 70\% of the ecoli, it is placed into train set, and if it aligns to the second portion, it is placed into test set. Reads whose alignment overlaps train and test region are not used. Important to note that ecoli genome, and genomes of the majority of other bacteria, is cyclical, so reads with alignments that wrap over edges are also discarded. Total train set consist of over 110 thousand reads.
+To eliminate the possibility of overfitting to the known reference, the model is trained and tested on reads from different organisms. Due to the limited amount of public available raw nanopore sequence data, E. Coli was \emph{divided} into two regions.
+Reads were split into train and test portions, depending on which region of E. Coli they align.
+If read aligns inside first 70\% of the E. Coli, it is placed into train set, and if it aligns to the second portion, it is placed into test set. Reads whose alignment overlaps train and test region are not used. Important to note that E. Coli genome, and genomes of the majority of other bacteria, is cyclical, so reads with alignments that wrap over edges are also discarded. Total train set consist of over 110 thousand reads.
 Overview of the entire learning pipeline is shown in figure~\ref{fg:train_pipe}.
 
 \begin{figure}[!ht]
@@ -144,28 +144,29 @@ Overview of the entire learning pipeline is shown in figure~\ref{fg:train_pipe}.
     \label{fig:data_preprocessing}
 \end{figure}
 
-Due to CTC merged nature during decoding, that is in best matched path adjacent duplicates are merged into one, we preprocess the target nucleotide sequence with surrogate nucleotides, such that each second repeated nucleotide is its surrogate. Example provided in figure~\ref{fig:data_preprocessing}. All raw input data were normalized to zero mean and unit variance as it yield superiour perfomance with neural networks.
+Due to CTC merged nature during decoding, adjacent duplicates are merged into one, we preprocess the target nucleotide sequence with surrogate nucleotides, such that each second repeated nucleotide is replaced with its surrogate. Example provided in figure~\ref{fig:data_preprocessing}. All raw input data were normalized to zero mean and unit variance as it yields superior performance with neural networks.
 
 \section{Method}
-Instead of opting for the traditional path using HMM or newly adopted RNN we tried using CNN~(Convolutional neural networks)~\cite{lecun-98}, that is their residual version~\cite{he2016deep}. For loss, we used CTC (Connectionist temporal classification)~\cite{graves2006connectionist} between basecalled and the target sequence. Other building blocks used are Batch normalization(BN)~\cite{BNORM} and pooling layers. No dropout~\cite{srivastava2014dropout} were used. We used open source warp-ctc~\cite{warpctc} GPU CTC loss implementaion and tensorflow~\cite{tensorflow2015-whitepaper}.
+Instead of opting for the traditional path using HMM or newly adopted RNN we tried using CNN~(Convolutional neural networks)~\cite{lecun-98}, that is their residual version~\cite{he2016deep}. For loss, we used CTC (Connectionist temporal classification)~\cite{graves2006connectionist} between basecalled and the target sequence. Other building blocks used are Batch normalization(BN)~\cite{BNORM} and pooling layers. Dropout~\cite{srivastava2014dropout} was not used. 
+Described model is implemented using tensorflow~\cite{tensorflow2015-whitepaper} and source warp-ctc~\cite{warpctc} GPU CTC loss implementation.
 
 The final model is a residual neural network consisting of 72 residual blocks BN\footnote{Batch normalization}-ELU\footnote{Exponential Linear Unit
+	
+	\begin{equation*}
+	\text{ELU}(x)=
+	\begin{cases}
+	x, & \text{if}\ x>0 \\
+	\alpha (exp(x) - 1), & \text{otherwise}
+	\end{cases}    \\
+	\end{equation*}
+	
+}-CONV\footnote{1D convolutional layer}-BN-ELU-CONV, to a grand total of 2 million parameters. The used model is a variant of architecture proposed in paper~\cite{identitet} with the difference of ELU being used as activation instead of ReLU as it is reported \cite{resnet-elu} to speeds up the learning process and improve accuracy as the depth increase.
 
-\begin{equation*}
-\text{ELU}(x)=
-    \begin{cases}
-        x, & \text{if}\ x>0 \\
-        \alpha (exp(x) - 1), & \text{otherwise}
-        \end{cases}    \\
-\end{equation*}
-
-}-CONV\footnote{1D convolutional layer}-BN-ELU-CONV, to grand total of 2 million parameters. The used model is a variant of architecture proposed in paper~\cite{identitet} with the difference of ELU being used as activation instead of ReLU as it is reported \cite{resnet-elu} to speeds up the learning process and improve accuracy as the depth increase.
-
-Each convolutional layer in this models uses 64 chanells with receptive field of 3. Because sequenced read is always shorter than the raw signal, pooling with kernel size two is used every 24 layers resulting in a reduction of dimensionality by factor 8. This is beneficial in faster learning, better generalization and increased basecalling speed.
+Each convolutional layer in this models uses 64 channels with kernel size 3. Because sequenced read is always shorter than the raw signal, pooling with kernel size two is used every 24 layers resulting in a reduction of dimensionality by factor 8. This is beneficial in faster learning, better generalization and increased basecalling speed.
 
 Training the model is the minimization of previously described CTC loss. It was done using Adam~\cite{adam} with default parameters, and exponentially decaying learning rate starting from 1e-3 and decay rate of 5e-6 over 100k steps\footnote{We use tf.train.exponential\_decay where current learning rate, lr is $lr=\text{initial\_lr} \cdot \text{decay\_rate}^\frac{\text{global\_step}}{\text{decay\_step}}$} and minibatch size 8. To prevent gradients exploding on bad inputs, they were clipped to a range [-2, 2]. We observed no overfitting due to large dataset size.
 
-During testing we tried ReLu and PrELU~\cite{prelu} with no significat result difference. We also tried different channel numbers, receptive field width and various other hyperparameters during hyperparameter optimization and conclude after enough complexity, that is sufficient layers, all choices were performing similarly.
+During testing, we tried ReLu and PrELU~\cite{prelu} with no significant result difference. We also tried different channel numbers, receptive field width, and various other hyperparameters during hyperparameter optimization and conclude after enough complexity, that is sufficient layers, all choices were performing similarly.
 
 \section{Results}
 
@@ -207,7 +208,7 @@ In Appendix~\ref{app:evaluation:CIGAR} the histogram figure~\ref{fg:cigar_op_dis
 
 \subsection{Consensus metrics}
 
-In Subsection~\ref{subs:read_metrics} we showed metrics after the read is aligned of reference genome. However, if basecalled simply yield A irrespective of ground truth, it shall have 100\% match rate since it will definitely align somewhere. Therefore we reconstruct original genome from basecalled reads. Specific metrics definitions analysed are in Appendix~\ref{app:evaluation:consensus}.
+In Subsection~\ref{subs:read_metrics} we showed metrics after the read is aligned to reference genome. However, if basecalled simply yield nucleotide sequence \emph{A} irrespective of ground truth, it shall have 100\% match rate since it will definitely align somewhere. Therefore we reconstruct the original genome from basecalled reads. Specific metrics definitions analysed are in Appendix~\ref{app:evaluation:consensus}.
 
 \subsubsection{Consensus from pileup}
 
@@ -241,7 +242,8 @@ All models show a slight bias towards deletions than insertions, but this may be
 
 
 \subsubsection{Consensus from de novo assembly}
-In this evaluation method, consensus sequence is not calculated from pileup, but by de novo genome assembly. For this task, fast and accurate de novo genome assembler \emph{ra}\footnote{\url{https://github.com/rvaser/ra}}~\cite{vaser} was used and obtained consensus sequence is compared to the reference using dnadiff present in the Mumer\footnote{\url{https://github.com/garviz/MUMmer}}.
+
+In this evaluation method, the consensus sequence is not calculated from the pileup, but by de novo genome assembly. For this task, fast and accurate de novo genome assembler \emph{ra}\footnote{\url{https://github.com/rvaser/ra}}~\cite{vaser} was used and obtained consensus sequence is compared to the reference using dnadiff present in the Mumer\footnote{\url{https://github.com/garviz/MUMmer}}.
 The length of the reference, consensus sequence, number of contigs and percentages of aligned bases from the reference to the query and vice versa are shown in the table \ref{tbl:assembly}. Average identity summarizes how closely does the assembled sequence match the reference. This is run on full ecoli sequence run for 1D template reads (\textasciitilde 160k reads), for both developed tools, Nanonet and Metrichor. Developed tool has shown a small increase in quality of the assembled sequence over Metrichor by offering longer consensus, higher identity percentage, and overall smaller edit distance\footnote{Calculated using \url{https://github.com/isovic/racon/blob/master/scripts/edcontigs.py}}.
 
 
@@ -267,21 +269,21 @@ The length of the reference, consensus sequence, number of contigs and percentag
 
 \section{Conclusion and further work}
 
-In this paper we used CNN instead of already tried RNN or HMM approaches, which yielded higher accuracy than previously tried models. Unlike HMM and RNN, there's no explicit dependency on previous hidden state, therefore this model is massively parallizible and more sensible given data nature --- that is we're dealing with signal processing, not heavily context depended language modeling.
+In this paper, we used CNN instead of already tried RNN or HMM approaches, which resulted in in higher accuracy compared to other existing basecallers.
+Unlike HMM and RNN, there's no explicit dependency on previous hidden state, therefore this model is massively parallelizable and more sensible given data nature --- that is we're dealing with signal processing, not heavily context-depended language modeling.
 
 All test are done on data for R9 chemistry, but the developed open source code could easily be adjusted and trained on R9.4 and newest R9.5 data when it becomes publicly available.
 
-Currently, without support for newer sequencing data, this model has limited application. It can be used as a demonstration of a different approach to base calling which yields promising results.  As newer versions of basecallers by Oxford Nanopore do not offer any support for data sequenced with previous version of chemistries, this tool can be used to re-basecall that data and improvement of the quality of reads retrospectively.
+Currently, without support for newer sequencing data, this model has limited application. It can be used as a demonstration of a different approach to base calling which yields promising results.  As newer versions of basecallers by Oxford Nanopore do not offer any support for data sequenced with the previous version of chemistries, this tool can be used to re-basecall that data and improvement of the quality of reads retrospectively.
 
-Future work includes experiments with recently proposed Scaled exponential linear units (SELU)~\cite{selu} that eliminates the need for normalization techniques such as used batch normalization. Possible improvements of the model include the combination of convolutions and attention mechanism proposed just recently in the paper~\cite{facebook} showing excellent results in both speed and accuracy, for tasks of language translation. Last approach could use stacked simpled models, such as logistic regression and SVM to predict each nucleotide given raw signal context, similar to our deep learning model pre-CTC layer, and use linear chain CRF for full sequence basecalling. Approaches are many, and the time is limited.
+Future work includes experiments with recently proposed Scaled exponential linear units (SELU)~\cite{selu} that eliminate the need for normalization techniques such as used batch normalization. Possible improvements of the model include the combination of convolutions and attention mechanism proposed just recently in the paper~\cite{facebook} showing excellent results in both speed and accuracy, for tasks of language translation. The other option could usage of stacked simple models, such as logistic regression and SVM to predict each nucleotide given raw signal context, similar to our deep learning model pre-CTC layer, and use linear chain CRF for full sequence basecalling.
 
 \section{Acknowledgments}
+First and foremost I'd like to thank my mentor izv.~prof.~dr.~sc.~Mile Šikić for setting up the problem, guiding us through its beginnings and providing helpful advice for its completion. Next Marko Ratković for his not only insightful conversations but also meaningful code contributions.
 
-First and foremost I'd like to thank my mentor izv.~prof.~dr.~sc.~Mile Sikić for setting up the problem, guiding us through its beginnings and providing helpful advice for its completion. Next Marko Ratkovic for his not only insightful conversations, but also meaningful code contributions.
+Finally, I'm thanking various other people whose code, tools and advice I've used in completing this paper: Fran Jurišić, Ana Marija Selak, Ivan Sović, Robert Vaser and Martin Šošić.
 
-Finally, I'm thanking various other people whose code, tools and advice I've used in completing this paper: Fran Jurišić, Ana Marija Selak, Ivan Sović and Martin Šošić.
-
-Also some data were obtained in cooperation with Biologists doc.~dr.~sc. Petra Korać and dr.sc. Paula Dobrinić. Other were procured publicly shared from Loman labs~\cite{loman1-100k}
+Also, some data were obtained in cooperation with Biologists doc.~dr.~sc. Petra Korać and dr.sc. Paula Dobrinić. Other were procured publicly shared from Loman labs~\cite{loman1-100k}
 
 % set style - not sure which one is official for papers
 % spbasic (springer basic makes sense)
