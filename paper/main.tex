@@ -78,12 +78,12 @@ The core of the decoding process is the basecalling step, that is translating th
 
 Earlier models were Hidden Markov model (HMM)-based where hidden state modeled DNA sequence of length 6 (6-mer) in the nanopore. Pore models were used in computing emission probabilities.~\cite{loman2015complete,schreiber2015analysis,szalay2015novo,timp2012dna} and the recent open source HMM-based basecaller Nanocall~\cite{david2016nanocall}. Modern basecallers use RNN base models, and we opted out using CNN instead with beam search.
 
-We compared our model on R9 chemistry with Metrichor (HMM-based approach), Nanonet\footnote{\url{https://github.com/nanoporetech/nanonet/}} and DeepNano~\cite{deepnano} (RNN based approaches). For the detailed basecaller overview see the appendix~\ref{app:basecallers}.
+We compared our model on R9 chemistry with Metrichor (HMM-based approach), Nanonet\footnote{\url{https://github.com/nanoporetech/nanonet/}} and DeepNano~\cite{deepnano} (RNN based approaches). For the detailed basecaller overview see the Appendix~\ref{app:basecallers}.
 
 
 \section{Dataset}
 
-Dataset used were E.Coli K-12 strands from~\cite{loman1-100k} and Lamba basecalling\footnote{Acquired from doc. dr. sc. Petra Korać and dr.sc. Paula Dobrinić}. Both used datasets show in table \ref{tbl:datasets} have been previously passed through MinKNOW and had been basecalled by Metrichor. As 1D read analysis was the focus of this paper, only those reads were used.
+Dataset used were E.Coli K-12 strands from~\cite{loman1-100k} and Lamba basecalling\footnote{Acquired from doc.~dr.~sc. Petra Korać and dr.sc. Paula Dobrinić}. Both used datasets show in table~\ref{tbl:datasets} have been previously passed through MinKNOW and had been basecalled by Metrichor. As 1D read analysis was the focus of this paper, only those reads were used.
 
 \begin{savenotes}
     \begin{table}[htb]
@@ -122,15 +122,15 @@ Alignment part in the genome is used as a target. Using CIGAR string returned by
 To eliminate the possibility of overfitting to the known reference, the model is trained and tested on reads from different organisms. Due to the limited amount of public available raw nanopore sequence data, E. Coli was \emph{divided} into two regions.
 Reads were split into train and test portions, depending on which region of E. Coli they align.
 If read aligns inside first 70\% of the E. Coli, it is placed into train set, and if it aligns to the second portion, it is placed into test set. Reads whose alignment overlaps train and test region are not used. Important to note that E. Coli genome, and genomes of the majority of other bacteria, is cyclical, so reads with alignments that wrap over edges are also discarded. Total train set consist of over 110 thousand reads.
-Overview of the entire learning pipeline is shown in figure~\ref{fg:train_pipe}.
 
-\begin{figure}[!ht]
-    \begin{center}
-        \includegraphics[width=0.7\textwidth]{./imgs/train_pipeline.png}
-        \caption{Training pipeline overview}
-        \label{fg:train_pipe}
-    \end{center}
-\end{figure}
+% Overview of the entire learning pipeline is shown in figure~\ref{fg:train_pipe}.
+% \begin{figure}[!ht]
+%     \begin{center}
+%         \includegraphics[width=0.7\textwidth]{./imgs/train_pipeline.png}
+%         \caption{Training pipeline overview}
+%         \label{fg:train_pipe}
+%     \end{center}
+% \end{figure}
 
 \begin{verbbox}
     Target      :  A  G  A  A  A
@@ -174,7 +174,27 @@ Developed tool was compared with other available basecallers that support R9 che
 
 The exact error rate metric is unreliable since multiple pipeline tools could be the issue. First the sample is prepared, hopefully, uncontaminated and matching reference genome as close as possible then sequenced using the MinION device obtaining raw data. Next, our model (or any other) comes along and basecalls the sequences. To evaluate error rate metric basecalled read is aligned to the reference genome using aligners with their own errors/biases. We used standard BWA-MEM~\cite{li2013aligning} and Graphmap~\cite{sovic2016fast}.
 
-The fact that ground truth is not known makes evaluation difficult. Different methods for evaluation were used to get clearer information about each basecaller.
+The fact that ground truth is not known makes evaluation difficult. Different methods for evaluation were used to get clearer information about each basecaller. In the following subsections are different evaluation metrics described and analysed. For completeness speed measurements are given in Table~\ref{tbl:speeds}
+
+\begin{table}[]
+	\caption{Base calling speeds measured in \textit{base pairs per second}. CPU is Intel Xeon E5-2640 v2 @ 2Ghz. GPU is NVIDIA Titan X Black}
+	\label{tbl:speeds}
+	\centering
+
+	\begin{tabular}{lcc}
+		\toprule
+		{} &  \thead{ecoli (bp/s)} &  \thead{lambda (bp/s)} \\
+		\midrule
+		resdeep (CPU)  &               \textbf{1174.28} &              \textbf{ 1363.340 }\\
+		Nanonet (CPU)  &                856.01 &                897.499 \\
+		DeepNano (CPU) &                626.99 &                692.370 \\
+		\midrule
+		resdeep (GPU)  &              \textbf{ 6571.76 }&              \textbf{ 6140.300} \\
+		Nanonet (GPU)  &               3828.39 &               3787.510 \\
+		\bottomrule
+	\end{tabular}
+
+\end{table}
 
 \subsection{Per read metrics}
 \label{subs:read_metrics}
