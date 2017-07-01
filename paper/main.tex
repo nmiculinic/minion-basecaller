@@ -52,7 +52,7 @@ Although MinION is able to produce long reads, even up to 882 kb~\cite{loman1-10
 
 The exact error rate metric is unreliable since multiple pipeline tools could be the issue. First the sample is prepared, hopefully, uncontaminated and matching reference genome as close as possible then sequenced using the MinION device obtaining raw data. Next, our model (or any other) comes along and basecalls the sequences. To evaluate error rate metric basecalled read is aligned to the reference genome using aligners with their own errors/biases, most commonly used BWA-MEM~\cite{li2013aligning} and Graphmap~\cite{sovic2016fast}.
 
-\section{Sequencing overview}
+\subsection{Sequencing overview}
 Conceptually, the MinION sequencer works as follows. It's a variation on now standard shotgun sequencing approach. First, DNA is sheared into smaller DNA fragments and adapters are ligated to either end of the fragments. The resulting DNA fragments pass through a protein embedded in a membrane via a nanometre-sized channel, a nanopore. A single DNA strand passes through the pore. Optionally, hairpin protein adapter can merge two DNA strands, allowing both template and complement read passing through the nanopore sequentially for more accurate reads. This technique is referred as 2D reads, while we focus on 1D reads containing only template DNA and no hairpin adapter.
 
 As DNA strand passes through the nanopore, they are propelled by the current. However, this current varies depending on specific nucleotide context within the nanopore, changing its resistance. We sample the currency multiple times per second, 4000Hz in our dataset, and from this data, we deduce passing DNA fragment. By design, the nanopore is 6 nucleotides wide, and many models use this information internally, yet we opted ours of it in hopes of a simpler model, less feature engineering, and better homopolymer detection.
@@ -75,12 +75,12 @@ As DNA strand passes through the nanopore, they are propelled by the current. Ho
 \end{figure}
 \footnotetext{Figure adapted from https://nanoporetech.com/how-it-works}
 
-\section{Basecalling}
+\section{Related work}
 The core of the decoding process is the basecalling step, that is translating the current samples to the nucleotide sequence. Nowadays there are multiple basecalling options, what official and unofficial ones.
 
-Earlier models were Hidden Markov model(HMM)-based where hidden state modeled DNA sequence of length 6 (6-mer) in the nanopore. Pore models were used in computing emission probabilities.~\cite{loman2015complete,schreiber2015analysis,szalay2015novo,timp2012dna} and the recent open source HMM-based basecaller Nanocall~\cite{david2016nanocall}. Modern basecallers use RNN base models, and we opted out using CNN instead with beam search.
+Earlier models were Hidden Markov model (HMM)-based where hidden state modeled DNA sequence of length 6 (6-mer) in the nanopore. Pore models were used in computing emission probabilities.~\cite{loman2015complete,schreiber2015analysis,szalay2015novo,timp2012dna} and the recent open source HMM-based basecaller Nanocall~\cite{david2016nanocall}. Modern basecallers use RNN base models, and we opted out using CNN instead with beam search.
 
-We compared our model on R9 chemistry with Metrichor (HMM-based approach), Nanonet and DeepNano (RNN based approaches). For the detailed basecaller overview see the appendix~\ref{app:basecallers}.
+We compared our model on R9 chemistry with Metrichor (HMM-based approach), Nanonet\footnote{\url{https://github.com/nanoporetech/nanonet/}} and DeepNano~\cite{deepnano} (RNN based approaches). For the detailed basecaller overview see the appendix~\ref{app:basecallers}.
 
 
 \section{Dataset}
@@ -311,7 +311,7 @@ It is available to the Nanopore Community served as a binary. The source code of
 \subsection{Third-party basecallers}
 \emph{Nanocall}~\cite{David046086} was the first third-party open source basecaller for nanopore data. It uses HMM approach like the original R7 Metrichor. Nanocall does not support newer chemistries after R7.3.
 
-\emph{DeepNano}~\cite{Boza2017}  was the first open-source basecaller based on neural networks. It uses bidirectional recurrent neural networks implemented in Python, using the Theano library. When released, originally only supported R7 chemistry, but support for R9 and R9.4 was added recently.
+\emph{DeepNano}~\cite{deepnano}  was the first open-source basecaller based on neural networks. It uses bidirectional recurrent neural networks implemented in Python, using the Theano library. When released, originally only supported R7 chemistry, but support for R9 and R9.4 was added recently.
 
 \section{Evaluation metrics}
 
