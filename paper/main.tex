@@ -166,7 +166,7 @@ Each convolutional layer in this models uses 64 channels with kernel size 3. Bec
 
 Training the model is the minimization of previously described CTC loss. It was done using Adam~\cite{adam} with default parameters, and exponentially decaying learning rate starting from 1e-3 and decay rate of 5e-6 over 100k steps\footnote{We use tf.train.exponential\_decay where current learning rate, lr is $lr=\text{initial\_lr} \cdot \text{decay\_rate}^\frac{\text{global\_step}}{\text{decay\_step}}$} and minibatch size 8. To prevent gradients exploding on bad inputs, they were clipped to a range [-2, 2]. We observed no overfitting due to large dataset size.
 
-During testing, we tried ReLu and PrELU~\cite{prelu} with no significant result difference. We also tried different channel numbers, receptive field width, and various other hyperparameters during hyperparameter optimization and conclude after enough complexity, that is sufficient layers, all choices were performing similarly.
+During testing, we tried ReLu and PrELU~\cite{prelu} with no significant result difference. We also tried different channel numbers, receptive field width, and various other hyperparameters during hyperparameter optimization and conclude after enough complexity, that is sufficient layers, all choices were performing similarly. We used SigOpt~\cite{dewancker2016strategy}\footnote{\url{https://sigopt.com/}} bayesian hyperoptimization library.
 
 \section{Results}
 
@@ -279,11 +279,12 @@ Currently, without support for newer sequencing data, this model has limited app
 Future work includes experiments with recently proposed Scaled exponential linear units (SELU)~\cite{selu} that eliminate the need for normalization techniques such as used batch normalization. Possible improvements of the model include the combination of convolutions and attention mechanism proposed just recently in the paper~\cite{facebook} showing excellent results in both speed and accuracy, for tasks of language translation. The other option could usage of stacked simple models, such as logistic regression and SVM to predict each nucleotide given raw signal context, similar to our deep learning model pre-CTC layer, and use linear chain CRF for full sequence basecalling.
 
 \section{Acknowledgments}
-First and foremost I'd like to thank my mentor izv.~prof.~dr.~sc.~Mile Šikić for setting up the problem, guiding us through its beginnings and providing helpful advice for its completion. Next Marko Ratković for his not only insightful conversations but also meaningful code contributions.
 
-Finally, I'm thanking various other people whose code, tools and advice I've used in completing this paper: Fran Jurišić, Ana Marija Selak, Ivan Sović, Robert Vaser and Martin Šošić.
+During this paper creation we used Sigopt academic licence for hyperparameter optimization. We gratefully acknowledge the support of NVIDIA Corporation with the donation of the Titan Xp GPU used for this research.
 
-Also, some data were obtained in cooperation with Biologists doc.~dr.~sc. Petra Korać and dr.sc. Paula Dobrinić. Other were procured publicly shared from Loman labs~\cite{loman1-100k}
+We're thankful to various other people whose code, tools and advice we've used in completing this project: Fran Jurišić, Ana Marija Selak, Ivan Sović, Robert Vaser and Martin Šošić.
+
+For data, we're thankful for cooperation of Biologists doc.~dr.~sc. Petra Korać and dr.sc. Paula Dobrinić and Loman labs~\cite{loman1-100k} for publicly posting their dataset.
 
 % set style - not sure which one is official for papers
 % spbasic (springer basic makes sense)
