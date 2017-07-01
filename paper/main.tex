@@ -182,7 +182,7 @@ Sum of all matches, mismatches, and insertions is equal to the reads length \ref
 In Appendix~\ref{app:evaluation:CIGAR} the histogram figure~\ref{fg:cigar_op_dist} shows how matches, mismatches, insertions, and deletions are distributed across the reads. It is shown that mismatches and insertion occur more frequently at the beginnings and the ends of the reads. This is not only the case for the developed basecaller, but all other show the same property. This could be due to lack of context information from both sides when edges are basecalled.
 
 \begin{table}[]
-	\caption{Alignment specifications of Ecoli R9 basecalled reads using GraphMap}
+	\caption{Alignment specifications of E. Coli R9 basecalled reads using GraphMap}
 	\label{tbl:ecoli_rates}
 	\centering
 	\begin{tabular}{lcccc}
@@ -200,7 +200,7 @@ In Appendix~\ref{app:evaluation:CIGAR} the histogram figure~\ref{fg:cigar_op_dis
 \begin{figure}[]
 	\begin{center}
 		\includegraphics[width=0.8\textwidth]{./imgs/results/ecoli/kde_cigar.png}
-		\caption{KDE plot for distribution of percentage of alimnment operations for ecoli}
+		\caption{KDE plot for distribution of percentage of alimnment operations for E. Coli}
 		\label{fg:ecoli_kde}
 	\end{center}
 \end{figure}
@@ -225,7 +225,7 @@ All models show a slight bias towards deletions than insertions, but this may be
 \end{figure}
 
 \begin{table}[]
-	\caption{Consensus specifications of Ecoli R9 basecalled reads}
+	\caption{Consensus specifications of E. Coli R9 basecalled reads}
 	\label{tbl:spec_ecoli}
 	\centering
 	\begin{tabular}{lcccccc}
@@ -244,11 +244,11 @@ All models show a slight bias towards deletions than insertions, but this may be
 \subsubsection{Consensus from de novo assembly}
 
 In this evaluation method, the consensus sequence is not calculated from the pileup, but by de novo genome assembly. For this task, fast and accurate de novo genome assembler \emph{ra}\footnote{\url{https://github.com/rvaser/ra}}~\cite{vaser} was used and obtained consensus sequence is compared to the reference using dnadiff present in the Mumer\footnote{\url{https://github.com/garviz/MUMmer}}.
-The length of the reference, consensus sequence, number of contigs and percentages of aligned bases from the reference to the query and vice versa are shown in the table \ref{tbl:assembly}. Average identity summarizes how closely does the assembled sequence match the reference. This is run on full ecoli sequence run for 1D template reads (\textasciitilde 160k reads), for both developed tools, Nanonet and Metrichor. Developed tool has shown a small increase in quality of the assembled sequence over Metrichor by offering longer consensus, higher identity percentage, and overall smaller edit distance\footnote{Calculated using \url{https://github.com/isovic/racon/blob/master/scripts/edcontigs.py}}.
+The length of the reference, consensus sequence, number of contigs and percentages of aligned bases from the reference to the query and vice versa are shown in the table \ref{tbl:assembly}. Average identity summarizes how closely does the assembled sequence match the reference. This is run on full E. Coli sequence run for 1D template reads (\textasciitilde 160k reads), for both developed tools, Nanonet and Metrichor. Developed tool has shown a small increase in quality of the assembled sequence over Metrichor by offering longer consensus, higher identity percentage, and overall smaller edit distance\footnote{Calculated using \url{https://github.com/isovic/racon/blob/master/scripts/edcontigs.py}}.
 
 
 \begin{table}[htb]
-	\caption{Assembly and consensus results for ecoli}
+	\caption{Assembly and consensus results for E. Coli}
 	\label{tbl:assembly}
 	\centering
 \begin{tabular}{lccc}
@@ -359,7 +359,7 @@ deletion\_rate = \dfrac{n\_deletion}{read\_length}
 
 
 \begin{table}[]
-	\caption{Alignment specifications of Ecoli R9 basecalled reads using BWA mem}
+	\caption{Alignment specifications of E. Coli R9 basecalled reads using BWA mem}
 	\label{tbl:ecoli_rates_bwa}
 	\centering
 	\begin{tabular}{lcccc}
