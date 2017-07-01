@@ -148,7 +148,7 @@ Due to CTC merged nature during decoding, adjacent duplicates are merged into on
 
 \section{Method}
 Instead of opting for the traditional path using HMM or newly adopted RNN we tried using CNN~(Convolutional neural networks)~\cite{lecun-98}, that is their residual version~\cite{he2016deep}. For loss, we used CTC (Connectionist Temporal Classification)~\cite{graves2006connectionist} between basecalled and the target sequence. Other building blocks used are Batch normalization(BN)~\cite{BNORM} and pooling layers. Dropout~\cite{srivastava2014dropout} was not used.
-Described model is implemented using tensorflow~\cite{tensorflow2015-whitepaper} and source warp-ctc~\cite{warpctc} GPU CTC loss implementation.
+Described model is implemented using tensorflow~\cite{tensorflow2015-whitepaper} and open source warp-ctc~\cite{warpctc} GPU CTC loss implementation.
 
 The final model is a residual neural network consisting of 72 residual blocks BN\footnote{Batch normalization}-ELU\footnote{Exponential Linear Unit
 
