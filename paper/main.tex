@@ -147,11 +147,11 @@ Overview of the entire learning pipeline is shown in figure~\ref{fg:train_pipe}.
 Due to CTC merged nature during decoding, adjacent duplicates are merged into one, we preprocess the target nucleotide sequence with surrogate nucleotides, such that each second repeated nucleotide is replaced with its surrogate. Example provided in figure~\ref{fig:data_preprocessing}. All raw input data were normalized to zero mean and unit variance as it yields superior performance with neural networks.
 
 \section{Method}
-Instead of opting for the traditional path using HMM or newly adopted RNN we tried using CNN~(Convolutional neural networks)~\cite{lecun-98}, that is their residual version~\cite{he2016deep}. For loss, we used CTC (Connectionist temporal classification)~\cite{graves2006connectionist} between basecalled and the target sequence. Other building blocks used are Batch normalization(BN)~\cite{BNORM} and pooling layers. Dropout~\cite{srivastava2014dropout} was not used. 
+Instead of opting for the traditional path using HMM or newly adopted RNN we tried using CNN~(Convolutional neural networks)~\cite{lecun-98}, that is their residual version~\cite{he2016deep}. For loss, we used CTC (Connectionist temporal classification)~\cite{graves2006connectionist} between basecalled and the target sequence. Other building blocks used are Batch normalization(BN)~\cite{BNORM} and pooling layers. Dropout~\cite{srivastava2014dropout} was not used.
 Described model is implemented using tensorflow~\cite{tensorflow2015-whitepaper} and source warp-ctc~\cite{warpctc} GPU CTC loss implementation.
 
 The final model is a residual neural network consisting of 72 residual blocks BN\footnote{Batch normalization}-ELU\footnote{Exponential Linear Unit
-	
+
 	\begin{equation*}
 	\text{ELU}(x)=
 	\begin{cases}
@@ -159,7 +159,7 @@ The final model is a residual neural network consisting of 72 residual blocks BN
 	\alpha (exp(x) - 1), & \text{otherwise}
 	\end{cases}    \\
 	\end{equation*}
-	
+
 }-CONV\footnote{1D convolutional layer}-BN-ELU-CONV, to a grand total of 2 million parameters. The used model is a variant of architecture proposed in paper~\cite{identitet} with the difference of ELU being used as activation instead of ReLU as it is reported \cite{resnet-elu} to speeds up the learning process and improve accuracy as the depth increase.
 
 Each convolutional layer in this models uses 64 channels with kernel size 3. Because sequenced read is always shorter than the raw signal, pooling with kernel size two is used every 24 layers resulting in a reduction of dimensionality by factor 8. This is beneficial in faster learning, better generalization and increased basecalling speed.
@@ -179,7 +179,7 @@ Different methods for evaluation were used to get clearer information about each
 A portion of the read length that aligns as correctly is called match\_rate. Same goes for mismatches and insertions.
 Sum of all matches, mismatches, and insertions is equal to the reads length \ref{eq:read_len}. For specific details see Appendix~\ref{app:evaluation:CIGAR}. Results on E.Coli test set with Graphmap aligner are shown in table~\ref{tbl:ecoli_rates}. Evaluation with BWM-MEM and on lambda can be found in appendix~\ref{app:evaluation:CIGAR} under tables~\ref{tbl:ecoli_rates_bwa},~\ref{tbl:lambda_rates} and~\ref{tbl:lambda_rates_bwa}. Furthermore we plot Kernel Density estimation(KDE) plots for each mentioned statistic on E.Coli dataset in figure~\ref{fg:ecoli_kde}.
 
-In Appendix~\ref{app:evaluation:CIGAR} the histogram figure~\ref{fg:cigar_op_dist} shows how matches, mismatches, insertions, and deletions are distributed across the reads. It is shown that mismatches and insertion occur more frequently at the beginnings and the ends of the reads. This is not only the case for the developed basecaller, but all other show the same property. This could be due to lack of context information from both sides when edges are base called.
+In Appendix~\ref{app:evaluation:CIGAR} the histogram figure~\ref{fg:cigar_op_dist} shows how matches, mismatches, insertions, and deletions are distributed across the reads. It is shown that mismatches and insertion occur more frequently at the beginnings and the ends of the reads. This is not only the case for the developed basecaller, but all other show the same property. This could be due to lack of context information from both sides when edges are basecalled.
 
 \begin{table}[]
 	\caption{Alignment specifications of Ecoli R9 basecalled reads using GraphMap}
@@ -274,7 +274,7 @@ Unlike HMM and RNN, there's no explicit dependency on previous hidden state, the
 
 All test are done on data for R9 chemistry, but the developed open source code could easily be adjusted and trained on R9.4 and newest R9.5 data when it becomes publicly available.
 
-Currently, without support for newer sequencing data, this model has limited application. It can be used as a demonstration of a different approach to base calling which yields promising results.  As newer versions of basecallers by Oxford Nanopore do not offer any support for data sequenced with the previous version of chemistries, this tool can be used to re-basecall that data and improvement of the quality of reads retrospectively.
+Currently, without support for newer sequencing data, this model has limited application. It can be used as a demonstration of a different approach to basecalling which yields promising results.  As newer versions of basecallers by Oxford Nanopore do not offer any support for data sequenced with the previous version of chemistries, this tool can be used to re-basecall that data and improvement of the quality of reads retrospectively.
 
 Future work includes experiments with recently proposed Scaled exponential linear units (SELU)~\cite{selu} that eliminate the need for normalization techniques such as used batch normalization. Possible improvements of the model include the combination of convolutions and attention mechanism proposed just recently in the paper~\cite{facebook} showing excellent results in both speed and accuracy, for tasks of language translation. The other option could usage of stacked simple models, such as logistic regression and SVM to predict each nucleotide given raw signal context, similar to our deep learning model pre-CTC layer, and use linear chain CRF for full sequence basecalling.
 
@@ -296,7 +296,7 @@ Here is currated basecaller list:
 
 \subsection{Official}
 \emph{Metrichor} is an Oxford Nanopore company that offers cloud-based platform \emph{EPI2ME} for analysis of nanopore data.
-Initially, base calling was only available by uploading data to the platform - that being the reason why this basecaller is often called Metrichor even though it is a name of the company.
+Initially, basecalling was only available by uploading data to the platform - that being the reason why this basecaller is often called Metrichor even though it is a name of the company.
 
 With the release of R9 chemistry, this model was replaced by a more accurate recurrent neural network (RNN) implementation. Currently, Oxford Nanopore offers several RNN-based local basecaller versions under different names: Albacore, Nanonet and basecaller integrated into MinKNOW \cite{ont-basecallers}.
 
@@ -305,7 +305,7 @@ It is available to the Nanopore Community served as a binary. The source code of
 
 \emph{Nanonet}\footnote{\url{https://github.com/nanoporetech/nanonet/}} uses the same neural network that is used in Albacore but it is continually under development and does contain features such as error handling or logging needed for production use. It uses \emph{CURRENNT} library for running neural networks. It supportes basecalling of both R9 and R9.4 chemistry versions. However in our experiments it was painfully slow, which was as expected due to it's classification as not production ready.
 
-\emph{Scrappie}\footnote{\url{https://github.com/nanoporetech/scrappie}} is another basecaller by Oxford Nanopore Technologies. Similar to Nanonet, it is the platform for ongoing development. Scrappie is reported to be the first basecaller  that specifically address homopolymer base calling. It became publicly available just recently in June, 2017 and supports R9.4 and future R9.5 data.
+\emph{Scrappie}\footnote{\url{https://github.com/nanoporetech/scrappie}} is another basecaller by Oxford Nanopore Technologies. Similar to Nanonet, it is the platform for ongoing development. Scrappie is reported to be the first basecaller  that specifically address homopolymer basecalling. It became publicly available just recently in June, 2017 and supports R9.4 and future R9.5 data.
 
 \subsection{Third-party basecallers}
 \emph{Nanocall}~\cite{David046086} was the first third-party open source basecaller for nanopore data. It uses HMM approach like the original R7 Metrichor. Nanocall does not support newer chemistries after R7.3.
