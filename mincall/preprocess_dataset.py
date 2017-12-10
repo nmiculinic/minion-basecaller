@@ -1,5 +1,6 @@
 import glob
 import logging
+from pprint import PrettyPrinter
 import os
 import shutil
 import tempfile
@@ -14,6 +15,7 @@ from mincall import align_utils, bioinf_utils
 
 load_dotenv(find_dotenv())
 
+pp = PrettyPrinter()
 
 def get_ref_starts_dict(fa_path):
     start_position = {}
@@ -158,6 +160,8 @@ def _dump_ref_files(result_dict, name_to_file, ref_starts, out_root):
 
 
 def preprocess_all_ref(dataset_conf_path, only_split, align_function):
+    if not os.path.isfile(dataset_conf_path):
+        raise ValueError(dataset_conf_path + " doesn't exist!")
     dataset_config = ConfigParser()
     dataset_config.read(dataset_conf_path)
     batch_size = int(dataset_config['DEFAULT']['batch_size'])
