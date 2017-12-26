@@ -11,8 +11,7 @@ from mincall.controller import control
 from mincall.model_utils import Model
 load_dotenv(find_dotenv())
 
-
-def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, **kwargs):
+def model_fn(net: tf.Graph, X_len, max_reach, block_size, out_classes, batch_size, dtype, **kwargs):
     """
         Args:
         net -> Input tensor shaped (batch_size, max_reach + block_size + max_reach, 3)
@@ -57,16 +56,16 @@ def model_setup_params(hyper):
     return dict(
         g=tf.Graph(),
         per_process_gpu_memory_fraction=0.6,
-        block_size_x=8 * 3 * 600 // 2,
-        block_size_y=630,
+        block_size_x=4000,
+        block_size_y=600,
         in_data=input_readers.HMMAlignedRaw(),
-        num_blocks=3,
+        num_blocks=1,
         batch_size=16,
         max_reach=8 * 20,  # 240
         queue_cap=300,
         overwrite=False,
         reuse=False,
-        shrink_factor=8,
+        shrink_factor=4,
         dtype=tf.float32,
         model_fn=model_fn,
         lr_fn=lambda global_step: tf.train.exponential_decay(

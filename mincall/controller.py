@@ -115,6 +115,9 @@ def basecall(create_test_model, **kwargs):
         global total_bases
         total_bases = 0
 
+
+        dumpF = open("dumped", "w")
+
         with ThreadPool(args.parallel) as pool, pbar:
             def callback(x):
                 global total_bases
@@ -122,7 +125,7 @@ def basecall(create_test_model, **kwargs):
                 total_bases += len(basecalled)
                 pbar.set_postfix(speed="{:.3f} b/s".format(total_bases / (perf_counter() - t0)))
                 pbar.update()
-                util.dump_fasta(os.path.splitext(f)[0].split(os.sep)[-1], basecalled, sys.stdout)
+                util.dump_fasta(os.path.splitext(f)[0].split(os.sep)[-1], basecalled, dumpF)
 
             def exc_callback(ex):
                 try:
