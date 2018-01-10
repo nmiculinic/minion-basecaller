@@ -115,28 +115,29 @@ def basecall(create_test_model, **kwargs):
         global total_bases
         total_bases = 0
 
-        with ThreadPool(args.parallel) as pool, pbar:
-            def callback(x):
-                global total_bases
-                f, basecalled = x
-                total_bases += len(basecalled)
-                pbar.set_postfix(speed="{:.3f} b/s".format(total_bases / (perf_counter() - t0)))
-                pbar.update()
-                util.dump_fasta(os.path.splitext(f)[0].split(os.sep)[-1], basecalled, sys.stdout)
+        with open('dumped', 'w') as dumpF:
+            with ThreadPool(args.parallel) as pool, pbar:
+                def callback(x):
+                    global total_bases
+                    f, basecalled = x
+                    total_bases += len(basecalled)
+                    pbar.set_postfix(speed="{:.3f} b/s".format(total_bases / (perf_counter() - t0)))
+                    pbar.update()
+                    util.dump_fasta(os.path.splitext(f)[0].split(os.sep)[-1], basecalled, dumpF)
 
-            def exc_callback(ex):
-                try:
-                    raise ex
-                except Exception as e:
-                    model.logger.error(e, exc_info=True)
+                def exc_callback(ex):
+                    try:
+                        raise ex
+                    except Exception as e:
+                        model.logger.error(e, exc_info=True)
 
-            def func(fast5_path):
-                return fast5_path, model.basecall_sample(fast5_path, write_logits=args.write_logits)
+                def func(fast5_path):
+                    return fast5_path, model.basecall_sample(fast5_path, write_logits=args.write_logits)
 
-            results = [pool.apply_async(func, args=(fn,), error_callback=exc_callback, callback=callback) for fn in file_list]
+                results = [pool.apply_async(func, args=(fn,), error_callback=exc_callback, callback=callback) for fn in file_list]
 
-            for r in results:
-                r.wait()
+                for r in results:
+                    r.wait()
 
     finally:
         model.close_session()

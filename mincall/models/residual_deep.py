@@ -11,8 +11,7 @@ from mincall.controller import control
 from mincall.model_utils import Model
 load_dotenv(find_dotenv())
 
-
-def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, **kwargs):
+def model_fn(net: tf.Graph, X_len, max_reach, block_size, out_classes, batch_size, dtype, **kwargs):
     """
         Args:
         net -> Input tensor shaped (batch_size, max_reach + block_size + max_reach, 3)
@@ -20,7 +19,7 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
         logits -> Unscaled logits tensor in time_major form, (block_size, batch_size, out_classes)
     """
 
-    for block in range(1, 4):
+    for block in range(1, 3):
         with tf.variable_scope("block%d" % block):
             for layer in range(kwargs['num_layers']):
                 with tf.variable_scope('layer_%d' % layer):
@@ -43,7 +42,7 @@ def model_fn(net, X_len, max_reach, block_size, out_classes, batch_size, dtype, 
             net = max_pool_1d(net, 2)
         net = tf.nn.relu(net)
 
-    net = central_cut(net, block_size, 8)
+    net = central_cut(net, block_size, 4)
     net = tf.transpose(net, [1, 0, 2], name="Shift_to_time_major")
     net = conv_1d(net, 9, 1, scope='logits')
     return {
@@ -57,16 +56,16 @@ def model_setup_params(hyper):
     return dict(
         g=tf.Graph(),
         per_process_gpu_memory_fraction=0.6,
-        block_size_x=8 * 3 * 600 // 2,
-        block_size_y=630,
+        block_size_x=4000,
+        block_size_y=600,
         in_data=input_readers.HMMAlignedRaw(),
-        num_blocks=3,
+        num_blocks=1,
         batch_size=16,
         max_reach=8 * 20,  # 240
         queue_cap=300,
         overwrite=False,
         reuse=False,
-        shrink_factor=8,
+        shrink_factor=4,
         dtype=tf.float32,
         model_fn=model_fn,
         lr_fn=lambda global_step: tf.train.exponential_decay(
