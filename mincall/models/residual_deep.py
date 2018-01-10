@@ -19,7 +19,7 @@ def model_fn(net: tf.Graph, X_len, max_reach, block_size, out_classes, batch_siz
         logits -> Unscaled logits tensor in time_major form, (block_size, batch_size, out_classes)
     """
 
-    for block in range(1, 4):
+    for block in range(1, 3):
         with tf.variable_scope("block%d" % block):
             for layer in range(kwargs['num_layers']):
                 with tf.variable_scope('layer_%d' % layer):
@@ -42,7 +42,7 @@ def model_fn(net: tf.Graph, X_len, max_reach, block_size, out_classes, batch_siz
             net = max_pool_1d(net, 2)
         net = tf.nn.relu(net)
 
-    net = central_cut(net, block_size, 8)
+    net = central_cut(net, block_size, 4)
     net = tf.transpose(net, [1, 0, 2], name="Shift_to_time_major")
     net = conv_1d(net, 9, 1, scope='logits')
     return {
