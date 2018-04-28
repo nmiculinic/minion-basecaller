@@ -253,6 +253,9 @@ def error_rates_from_cigar(cigar_full_str):
     if cigar_len != n_deletions + n_all_insertions + n_missmatches + n_matches:
         raise ValueError("cigar_len != n_deletions + n_all_insertions + n_missmatches + n_matches"
                          ";Expected extended cigar format")
+    if not read_len:
+        logging.warning("Clipped read len == 0")
+        return None
 
     n_errors = n_missmatches + n_insertions + n_deletions
 
@@ -284,7 +287,11 @@ def error_rates_for_sam(sam_path):
             cigar_pairs = x.cigartuples
 
             full_cigar = decompress_cigar_pairs(cigar_pairs, mode='ints')
-            all_errors.append([qname] + list(error_rates_from_cigar(full_cigar)) + [x.is_reverse])
+            rates = error_rates_from_cigar(full_cigar)
+            if rates:
+                all_errors.append([qname] + list(rates) + [x.is_reverse])
+            else:
+                logging.warning('Problem with read %s', qname)
     if unmapped > 0:
         logging.error("%d reads were unmapped", unmapped)
     return pd.DataFrame(all_errors, columns=ERROR_RATES_COLUMNS)
