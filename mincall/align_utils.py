@@ -11,6 +11,7 @@ import tempfile
 from tqdm import tqdm
 from copy import deepcopy
 from collections import defaultdict
+from pprint import pprint
 CIGAR_OPS_LIMIT = 60000
 
 
@@ -20,6 +21,7 @@ def get_target_sequences(sam_path):
     cnt = defaultdict(int)
     with pysam.AlignmentFile(sam_path, "r") as samfile:
         for x in tqdm(samfile.fetch(), desc='Building ref'):
+            x:pysam.AlignedSegment = x
             name = x.query_name
             cnt['total'] += 1
 
@@ -379,3 +381,7 @@ def split_aligments_in_sam(in_sam_path, out_sam_path=None):
         # clear tmp files
         shutil.move(tmp_sam_out, in_sam_path)
         shutil.rmtree(tmp_dir)
+
+if __name__ == "__main__":
+    res = get_target_sequences("/home/lpp/Desktop/g_test/alignments.sam")
+    pprint(res)
