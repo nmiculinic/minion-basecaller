@@ -1,4 +1,5 @@
 import argparse
+import sys
 import itertools
 import numpy as np
 import voluptuous
@@ -15,6 +16,7 @@ import tensorflow as tf
 import queue
 from mincall import dataset_pb2
 from keras import backend as K
+from keras.layers import Dense, Conv1D
 
 import toolz
 from tqdm import tqdm
@@ -61,48 +63,42 @@ def run(cfg: TrainConfig):
             f"Added {len(dps)} datapoint from {x.name} to train set; dir: {x.dir}"
         )
 
-    input_feeder_cfg: InputFeederCfg = InputFeederCfg(
-        batch_size=10,
-        seq_length=30,
-    )
-
-    m = Manager()
-    q: Queue = m.Queue()
-
-    p = Process(
-        target=produce_datapoints, args=(input_feeder_cfg, datapoints, q))
-    p.start()
-    p.join()
 
     config = tf.ConfigProto(allow_soft_placement=True)
     config.gpu_options.allow_growth = True
     dq = DataQueue(10)
     learning_phase = K.learning_phase()
+
+    net = dq.batch_signal
+    net = Conv1D(5, 3, input_shape=(None, None, 1))(net)
+
+    logits = net # Tensor of shape [batch_size, max_time, class_num]
+    logger.info(f"Logits shape: {logits.shape}")
+
+    ratio = 1
+    loss = tf.reduce_mean(tf.nn.ctc_loss(
+        dq.batch_labels,
+        logits,
+        tf.cast(tf.floor_div(dq.batch_signal_len + ratio - 1, ratio), tf.int32),  # Round up
+        ctc_merge_repeated=True,
+        time_major=False,
+    ))
+
+    tf.add_to_collection('losses',loss)
+    tf.summary.scalar('loss', loss)
+    total_loss = tf.add_n(tf.get_collection('losses'),name = 'total_loss')
+
+    train_step = tf.train.AdadeltaOptimizer().minimize(total_loss)
+
     with tf.train.MonitoredSession(
             session_creator=tf.train.ChiefSessionCreator(
                 config=config)) as sess:
         K.set_session(sess)
+        close = dq.start_input_processes(sess, datapoints)
 
         for i in tqdm(itertools.count()):
-            try:
-                signal, labels = q.get(timeout=0.5)
-                dq.push_to_queue(sess, signal, labels)
-
-                if i % 20 == 0 and i >= 20:
-                    for x in sess.run([
-                        dq.batch_dense_labels,
-                        dq.batch_labels,
-                        dq.batch_labels_len,
-                        dq.batch_signal,
-                        dq.batch_signal_len,
-                    ]):
-                        print(x)
-
-            except queue.Empty:
-                break
-            except Exception as e:
-                print(type(e).__name__, type(e))
-                raise
+            sess.run(train_step)
+        close()
 
 
 def run_args(args):

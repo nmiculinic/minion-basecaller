@@ -1,12 +1,15 @@
 from mincall import dataset_pb2
 import tensorflow as tf
+import logging
 from typing import *
 import voluptuous
 import os
 import random
 import gzip
 import numpy as np
-from multiprocessing import Queue
+from multiprocessing import Queue, Manager, Process
+import queue
+from threading import Thread
 
 
 class InputFeederCfg(NamedTuple):
@@ -27,25 +30,26 @@ class DataQueue():
         :param cap: queue capacity
         :param batch_size: output batch size
         """
+        self.logger = logging.getLogger(__name__)
         self.values_ph = tf.placeholder(dtype=tf.int32, shape=[None], name="labels")
         self.values_len_ph = tf.placeholder(dtype=tf.int64, shape=[], name="labels_len")
-        self.signal_ph = tf.placeholder(dtype=tf.float64, shape=[None], name="signal")
+        self.signal_ph = tf.placeholder(dtype=tf.float32, shape=[None, 1], name="signal")
         self.signal_len_ph = tf.placeholder(dtype=tf.int64, shape=[], name="signal_len")
 
         self.queue = tf.PaddingFIFOQueue(
             capacity=capacity,
-            dtypes=[tf.int32, tf.int64, tf.float64, tf.int64],
+            dtypes=[tf.int32, tf.int64, tf.float32, tf.int64],
             shapes=[
                 [None],
                 [],
-                [None],
+                [None, 1],
                 [],
             ])
 
         if shuffle:
             self.shuffle_queue = tf.RandomShuffleQueue(
                 capacity=capacity,
-                dtypes=[tf.int32, tf.int64, tf.float64, tf.int64],
+                dtypes=[tf.int32, tf.int64, tf.float32, tf.int64],
                 min_after_dequeue=10,
             )
             self.enq = self.shuffle_queue.enqueue([self.values_ph, self.values_len_ph, self.signal_ph, self.signal_len_ph])
@@ -75,6 +79,13 @@ class DataQueue():
                 )
             )
 
+        # labels: An `int32` `SparseTensor`.
+        # `labels.indices[i, :] == [b, t]` means `labels.values[i]` stores
+        # the id for (batch b, time t).
+        #    `labels.values[i]` must take on values in `[0, num_labels)`.
+        # See `core/ops/ctc_ops.cc` for more details.
+        # That's ok implemented
+
         self.batch_labels = tf.sparse_concat(axis=0, sp_inputs=sp, expand_nonconcat_dim=True)
         self.batch_labels_len = values_len_op
         self.batch_signal = signal_op
@@ -90,13 +101,52 @@ class DataQueue():
             self.enq, feed_dict={
                 self.values_ph:label,
                 self.values_len_ph: len(label),
-                self.signal_ph:signal,
+                self.signal_ph:signal.reshape((-1, 1)),
                 self.signal_len_ph:len(signal),
             }
         )
 
+    def start_input_processes(self, sess: tf.Session, fnames: List[str], cnt=1):
+        input_feeder_cfg: InputFeederCfg = InputFeederCfg(
+            batch_size=10,
+            seq_length=30,
+        )
 
-def produce_datapoints(cfg: InputFeederCfg, fnames: List[str], q: Queue):
+        m = Manager()
+        q: Queue = m.Queue()
+        poison_queue: Queue = m.Queue()
+
+        processes: List[Process] = []
+        for _ in range(cnt):
+            p = Process(
+                target=produce_datapoints, args=(input_feeder_cfg, fnames, q, poison_queue))
+            p.start()
+            processes.append(p)
+
+        def worker_fn():
+            while True:
+                try:
+                    poison_queue.get_nowait()
+                    return
+                except queue.Empty:
+                    pass
+
+                it = q.get(timeout=0.5)
+                if isinstance(it, Exception):
+                    self.logger.warning(f"Exception happened during processing data {type(it).__name__}:\n{it}")
+                    continue
+                signal, labels = q.get(timeout=0.5)
+                self.push_to_queue(sess, signal, labels)
+        Thread(target=worker_fn, daemon=True).start()
+
+        def close():
+            for _ in range(cnt + 1):
+                poison_queue.put(None)
+            for p in processes:
+                p.join()
+        return close
+
+def produce_datapoints(cfg: InputFeederCfg, fnames: List[str], q: Queue, poison: Queue):
     """
 
     Pushes single instances to the queue of the form:
@@ -107,38 +157,43 @@ def produce_datapoints(cfg: InputFeederCfg, fnames: List[str], q: Queue):
     :param q:
     :return:
     """
-    # TODO: Check correctness
-    random.seed(os.urandom(20))
-    random.shuffle(fnames)
-    for x in fnames:
-        with gzip.open(x, "r") as f:
-            dp = dataset_pb2.DataPoint()
-            dp.ParseFromString(f.read())
+    while True:
+        random.seed(os.urandom(20))
+        random.shuffle(fnames)
+        for x in fnames:
+            with gzip.open(x, "r") as f:
+                dp = dataset_pb2.DataPoint()
+                dp.ParseFromString(f.read())
 
-            signal = np.array(dp.signal, dtype=np.float32)
-            buff = np.zeros(cfg.seq_length, dtype=np.int32)
+                signal = np.array(dp.signal, dtype=np.float32)
+                buff = np.zeros(cfg.seq_length, dtype=np.int32)
 
-            basecall_idx = 0
-            basecall_squiggle_idx = 0
-            for start in range(0, len(signal), cfg.seq_length):
-                buff_idx = 0
-                while basecall_idx < len(
-                        dp.basecalled
-                ) and dp.lower_bound[basecall_idx] < start + cfg.seq_length:
-                    while basecall_squiggle_idx < len(
-                            dp.basecalled_squiggle
-                    ) and dp.basecalled_squiggle[basecall_squiggle_idx] == dataset_pb2.BLANK:  # Find first non-blank basecall_squiggle
-                        basecall_squiggle_idx += 1
+                basecall_idx = 0
+                basecall_squiggle_idx = 0
+                for start in range(0, len(signal), cfg.seq_length):
+                    buff_idx = 0
+                    while basecall_idx < len(
+                            dp.basecalled
+                    ) and dp.lower_bound[basecall_idx] < start + cfg.seq_length:
+                        while basecall_squiggle_idx < len(
+                                dp.basecalled_squiggle
+                        ) and dp.basecalled_squiggle[basecall_squiggle_idx] == dataset_pb2.BLANK:  # Find first non-blank basecall_squiggle
+                            basecall_squiggle_idx += 1
 
-                    if basecall_squiggle_idx >= len(dp.basecalled_squiggle):
-                        break
-                    else:
-                        buff[buff_idx] = dp.basecalled_squiggle[
-                            basecall_squiggle_idx]
-                        buff_idx += 1
-                        basecall_squiggle_idx += 1
-                        basecall_idx += 1
-                q.put([
-                    signal[start:start + cfg.seq_length],
-                    np.copy(buff[:buff_idx]),
-                ])
+                        if basecall_squiggle_idx >= len(dp.basecalled_squiggle):
+                            break
+                        else:
+                            buff[buff_idx] = dp.basecalled_squiggle[
+                                basecall_squiggle_idx]
+                            buff_idx += 1
+                            basecall_squiggle_idx += 1
+                            basecall_idx += 1
+                    try:
+                        poison.get_nowait()
+                        return
+                    except queue.Empty:
+                        pass
+                    q.put([
+                        signal[start:start + cfg.seq_length],
+                        np.copy(buff[:buff_idx]),
+                    ])
