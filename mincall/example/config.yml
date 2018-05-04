@@ -1,0 +1,4 @@
+train:
+  data:
+    - name: "r9.4"
+      dir: "~/ddd"
