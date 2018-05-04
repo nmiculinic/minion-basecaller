@@ -32,9 +32,11 @@ WORKDIR /opt
 WORKDIR /
 RUN mkdir /code
 RUN mkdir /data
+WORKDIR /opt
+COPY requirements.txt requirements.txt.bak
+RUN cat requirements.txt.bak | grep -v tensorflow > requirements.txt && rm requirements.txt.bak
+RUN pip3 --no-cache-dir install -r requirements.txt && rm requirements.txt
 WORKDIR /code
-COPY requirements.txt requirements.txt
-RUN sed -i 
-RUN pip3 --no-cache-dir install -r requirements.txt
 ENV PYTHONPATH=/code
-
+ENTRYPOINT ["python3", "-m", "mincall"]
+COPY . .
