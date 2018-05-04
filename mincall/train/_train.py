@@ -7,6 +7,7 @@ import logging
 from voluptuous.humanize import humanize_error
 from glob import glob
 from pprint import pformat, pprint
+from ._input_feeders import InputFeederCfg, produce_datapoints
 import toolz
 from tqdm import tqdm
 
@@ -22,15 +23,21 @@ class DataDir(NamedTuple):
         return cls(**voluptuous.Schema({
             'name': str,
             'dir': voluptuous.validators.IsDir(),
-        })(data))
+        }, required=True)(data))
 
 
 class TrainConfig(NamedTuple):
     data: List[DataDir]
+    batch_size: int
+    seq_length: int
 
     @classmethod
     def schema(cls, data):
-        return cls(**voluptuous.Schema({'data': [DataDir.schema]})(data))
+        return cls(**voluptuous.Schema({
+            'data': [DataDir.schema],
+            'batch_size': int,
+            'seq_length': int,
+        }, required=True)(data))
 
 
 def run(cfg: TrainConfig):
@@ -42,6 +49,12 @@ def run(cfg: TrainConfig):
             f"Added {len(dps)} datapoint from {x.name} to train set; dir: {x.dir}"
         )
 
+    input_feeder_cfg: InputFeederCfg = InputFeederCfg(
+        batch_size=10,
+        seq_length=10,
+    )
+    produce_datapoints(input_feeder_cfg, datapoints)
+
 
 def run_args(args):
     with open(args.config) as f:
@@ -52,7 +65,7 @@ def run_args(args):
                 'train': TrainConfig.schema,
                 'version': str,
             },
-            extra=voluptuous.REMOVE_EXTRA)(config)
+            extra=voluptuous.REMOVE_EXTRA, required=True)(config)
         logger.info(f"Parsed config\n{pformat(cfg)}")
         run(cfg['train'])
     except voluptuous.error.Error as e:
