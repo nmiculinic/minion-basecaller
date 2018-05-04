@@ -32,7 +32,6 @@ class DataQueue():
         self.signal_ph = tf.placeholder(dtype=tf.float64, shape=[None], name="signal")
         self.signal_len_ph = tf.placeholder(dtype=tf.int64, shape=[], name="signal_len")
 
-
         self.queue = tf.PaddingFIFOQueue(
             capacity=capacity,
             dtypes=[tf.int32, tf.int64, tf.float64, tf.int64],
@@ -80,6 +79,11 @@ class DataQueue():
         self.batch_labels_len = values_len_op
         self.batch_signal = signal_op
         self.batch_signal_len = signal_len_op
+        self.batch_dense_labels=tf.sparse_to_dense(
+            sparse_indices=self.batch_labels.indices,
+            sparse_values=self.batch_labels.values,
+            output_shape=self.batch_labels.dense_shape,
+        )
 
     def push_to_queue(self, sess: tf.Session, signal: np.ndarray, label: np.ndarray):
         sess.run(
