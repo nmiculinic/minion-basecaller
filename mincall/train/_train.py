@@ -1,4 +1,5 @@
 import argparse
+import itertools
 import numpy as np
 import voluptuous
 import sys
@@ -8,7 +9,7 @@ import logging
 from voluptuous.humanize import humanize_error
 from glob import glob
 from pprint import pformat, pprint
-from ._input_feeders import InputFeederCfg, produce_datapoints
+from ._input_feeders import InputFeederCfg, produce_datapoints, DataQueue
 from multiprocessing import Manager, Process, Queue
 import tensorflow as tf
 import queue
@@ -26,10 +27,12 @@ class DataDir(NamedTuple):
 
     @classmethod
     def schema(cls, data):
-        return cls(**voluptuous.Schema({
-            'name': str,
-            'dir': voluptuous.validators.IsDir(),
-        }, required=True)(data))
+        return cls(**voluptuous.Schema(
+            {
+                'name': str,
+                'dir': voluptuous.validators.IsDir(),
+            },
+            required=True)(data))
 
 
 class TrainConfig(NamedTuple):
@@ -39,11 +42,13 @@ class TrainConfig(NamedTuple):
 
     @classmethod
     def schema(cls, data):
-        return cls(**voluptuous.Schema({
-            'data': [DataDir.schema],
-            'batch_size': int,
-            'seq_length': int,
-        }, required=True)(data))
+        return cls(**voluptuous.Schema(
+            {
+                'data': [DataDir.schema],
+                'batch_size': int,
+                'seq_length': int,
+            },
+            required=True)(data))
 
 
 def run(cfg: TrainConfig):
@@ -57,51 +62,44 @@ def run(cfg: TrainConfig):
 
     input_feeder_cfg: InputFeederCfg = InputFeederCfg(
         batch_size=10,
-        seq_length=10,
+        seq_length=300,
     )
 
     m = Manager()
     q: Queue = m.Queue()
 
-    p = Process(target=produce_datapoints, args=(input_feeder_cfg, datapoints, q))
+    p = Process(
+        target=produce_datapoints, args=(input_feeder_cfg, datapoints, q))
     p.start()
     p.join()
 
     config = tf.ConfigProto(allow_soft_placement=True)
     config.gpu_options.allow_growth = True
+    dq = DataQueue(10)
+    with tf.train.MonitoredSession(
+            session_creator=tf.train.ChiefSessionCreator(
+                config=config)) as sess:
 
-    indices = tf.placeholder(dtype=tf.int64)
-    values = tf.placeholder(dtype=tf.int32)
-    dense_shape = tf.placeholder(dtype=tf.int64)
-    st = tf.SparseTensor(
-        indices=indices,
-        values=values,
-        dense_shape=dense_shape,
-    )
-    c = tf.sparse_concat(0, [st,st], expand_nonconcat_dim=True)
-    with tf.train.MonitoredSession(session_creator=tf.train.ChiefSessionCreator(config=config)) as sess:
-        while True:
+        for i in tqdm(itertools.count()):
             try:
                 signal, labels = q.get(timeout=0.5)
-                v = tf.SparseTensorValue(
-                    indices=np.array(np.vstack([np.zeros(len(labels)), np.arange(len(labels))]).transpose(), dtype=np.int32),
-                    values=labels,
-                    dense_shape=[1, len(labels)],
-                )
-                x = sess.run(c, feed_dict={
-                    indices: v.indices,
-                    values:  v.values,
-                    dense_shape: v.dense_shape,
-                })
+                dq.push_to_queue(sess, signal, labels)
 
-                print(v)
-                print(x)
-                if len(labels) > 0:
-                    break
+                if i % 20 == 0 and i >= 20:
+                    for x in sess.run([
+                        dq.batch_dense_labels,
+                        dq.batch_labels,
+                        dq.batch_labels_len,
+                        dq.batch_signal,
+                        dq.batch_signal_len,
+                    ]):
+                        print(x)
+
             except queue.Empty:
                 break
             except Exception as e:
                 print(type(e).__name__, type(e))
+                raise
 
 
 def run_args(args):
@@ -113,7 +111,8 @@ def run_args(args):
                 'train': TrainConfig.schema,
                 'version': str,
             },
-            extra=voluptuous.REMOVE_EXTRA, required=True)(config)
+            extra=voluptuous.REMOVE_EXTRA,
+            required=True)(config)
         logger.info(f"Parsed config\n{pformat(cfg)}")
         run(cfg['train'])
     except voluptuous.error.Error as e:
