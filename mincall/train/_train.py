@@ -17,6 +17,7 @@ import queue
 from mincall import dataset_pb2
 from keras import backend as K
 from keras.layers import Dense, Conv1D
+from .models import Model
 
 import toolz
 from tqdm import tqdm
@@ -67,29 +68,8 @@ def run(cfg: TrainConfig):
     config = tf.ConfigProto(allow_soft_placement=True)
     config.gpu_options.allow_growth = True
     dq = DataQueue(10)
-    learning_phase = K.learning_phase()
 
-    net = dq.batch_signal
-    net = Conv1D(5, 3, input_shape=(None, None, 1))(net)
-
-    logits = net # Tensor of shape [batch_size, max_time, class_num]
-    logger.info(f"Logits shape: {logits.shape}")
-
-    ratio = 1
-    loss = tf.reduce_mean(tf.nn.ctc_loss(
-        dq.batch_labels,
-        logits,
-        tf.cast(tf.floor_div(dq.batch_signal_len + ratio - 1, ratio), tf.int32),  # Round up
-        ctc_merge_repeated=True,
-        time_major=False,
-    ))
-
-    tf.add_to_collection('losses',loss)
-    tf.summary.scalar('loss', loss)
-    total_loss = tf.add_n(tf.get_collection('losses'),name = 'total_loss')
-
-    train_step = tf.train.AdadeltaOptimizer().minimize(total_loss)
-
+    model = Model(cfg, dq.batch_labels, dq.batch_signal, dq.batch_signal_len)
     with tf.train.MonitoredSession(
             session_creator=tf.train.ChiefSessionCreator(
                 config=config)) as sess:
@@ -97,7 +77,7 @@ def run(cfg: TrainConfig):
         close = dq.start_input_processes(sess, datapoints)
 
         for i in tqdm(itertools.count()):
-            sess.run(train_step)
+            sess.run(model.train_step)
         close()
 
 
