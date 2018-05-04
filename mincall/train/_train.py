@@ -26,10 +26,12 @@ class DataDir(NamedTuple):
 
     @classmethod
     def schema(cls, data):
-        return cls(**voluptuous.Schema({
-            'name': str,
-            'dir': voluptuous.validators.IsDir(),
-        }, required=True)(data))
+        return cls(**voluptuous.Schema(
+            {
+                'name': str,
+                'dir': voluptuous.validators.IsDir(),
+            },
+            required=True)(data))
 
 
 class TrainConfig(NamedTuple):
@@ -39,11 +41,13 @@ class TrainConfig(NamedTuple):
 
     @classmethod
     def schema(cls, data):
-        return cls(**voluptuous.Schema({
-            'data': [DataDir.schema],
-            'batch_size': int,
-            'seq_length': int,
-        }, required=True)(data))
+        return cls(**voluptuous.Schema(
+            {
+                'data': [DataDir.schema],
+                'batch_size': int,
+                'seq_length': int,
+            },
+            required=True)(data))
 
 
 def run(cfg: TrainConfig):
@@ -63,45 +67,97 @@ def run(cfg: TrainConfig):
     m = Manager()
     q: Queue = m.Queue()
 
-    p = Process(target=produce_datapoints, args=(input_feeder_cfg, datapoints, q))
+    p = Process(
+        target=produce_datapoints, args=(input_feeder_cfg, datapoints, q))
     p.start()
     p.join()
 
     config = tf.ConfigProto(allow_soft_placement=True)
     config.gpu_options.allow_growth = True
 
-    indices = tf.placeholder(dtype=tf.int64)
-    values = tf.placeholder(dtype=tf.int32)
-    dense_shape = tf.placeholder(dtype=tf.int64)
-    st = tf.SparseTensor(
-        indices=indices,
-        values=values,
-        dense_shape=dense_shape,
-    )
-    c = tf.sparse_concat(0, [st,st], expand_nonconcat_dim=True)
-    with tf.train.MonitoredSession(session_creator=tf.train.ChiefSessionCreator(config=config)) as sess:
+    values = tf.placeholder(dtype=tf.int32, shape=[None], name="labels")
+    cntValues = tf.placeholder(dtype=tf.int64, shape=[], name="count_labels")
+
+    queue = tf.PaddingFIFOQueue(
+        10,
+        dtypes=[tf.int32, tf.int64],
+        shapes=[
+            [None],
+            [],
+        ])
+
+    enq = queue.enqueue([values, cntValues])
+    NN = 3
+    ind_op, cnt_op = queue.dequeue_many(NN)
+    gg = tf.split(ind_op, NN)
+    cnt = tf.split(cnt_op, NN)
+    sp = []
+    for g, c in zip(gg, cnt):
+        c = tf.squeeze(c, axis=0)
+        print(c.shape)
+        print(c.dtype)
+
+        ind = tf.transpose(
+                    tf.stack(
+                        [
+                            tf.zeros(shape=c, dtype=tf.int64),
+                            tf.range(c, dtype=tf.int64),
+                        ]
+                ))
+
+        print(ind, ind.shape, ind.dtype)
+        sp.append(
+            tf.SparseTensor(
+                indices=ind,
+                values=tf.squeeze(g, axis=0)[:c],
+                dense_shape=tf.stack([1,c], 0)
+            )
+        )
+    ggg = tf.sparse_concat(axis=0, sp_inputs=sp, expand_nonconcat_dim=True)
+
+    # with tf.train.MonitoredSession(
+    #         session_creator=tf.train.ChiefSessionCreator(
+    #             config=config)) as sess:
+    with tf.Session() as sess:
+
+        # ggg = tf.constant(5, shape=(), dtype=tf.int64)
+        # print(sess.run([
+        #     tf.transpose(
+        #         tf.stack(
+        #         [
+        #             tf.zeros(shape=ggg, dtype=tf.int64),
+        #             tf.range(ggg, dtype=tf.int64),
+        #         ]
+        #     ))
+        # ]))
+
+        sess.run(enq, feed_dict={
+            values:[1,2,3],
+            cntValues: 3,
+        })
+        sess.run(enq, feed_dict={
+            values:[1,2],
+            cntValues: 2,
+        })
+        sess.run(enq, feed_dict={
+            values:[1,2, 3, 4, 5],
+            cntValues: 5,
+        })
+
+        al, xxx = sess.run([ggg, sp])
+        print(al)
+        for x in xxx:
+            print(x)
+
         while True:
             try:
                 signal, labels = q.get(timeout=0.5)
-                v = tf.SparseTensorValue(
-                    indices=np.array(np.vstack([np.zeros(len(labels)), np.arange(len(labels))]).transpose(), dtype=np.int32),
-                    values=labels,
-                    dense_shape=[1, len(labels)],
-                )
-                x = sess.run(c, feed_dict={
-                    indices: v.indices,
-                    values:  v.values,
-                    dense_shape: v.dense_shape,
-                })
-
-                print(v)
-                print(x)
-                if len(labels) > 0:
-                    break
+                break
             except queue.Empty:
                 break
             except Exception as e:
                 print(type(e).__name__, type(e))
+                raise
 
 
 def run_args(args):
@@ -113,7 +169,8 @@ def run_args(args):
                 'train': TrainConfig.schema,
                 'version': str,
             },
-            extra=voluptuous.REMOVE_EXTRA, required=True)(config)
+            extra=voluptuous.REMOVE_EXTRA,
+            required=True)(config)
         logger.info(f"Parsed config\n{pformat(cfg)}")
         run(cfg['train'])
     except voluptuous.error.Error as e:
