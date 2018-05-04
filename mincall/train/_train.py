@@ -1,12 +1,28 @@
 import argparse
 import voluptuous
 import yaml
-from typing import NamedTuple
+from typing import *
 from pprint import pformat, pprint
 
+class DataDir(NamedTuple):
+    name: str
+    dir: str
+
+    @classmethod
+    def schema(cls):
+        return cls(**voluptuous.Schema({
+            'name': str,
+            'dir': voluptuous.validators.IsDir(),
+        }))
+
 class TrainConfig(NamedTuple):
-    config: str
-    pass
+    data: List[DataDir]
+
+    @classmethod
+    def schema(cls):
+        return cls(**voluptuous.Schema({
+            'data': [DataDir.schema]
+        }))
 
 def run(cfg: TrainConfig):
     pass

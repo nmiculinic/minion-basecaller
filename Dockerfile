@@ -1,4 +1,4 @@
-FROM tensorflow/tensorflow:latest-py3
+FROM python:3
 
 ENV TENSORFLOW_SRC_PATH=/opt/tensorflow
 ENV WARP_CTC_PATH=/opt/warp-ctc/build
