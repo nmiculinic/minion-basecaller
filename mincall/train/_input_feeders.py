@@ -22,7 +22,7 @@ class InputFeederCfg(NamedTuple):
             })(data))
 
 class DataQueue():
-    def __init__(self, batch_size, capacity=-1):
+    def __init__(self, batch_size, capacity=-1, min_after_deque=10, shuffle=True):
         """
         :param cap: queue capacity
         :param batch_size: output batch size
@@ -31,6 +31,7 @@ class DataQueue():
         self.values_len_ph = tf.placeholder(dtype=tf.int64, shape=[], name="labels_len")
         self.signal_ph = tf.placeholder(dtype=tf.float64, shape=[None], name="signal")
         self.signal_len_ph = tf.placeholder(dtype=tf.int64, shape=[], name="signal_len")
+
 
         self.queue = tf.PaddingFIFOQueue(
             capacity=capacity,
@@ -41,7 +42,19 @@ class DataQueue():
                 [None],
                 [],
             ])
-        self.enq = self.queue.enqueue([self.values_ph, self.values_len_ph, self.signal_ph, self.signal_len_ph])
+
+        if shuffle:
+            self.shuffle_queue = tf.RandomShuffleQueue(
+                capacity=capacity,
+                dtypes=[tf.int32, tf.int64, tf.float64, tf.int64],
+                min_after_dequeue=10,
+            )
+            self.enq = self.shuffle_queue.enqueue([self.values_ph, self.values_len_ph, self.signal_ph, self.signal_len_ph])
+            num_threads = 4
+            qr = tf.train.QueueRunner(self.queue, [self.queue.enqueue(self.shuffle_queue.dequeue())] * num_threads)
+            tf.train.add_queue_runner(qr)
+        else:
+            self.enq = self.queue.enqueue([self.values_ph, self.values_len_ph, self.signal_ph, self.signal_len_ph])
 
         values_op, values_len_op, signal_op, signal_len_op = self.queue.dequeue_many(batch_size)
         sp = []
@@ -55,12 +68,11 @@ class DataQueue():
                     ]
                 ))
 
-            print(ind, ind.shape, ind.dtype)
             sp.append(
                 tf.SparseTensor(
                     indices=ind,
                     values=tf.squeeze(label_idx, axis=0)[:label_len],
-                    dense_shape=tf.stack([1,label_len], 0)
+                    dense_shape=tf.stack([1, label_len], 0)
                 )
             )
 

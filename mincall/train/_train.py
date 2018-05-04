@@ -60,37 +60,37 @@ def run(cfg: TrainConfig):
             f"Added {len(dps)} datapoint from {x.name} to train set; dir: {x.dir}"
         )
 
-    input_feeder_cfg: InputFeederCfg = InputFeederCfg(
-        batch_size=10,
-        seq_length=10,
-    )
-
-    m = Manager()
-    q: Queue = m.Queue()
-
-    p = Process(
-        target=produce_datapoints, args=(input_feeder_cfg, datapoints, q))
-    p.start()
-    p.join()
+    # input_feeder_cfg: InputFeederCfg = InputFeederCfg(
+    #     batch_size=10,
+    #     seq_length=10,
+    # )
+    #
+    # m = Manager()
+    # q: Queue = m.Queue()
+    #
+    # p = Process(
+    #     target=produce_datapoints, args=(input_feeder_cfg, datapoints, q))
+    # p.start()
+    # p.join()
 
     config = tf.ConfigProto(allow_soft_placement=True)
     config.gpu_options.allow_growth = True
-
-    # with tf.train.MonitoredSession(
-    #         session_creator=tf.train.ChiefSessionCreator(
-    #             config=config)) as sess:
-
     dq = DataQueue(10)
-    with tf.Session() as sess:
+    with tf.train.MonitoredSession(
+            session_creator=tf.train.ChiefSessionCreator(
+                config=config)) as sess:
+
+    # with tf.Session(config=config) as sess:
         for i in tqdm(itertools.count()):
             try:
                 # signal, labels = q.get(timeout=0.5)
                 signal = np.arange(4)
                 labels = np.arange(2)
-                print(f"enqueu successful\n{signal}\n{labels}")
+                print(f"about to enqueue \n{signal}\n{labels}")
                 dq.push_to_queue(sess, signal, labels)
+                print(f"enqueue successful\n{signal}\n{labels}")
 
-                if i % 20 == 0:
+                if i % 20 == 0 and i >= 20:
                     print(sess.run([
                         dq.batch_labels,
                         dq.batch_labels_len,
