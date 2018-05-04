@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-help_txt="""
+help_txt = """
 This script is responsible for analysing the alignment. It expects to be given basecalled reads in single fasta file, reference string, and alignment .sam
 
 It should work whether reference sequence is circular or not.

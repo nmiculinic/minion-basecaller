@@ -21,9 +21,18 @@ args.add_argument("input_folder", help="Input fast5 folder to basecall")
 args.add_argument("out_folder", help="Output folder for all analysis")
 args.add_argument("--ref", help="Reference genome")
 args.add_argument("--name", help="Run name")
-args.add_argument("--min_length", type=int, default=500, help="Minimum read lenght for further analysis")
-args.add_argument("-c", "--circular", help="Is genome circular", action="store_true")
-args.add_argument("--coverage_threshold", help="Minimal coverage threshold for consensus", type=float, default=0.0)
+args.add_argument(
+    "--min_length",
+    type=int,
+    default=500,
+    help="Minimum read lenght for further analysis")
+args.add_argument(
+    "-c", "--circular", help="Is genome circular", action="store_true")
+args.add_argument(
+    "--coverage_threshold",
+    help="Minimal coverage threshold for consensus",
+    type=float,
+    default=0.0)
 args = args.parse_args()
 
 
@@ -44,6 +53,7 @@ def cmd(command, ext="fasta"):
             with open(os.path.splitext(path)[0] + ".time", 'w') as f:
                 print(t, file=f)
         return path
+
     return f
 
 
@@ -55,7 +65,11 @@ def albacore(name):
     else:
         logger.info("Basecalling %s with %s", args.input_folder, name)
         logger.info("Output file %s", path)
-        command = ["read_fast5_basecaller.py", "-i", args.input_folder, "-t", str(os.cpu_count()), "-s", args.out_folder, "--config", "r94_450bps_linear.cfg"]
+        command = [
+            "read_fast5_basecaller.py", "-i", args.input_folder, "-t",
+            str(os.cpu_count()), "-s", args.out_folder, "--config",
+            "r94_450bps_linear.cfg"
+        ]
         logger.info("Full command: %s", " ".join(command))
         t = monotonic()
         subprocess.check_call(command)
@@ -64,7 +78,8 @@ def albacore(name):
             print(t, file=f)
 
         with open(path, 'wb') as out:
-            for fn in glob.glob(os.path.join(args.out_folder, 'workspace', '*.fastq')):
+            for fn in glob.glob(
+                    os.path.join(args.out_folder, 'workspace', '*.fastq')):
                 with open(fn, 'rb') as f:
                     out.write(f.read())
     return path
@@ -72,8 +87,15 @@ def albacore(name):
 
 basecallers = OrderedDict([
     # ("albacore", albacore),
-    ("mincall_m270", cmd(["nvidia-docker", "run", "--rm", "-v", "%s:/data" % args.input_folder, "-u=%d" % os.getuid(), "nmiculinic/mincall:m270_alba"])),
-    ('albacore', cmd(["poretools", "fastq", "--type", "fwd", args.input_folder], ext='fastq')),
+    ("mincall_m270",
+     cmd([
+         "nvidia-docker", "run", "--rm", "-v",
+         "%s:/data" % args.input_folder,
+         "-u=%d" % os.getuid(), "nmiculinic/mincall:m270_alba"
+     ])),
+    ('albacore',
+     cmd(["poretools", "fastq", "--type", "fwd", args.input_folder],
+         ext='fastq')),
     # ("nanonet", cmd(["nanonetcall", args.input_folder, "--chemistry", "r9", "--jobs", str(os.cpu_count())])),
 ])
 
@@ -89,17 +111,20 @@ for name, cmd in basecallers.items():
     if os.path.isfile(sam_path):
         logger.info("%s exists, skipping", sam_path)
     else:
-        logger.info("Aligning %s to reference %s with graphmap", path, args.ref)
-        align_utils.align_with_graphmap(path, args.ref, args.circular, sam_path)
+        logger.info("Aligning %s to reference %s with graphmap", path,
+                    args.ref)
+        align_utils.align_with_graphmap(path, args.ref, args.circular,
+                                        sam_path)
 
     filtered_sam = os.path.join(args.out_folder, name + "_filtered.sam")
     if os.path.isfile(filtered_sam):
         logger.info("%s exists, skipping", filtered_sam)
     else:
         filters = [read_len_filter(min_len=args.min_length, max_len=50000)]
-        n_kept, n_discarded = filter_aligments_in_sam(sam_path, filtered_sam, filters)
+        n_kept, n_discarded = filter_aligments_in_sam(sam_path, filtered_sam,
+                                                      filters)
         logger.info("Outputed filtered sam to %s\n%d kept, %d discarded",
-                 filtered_sam, n_kept, n_discarded)
+                    filtered_sam, n_kept, n_discarded)
 
     reads_pkl = os.path.join(args.out_folder, name + "_read_data.pkl")
     if os.path.isfile(reads_pkl):
@@ -114,12 +139,14 @@ for name, cmd in basecallers.items():
     logger.info("%s\n%s", name, desc)
     dfs[name] = df
 
-    consensus_report_path = os.path.join(args.out_folder, name + "_consensus_report.pkl")
+    consensus_report_path = os.path.join(args.out_folder,
+                                         name + "_consensus_report.pkl")
     if os.path.isfile(consensus_report_path):
         consensus_report = pd.read_pickle(consensus_report_path)
         logger.info("%s exists, loading", consensus_report_path)
     else:
-        consensus_report = get_consensus_report(name, filtered_sam, args.ref, args.coverage_threshold)
+        consensus_report = get_consensus_report(name, filtered_sam, args.ref,
+                                                args.coverage_threshold)
         consensus_report.to_pickle(consensus_report_path)
     consensus_report[r'mean match'] = df['Match rate'].mean()
     consensus_report[r'10% match'] = df['Match rate'].quantile(0.1)

@@ -1,4 +1,5 @@
+version: "v0.1"
 train:
   data:
     - name: "r9.4"
-      dir: "~/ddd"
+      dir: "./mincall/example"

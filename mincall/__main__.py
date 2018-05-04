@@ -3,6 +3,7 @@ from tqdm import tqdm
 import logging
 from mincall import train
 
+
 class TqdmWriteWrapper():
     def write(self, s):
         tqdm.write(s, end="")
@@ -20,24 +21,19 @@ if __name__ == "__main__":
     if hasattr(args, 'func'):
         root_logger = logging.getLogger()
         root_logger.setLevel(logging.DEBUG)
-        h = (logging.StreamHandler(
-            TqdmWriteWrapper()
-        ))
+        h = (logging.StreamHandler(TqdmWriteWrapper()))
         if args.verbose:
             h.setLevel(logging.DEBUG)
         else:
             h.setLevel(logging.INFO)
 
         formatter = logging.Formatter(
-            "%(asctime)s [%(levelname)5s]:%(name)20s: %(message)s"
-        )
+            "%(asctime)s [%(levelname)5s]:%(name)20s: %(message)s")
         h.setFormatter(formatter)
         root_logger.addHandler(h)
 
         if args.log_file:
-            h = (logging.FileHandler(
-                args.log_file,
-            ))
+            h = (logging.FileHandler(args.log_file, ))
             h.setLevel(logging.DEBUG)
             h.setFormatter(formatter)
             root_logger.addHandler(h)

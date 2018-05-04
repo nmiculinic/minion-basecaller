@@ -10,10 +10,13 @@ def f():
     logging.basicConfig(level=logging.DEBUG, format=log_fmt)
     logger = logging.getLogger("inputTest")
     t0 = perf_counter()
-    for t, _ in enumerate(input_readers.get_raw_ref_feed_yield(logger, 8 * 600 * 3 // 2, 630, 1, 'train.txt')):
+    for t, _ in enumerate(
+            input_readers.get_raw_ref_feed_yield(logger, 8 * 600 * 3 // 2, 630,
+                                                 1, 'train.txt')):
         it = t + 1
         if it in [10, 20, 30, 40] or it % 50 == 0:
-            logger.info("ucitao %d primjera u %.3f it/s", it, it / (perf_counter() - t0))
+            logger.info("ucitao %d primjera u %.3f it/s", it,
+                        it / (perf_counter() - t0))
 
 
 parser = argparse.ArgumentParser()

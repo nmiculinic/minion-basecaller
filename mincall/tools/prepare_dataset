@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-help_txt="""
+help_txt = """
 This script is responsible for preparing the basecalled dataset. It expects to be given fast5 filled folder input, reference string, and alignment .sam
 
 It should work whether reference sequence is circular or not.

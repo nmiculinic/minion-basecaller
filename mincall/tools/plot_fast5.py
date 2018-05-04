@@ -16,9 +16,12 @@ def fast5_fix(fast5_path, ax=None):
         signal = h5['Raw/Reads/' + target_read]['Signal']
         raw_start_time = h5['Raw/Reads/' + target_read].attrs['start_time']
 
-        basecalled_hmm, _ = input_readers.HMMAlignedRaw.get_basecalled_data({}, h5, target_read, sampling_rate)
+        basecalled_hmm, _ = input_readers.HMMAlignedRaw.get_basecalled_data(
+            {}, h5, target_read, sampling_rate)
 
-        hmm_times = (basecalled_hmm[0]['start'], basecalled_hmm[-1]['start'] + basecalled_hmm[-1]['length'])
+        hmm_times = (
+            basecalled_hmm[0]['start'],
+            basecalled_hmm[-1]['start'] + basecalled_hmm[-1]['length'])
 
         ax.plot(signal)
         ax.axvline(sampling_rate * hmm_times[0], color='g')
@@ -35,12 +38,16 @@ def fast5_fix(fast5_path, ax=None):
         events_patch = mpatches.Patch(color='c', label='events')
 
         try:
-            basecalled_rnn, _ = input_readers.RNNAlignedRaw.get_basecalled_data({}, h5, target_read, sampling_rate)
+            basecalled_rnn, _ = input_readers.RNNAlignedRaw.get_basecalled_data(
+                {}, h5, target_read, sampling_rate)
 
-            rnn_times = (basecalled_rnn[0]['start'], basecalled_rnn[-1]['start'] + basecalled_rnn[-1]['length'])
+            rnn_times = (
+                basecalled_rnn[0]['start'],
+                basecalled_rnn[-1]['start'] + basecalled_rnn[-1]['length'])
 
             ax.axvline(sampling_rate * rnn_times[0], color='r', alpha=0.5)
-            ax.axvline(sampling_rate * rnn_times[1], 0.1, 0.9, color='r', alpha=0.5)
+            ax.axvline(
+                sampling_rate * rnn_times[1], 0.1, 0.9, color='r', alpha=0.5)
             rnn_patch = mpatches.Patch(color='r', label='RNN events')
             ax.legend(handles=[hmm_patch, rnn_patch, events_patch])
         except errors.MissingRNN1DBasecall:

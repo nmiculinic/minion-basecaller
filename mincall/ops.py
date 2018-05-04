@@ -21,14 +21,18 @@ def running_mean(net, sizes, penalties, out_classes, name=None):
         for size, penalty in zip(sizes, penalties):
             with tf.name_scope("size_%d" % size):
 
-                filters = np.zeros([size, out_classes, out_classes], dtype=np.float32)
+                filters = np.zeros(
+                    [size, out_classes, out_classes], dtype=np.float32)
                 for i in range(out_classes):
                     filters[:, i, i] = 1
 
                 reg = tf.nn.conv1d(net, filters, 1, 'VALID')
-                reg = tf.exp(reg)  # Likelihood of having size consecutive symbols on output
+                reg = tf.exp(
+                    reg
+                )  # Likelihood of having size consecutive symbols on output
                 reg = tf.reduce_sum(reg, axis=[2])  # Sum over all symbols
-                reg = tf.reduce_mean(reg)  # and find mean per sequence per batch
+                reg = tf.reduce_mean(
+                    reg)  # and find mean per sequence per batch
                 out.append(penalty * reg)
 
         return tf.reduce_sum(out)
@@ -78,8 +82,9 @@ def central_cut(net, block_size, shrink_factor):
     ):
         cut_size = tf.div(cut_size, 2)
 
-    net = tf.slice(net, [0, cut_size, 0],
-                   [-1, tf.div(block_size, shrink_factor), -1], name="Cutting")
+    net = tf.slice(
+        net, [0, cut_size, 0], [-1, tf.div(block_size, shrink_factor), -1],
+        name="Cutting")
 
     net.set_shape(output_shape)
     return net
@@ -102,15 +107,13 @@ def atrous_conv1d(value, filters, rate, padding="SAME", name=None):
         pad = [[0, add]]
         crop = [[0, add]]
 
-        value = tf.space_to_batch_nd(input=value,
-                                     paddings=pad,
-                                     block_shape=[rate])
+        value = tf.space_to_batch_nd(
+            input=value, paddings=pad, block_shape=[rate])
 
         value = tf.nn.conv1d(value, filters, 1, padding, name=name)
 
-        value = tf.batch_to_space_nd(input=value,
-                                     crops=crop,
-                                     block_shape=[rate])
+        value = tf.batch_to_space_nd(
+            input=value, crops=crop, block_shape=[rate])
 
         return value
 
@@ -119,18 +122,25 @@ def dense2d_to_sparse(dense_input, length, name=None, dtype=None):
     with tf.name_scope(name, "dense2d_to_sparse"):
         num_batches = dense_input.get_shape()[0]
 
-        indices = [tf.stack([tf.fill([length[x]], x), tf.range(length[x])], axis=1) for x in range(num_batches)]
+        indices = [
+            tf.stack([tf.fill([length[x]], x),
+                      tf.range(length[x])], axis=1) for x in range(num_batches)
+        ]
         indices = tf.concat(axis=0, values=indices)
         indices = tf.to_int64(indices)
 
-        values = [tf.squeeze(tf.slice(dense_input, [x, 0], [1, length[x]]), axis=[0]) for x in
-                  range(num_batches)]
+        values = [
+            tf.squeeze(
+                tf.slice(dense_input, [x, 0], [1, length[x]]), axis=[0])
+            for x in range(num_batches)
+        ]
         values = tf.concat(axis=0, values=values)
 
         if dtype is not None:
             values = tf.cast(values, dtype)
 
-        return tf.SparseTensor(indices, values, tf.to_int64(tf.shape(dense_input)))
+        return tf.SparseTensor(indices, values,
+                               tf.to_int64(tf.shape(dense_input)))
 
 
 # (2) use SELUs
@@ -145,13 +155,14 @@ def selu(x):
 # e.g. use:
 # selu_initializer = tf.layers.variance_scaling_initializer(factor=1.0, mode='FAN_IN')
 
-
 if __name__ == '__main__':
     from model_small import model
     print(read_model_vars(model))
 
-    X = tf.constant(np.array([1, 2, 3, 4, 5, 6, 7]).reshape(1, 7, 1), dtype=tf.float32)
-    kernel = tf.constant(np.array([100, 10, 1]).reshape(3, 1, 1), dtype=tf.float32)
+    X = tf.constant(
+        np.array([1, 2, 3, 4, 5, 6, 7]).reshape(1, 7, 1), dtype=tf.float32)
+    kernel = tf.constant(
+        np.array([100, 10, 1]).reshape(3, 1, 1), dtype=tf.float32)
     y = atrous_conv1d(X, kernel, 2, "SAME")
     sess = tf.Session()
     sess.run(tf.global_variables_initializer())

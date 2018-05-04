@@ -10,13 +10,18 @@ parser.add_argument("sam_file_in")
 args = parser.parse_args()
 
 with NamedTemporaryFile() as fout:
-    filters = [only_mapped_filter(), supplementary_aligments_filter(), secondary_aligments_filter()]
+    filters = [
+        only_mapped_filter(),
+        supplementary_aligments_filter(),
+        secondary_aligments_filter()
+    ]
     filter_names = ['is_mapped', 'is_not_supplementary', 'is_not_secondary']
 
     for f, name in zip(filters, filter_names):
-        n_kept, n_discarded = filter_aligments_in_sam(args.sam_file_in, fout.name, [f])
+        n_kept, n_discarded = filter_aligments_in_sam(args.sam_file_in,
+                                                      fout.name, [f])
         print("%s: kept %d, discarded %d" % (name, n_kept, n_discarded))
 
-    n_kept, n_discarded = filter_aligments_in_sam(args.sam_file_in, fout.name, filters)
+    n_kept, n_discarded = filter_aligments_in_sam(args.sam_file_in, fout.name,
+                                                  filters)
     print("All filters: kept %d, discarded %d" % (n_kept, n_discarded))
-

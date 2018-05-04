@@ -33,7 +33,6 @@ CIGAR_CLIP = 'SH'
 BYTE_TO_CIGAR = {v: k for k, v in CIGAR_TO_BYTE.items()}
 
 COMPLEMENT = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A'}
-
 """
     CIGAR utils
 """
@@ -73,7 +72,7 @@ def cigar_str_to_pairs(cigar):
 
     cigar_pairs = []
     for i, end in enumerate(split_locations):
-        start = split_locations[i-1] + 1 if i > 0 else 0
+        start = split_locations[i - 1] + 1 if i > 0 else 0
 
         cnt = int(cigar[start:end])
         char = cigar[end].upper()
@@ -110,10 +109,10 @@ def compress_cigar(cigar_str, ret_mode='chars'):
     count = 1
 
     for i in range(1, len(cigar_str)):
-        if cigar_str[i-1] == cigar_str[i]:
+        if cigar_str[i - 1] == cigar_str[i]:
             count += 1
         else:
-            pairs.append((convert(cigar_str[i-1]), count))
+            pairs.append((convert(cigar_str[i - 1]), count))
             count = 1
     pairs.append((convert(cigar_str[-1]), count))
     return pairs
@@ -243,7 +242,8 @@ def error_rates_from_cigar(cigar_full_str):
     cigar_len = len(cigar_full_str)
     n_deletions = get_cnt(CIGAR_DELETION)
     n_all_insertions = get_cnt(CIGAR_INSERTION)
-    n_insertions = n_all_insertions - get_cnt(CIGAR_SOFTCLIP) - get_cnt(CIGAR_HARDCLIP)
+    n_insertions = n_all_insertions - get_cnt(CIGAR_SOFTCLIP) - get_cnt(
+        CIGAR_HARDCLIP)
     n_missmatches = get_cnt(CIGAR_MISSMATCH)
     n_matches = get_cnt(CIGAR_MATCH)
 
@@ -251,26 +251,29 @@ def error_rates_from_cigar(cigar_full_str):
     target_len = n_deletions + n_missmatches + n_matches
     noncliped_len = n_all_insertions + n_missmatches + n_matches
     if cigar_len != n_deletions + n_all_insertions + n_missmatches + n_matches:
-        raise ValueError("cigar_len != n_deletions + n_all_insertions + n_missmatches + n_matches"
-                         ";Expected extended cigar format")
+        raise ValueError(
+            "cigar_len != n_deletions + n_all_insertions + n_missmatches + n_matches"
+            ";Expected extended cigar format")
     if not read_len:
         logging.warning("Clipped read len == 0")
         return None
 
     n_errors = n_missmatches + n_insertions + n_deletions
 
-    error_rate =100* n_errors / read_len
-    match_rate = 100* n_matches / read_len
-    missmatch_rate = 100* n_missmatches / read_len
-    ins_rate = 100*n_insertions / read_len
-    del_rate = 100*n_deletions / read_len
-    identity_rate = 100*n_matches / cigar_len
+    error_rate = 100 * n_errors / read_len
+    match_rate = 100 * n_matches / read_len
+    missmatch_rate = 100 * n_missmatches / read_len
+    ins_rate = 100 * n_insertions / read_len
+    del_rate = 100 * n_deletions / read_len
+    identity_rate = 100 * n_matches / cigar_len
 
     return error_rate, match_rate, missmatch_rate, ins_rate, del_rate, identity_rate, noncliped_len
 
 
-ERROR_RATES_COLUMNS = ['Query name', 'Error %', 'Match %', 'Mismatch %',
-                       'Insertion %', 'Deletion %', 'Identity %', 'Read length', 'Is reversed']
+ERROR_RATES_COLUMNS = [
+    'Query name', 'Error %', 'Match %', 'Mismatch %', 'Insertion %',
+    'Deletion %', 'Identity %', 'Read length', 'Is reversed'
+]
 
 
 def error_rates_for_sam(sam_path):
@@ -323,7 +326,8 @@ def error_positions_report(sam_path, n_buckets=1000):
     data = [[pos, op, cnt] for pos, count in positions.items()
             for op, cnt in count.items()]
 
-    df = pd.DataFrame(data, columns=['relative_position', 'operation', 'op_count'])
+    df = pd.DataFrame(
+        data, columns=['relative_position', 'operation', 'op_count'])
     df.sort_values(by='relative_position', inplace=True)
     df.reset_index(inplace=True, drop=True)
     return df
@@ -331,11 +335,11 @@ def error_positions_report(sam_path, n_buckets=1000):
 
 def read_fasta(fp):
     def rr(f):
-        return "".join(line.strip() for line in f.readlines() if ">" not in line)
+        return "".join(
+            line.strip() for line in f.readlines() if ">" not in line)
 
     if not hasattr(fp, 'readlines'):
         with open(fp, 'r') as f:
             return rr(f)
     else:
         return rr(fp)
-
