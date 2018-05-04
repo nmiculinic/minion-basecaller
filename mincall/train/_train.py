@@ -14,6 +14,7 @@ from multiprocessing import Manager, Process, Queue
 import tensorflow as tf
 import queue
 from mincall import dataset_pb2
+from keras import backend as K
 
 import toolz
 from tqdm import tqdm
@@ -62,7 +63,7 @@ def run(cfg: TrainConfig):
 
     input_feeder_cfg: InputFeederCfg = InputFeederCfg(
         batch_size=10,
-        seq_length=300,
+        seq_length=30,
     )
 
     m = Manager()
@@ -76,9 +77,11 @@ def run(cfg: TrainConfig):
     config = tf.ConfigProto(allow_soft_placement=True)
     config.gpu_options.allow_growth = True
     dq = DataQueue(10)
+    learning_phase = K.learning_phase()
     with tf.train.MonitoredSession(
             session_creator=tf.train.ChiefSessionCreator(
                 config=config)) as sess:
+        K.set_session(sess)
 
         for i in tqdm(itertools.count()):
             try:
