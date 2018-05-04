@@ -1,4 +1,5 @@
 from mincall import dataset_pb2
+import tensorflow as tf
 from typing import *
 import voluptuous
 import os
@@ -20,8 +21,76 @@ class InputFeederCfg(NamedTuple):
                 'seq_length': int,
             })(data))
 
+class DataQueue():
+    def __init__(self, batch_size, capacity=-1):
+        """
+        :param cap: queue capacity
+        :param batch_size: output batch size
+        """
+        self.values_ph = tf.placeholder(dtype=tf.int32, shape=[None], name="labels")
+        self.values_len_ph = tf.placeholder(dtype=tf.int64, shape=[], name="labels_len")
+        self.signal_ph = tf.placeholder(dtype=tf.float64, shape=[None], name="signal")
+        self.signal_len_ph = tf.placeholder(dtype=tf.int64, shape=[], name="signal_len")
+
+        self.queue = tf.PaddingFIFOQueue(
+            capacity=capacity,
+            dtypes=[tf.int32, tf.int64, tf.float64, tf.int64],
+            shapes=[
+                [None],
+                [],
+                [None],
+                [],
+            ])
+        self.enq = self.queue.enqueue([self.values_ph, self.values_len_ph, self.signal_ph, self.signal_len_ph])
+
+        values_op, values_len_op, signal_op, signal_len_op = self.queue.dequeue_many(batch_size)
+        sp = []
+        for label_idx, label_len in zip(tf.split(values_op, batch_size), tf.split(values_len_op, batch_size)):
+            label_len = tf.squeeze(label_len, axis=0)
+            ind = tf.transpose(
+                tf.stack(
+                    [
+                        tf.zeros(shape=label_len, dtype=tf.int64),
+                        tf.range(label_len, dtype=tf.int64),
+                    ]
+                ))
+
+            print(ind, ind.shape, ind.dtype)
+            sp.append(
+                tf.SparseTensor(
+                    indices=ind,
+                    values=tf.squeeze(label_idx, axis=0)[:label_len],
+                    dense_shape=tf.stack([1,label_len], 0)
+                )
+            )
+
+        self.batch_labels = tf.sparse_concat(axis=0, sp_inputs=sp, expand_nonconcat_dim=True)
+        self.batch_labels_len = values_len_op
+        self.batch_signal = signal_op
+        self.batch_signal_len = signal_len_op
+
+    def push_to_queue(self, sess: tf.Session, signal: np.ndarray, label: np.ndarray):
+        sess.run(
+            self.enq, feed_dict={
+                self.values_ph:label,
+                self.values_len_ph: len(label),
+                self.signal_ph:signal,
+                self.signal_len_ph:len(signal),
+            }
+        )
+
 
 def produce_datapoints(cfg: InputFeederCfg, fnames: List[str], q: Queue):
+    """
+
+    Pushes single instances to the queue of the form:
+        signal[None,], labels [None,]
+    That is 1D numpy array
+    :param cfg:
+    :param fnames:
+    :param q:
+    :return:
+    """
     # TODO: Check correctness
     random.seed(os.urandom(20))
     random.shuffle(fnames)
