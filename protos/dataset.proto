@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package dataset;
+
+enum BasePair {
+    A = 0;
+    C = 1;
+    G = 2;
+    T = 3;
+    BLANK = 4;
+}
+
+enum Cigar {
+    MATCH = 0;
+    MISMATCH = 1;
+    INSERTION = 2; // Insertion, soft clip, hard clip
+    DELETION = 3;  // Deletion, N, P
+}
+
+message DataPoint {
+    repeated float signal = 1;
+    repeated BasePair basecalled = 2; // What we basecalled
+    repeated uint32 lower_bound = 3; // lower_bound[i] is the lower bound for basecalled[i] appears in the signal
+
+    // Aligment data:
+    repeated Cigar cigar = 8;
+    repeated BasePair aligned_ref = 9; // Which is the reference string for this read after aligning
+
+    // squiggled are the same length with blanks inserted for space filling. Matches/mismatched are aligned with BLANKS
+    repeated BasePair aligned_ref_squiggle = 10; // Which is the reference string for this read after aligning, BLANKS inserted for aligments
+    repeated BasePair basecalled_squiggle = 11; // What the  BLANKS inserted for aligments
+}
