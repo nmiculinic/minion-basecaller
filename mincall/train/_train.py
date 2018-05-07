@@ -19,7 +19,7 @@ import tensorflow as tf
 import queue
 from mincall import dataset_pb2
 from keras import backend as K
-from keras.layers import Dense, Conv1D
+from keras import models, layers
 from .models import Model
 import edlib
 
@@ -155,11 +155,25 @@ def run(cfg: TrainConfig):
     dq = DataQueue(
         InputFeederCfg(batch_size=cfg.batch_size, seq_length=cfg.seq_length),
         trace=cfg.trace)
+
+    input = layers.Input(shape=(None, 1))
+    net = input
+    for _ in range(5):
+        net = layers.BatchNormalization()(net)
+        net = layers.Conv1D(10, 3, padding="same")(net)
+        net = layers.Activation('relu')(net)
+
+    net = layers.Conv1D(
+        5,
+        3,
+        padding="same")(net)
+    m = models.Model(inputs=[input], outputs=[net])
     model = Model(
         cfg,
         dq.batch_labels,
         dq.batch_signal,
         dq.batch_signal_len,
+        m,
         trace=cfg.trace)
 
     with tf.train.MonitoredSession(

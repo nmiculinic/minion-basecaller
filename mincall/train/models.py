@@ -1,32 +1,17 @@
 from keras import backend as K
 from keras import models
-from keras.layers import Conv1D
-from keras import layers
 import logging
 import tensorflow as tf
 
 
 class Model():
-    def __init__(self, cfg, labels, input_signal, signal_len, trace=False):
+    def __init__(self, cfg, labels, input_signal, signal_len, model: models.Model, trace=False):
         self.logger = logging.getLogger(__name__)
         learning_phase = K.learning_phase()
 
-        input = layers.Input(shape=(None, 1))
-        model = input
-        for _ in range(5):
-            model = layers.BatchNormalization()(model)
-            model = Conv1D(10, 3, padding="same")(model)
-            model = layers.Activation('relu')(model)
-
-        model = Conv1D(
-            5,
-            3,
-            padding="same")(model)
-        m = models.Model(inputs=[input], outputs=[model])
-        print(m)
 
         self.logits = tf.transpose(
-            m(input_signal), [1, 0, 2])  # [max_time, batch_size, class_num]
+            model(input_signal), [1, 0, 2])  # [max_time, batch_size, class_num]
         self.logger.info(f"Logits shape: {self.logits.shape}")
 
         ratio = 1
