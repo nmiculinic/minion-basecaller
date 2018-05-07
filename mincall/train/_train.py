@@ -263,7 +263,7 @@ def run(cfg: TrainConfig):
 
     var_summaries = []
     for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
-        var : tf.Variable = var
+        var: tf.Variable = var
         mean = tf.reduce_mean(var)
         var_summaries.extend([
             tf.summary.scalar(var.name + '/mean', mean),
