@@ -120,7 +120,7 @@ def add_args(parser: argparse.ArgumentParser):
 
 
 class Model():
-    def __init__(self, cfg: InputFeederCfg, model: models.Model, data_dir: List[DataDir], trace=False):
+    def __init__(self, cfg: InputFeederCfg, model: models.Model, data_dir: List[DataDir], trace=False, create_train_ops=False):
         self.dataset = []
         for x in data_dir:
             dps = list(glob(f"{x.dir}/*.datapoint"))
@@ -131,10 +131,7 @@ class Model():
 
         self.logger = logging.getLogger(__name__)
         learning_phase = K.learning_phase()
-        self.dq = DataQueue(
-            cfg, self.dataset,
-            trace=trace)
-
+        self.dq = DataQueue(cfg, self.dataset, capacity=10*cfg.batch_size, trace=trace)
         input_signal: tf.Tensor = self.dq.batch_signal
         labels: tf.SparseTensor = self.dq.batch_labels
         signal_len: tf.Tensor = self.dq.batch_signal_len
@@ -155,7 +152,7 @@ class Model():
                     tf.shape(input_signal), labels.indices, labels.values,
                     labels.dense_shape
                 ],
-                message="varios debug out")
+                message="various debug out")
             seq_len = tf.Print(
                 seq_len, [tf.shape(seq_len), seq_len], message="seq len")
 
@@ -168,13 +165,9 @@ class Model():
             time_major=True,
         )
         self.ctc_loss = tf.reduce_mean(self.losses)
-
-        tf.add_to_collection('losses', self.ctc_loss)
         tf.summary.scalar('loss', self.ctc_loss)
-
-        self.total_loss = tf.add_n(
-            tf.get_collection('losses'), name='total_loss')
-        self.train_step = tf.train.AdamOptimizer().minimize(self.total_loss)
+        if create_train_ops:
+            self.train_step = tf.train.AdamOptimizer().minimize(self.ctc_loss)
 
         self.predict = tf.nn.ctc_beam_search_decoder(
             inputs=self.logits,
@@ -223,10 +216,20 @@ def run(cfg: TrainConfig):
         5,
         3,
         padding="same")(net)
-    model = Model(
+
+    model = models.Model(inputs=[input], outputs=[net])
+    train_model = Model(
         InputFeederCfg(batch_size=cfg.batch_size, seq_length=cfg.seq_length),
-        models.Model(inputs=[input], outputs=[net]),
+        model,
         cfg.train_data,
+        trace=cfg.trace,
+        create_train_ops=True,
+    )
+
+    test_model = Model(
+        InputFeederCfg(batch_size=cfg.batch_size, seq_length=cfg.seq_length),
+        model,
+        cfg.test_data,
         trace=cfg.trace,
     )
 
@@ -234,16 +237,19 @@ def run(cfg: TrainConfig):
             session_creator=tf.train.ChiefSessionCreator(
                 config=config)) as sess:
         K.set_session(sess)
-        with tqdm(total=cfg.train_steps) as pbar, model.input_wrapper(sess):
+        with tqdm(total=cfg.train_steps) as pbar, train_model.input_wrapper(sess), test_model.input_wrapper(sess):
             for i in range(cfg.train_steps):
-                _, lbs, lbs_len, logits, predict, lb, loss, losses = sess.run([
-                    model.train_step, model.dq.batch_dense_labels,
-                    model.dq.batch_labels_len, model.logits, model.predict,
-                    model.dq.batch_labels, model.total_loss, model.losses
+                _, loss = sess.run([
+                    train_model.train_step,
+                    train_model.ctc_loss,
                 ])
                 pbar.set_postfix(loss=loss, refresh=False)
                 pbar.update()
+
                 if i % 100 == 0:
+                    logits, predict, lb, loss, losses = sess.run([
+                        test_model.logits, test_model.predict, test_model.dq.batch_labels, test_model.ctc_loss, test_model.losses
+                    ])
                     logger.info(
                         f"Logits[{logits.shape}]:\n describe:{pformat(stats.describe(logits, axis=None))}"
                     )
@@ -269,5 +275,6 @@ def run(cfg: TrainConfig):
                             f"Target    : {t}\n"
                             f"Loss      : {losses[x]}\n"
                             f"Edit dist : {alignment['editDistance'] * 'x'}\n")
+            logger.info(f"Finished training")
 
 
