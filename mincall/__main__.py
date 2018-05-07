@@ -2,6 +2,7 @@ import argparse
 from tqdm import tqdm
 import logging
 from mincall import train
+import os
 
 
 class TqdmWriteWrapper():
@@ -12,7 +13,7 @@ class TqdmWriteWrapper():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("mincall")
     parser.add_argument("--verbose", "-v", action="store_true")
-    parser.add_argument("--log-file", help="Where to store log file")
+    parser.add_argument("--logdir", help="Directory for all the logs")
     subparsers = parser.add_subparsers()
 
     train.add_args(subparsers.add_parser("train"))
@@ -32,11 +33,13 @@ if __name__ == "__main__":
         h.setFormatter(formatter)
         root_logger.addHandler(h)
 
-        if args.log_file:
-            h = (logging.FileHandler(args.log_file, ))
+        if args.logdir:
+            fn = os.path.join(args.logdir,f"{getattr(args, 'name', 'mincall')}.log")
+            h = (logging.FileHandler(fn))
             h.setLevel(logging.DEBUG)
             h.setFormatter(formatter)
             root_logger.addHandler(h)
+            logging.info(f"Added handler to {fn}")
         logging.info("Initialized logging handlers")
         args.func(args)
     else:

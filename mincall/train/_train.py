@@ -124,7 +124,7 @@ def add_args(parser: argparse.ArgumentParser):
     parser.add_argument("--batch_size", dest='train.batch_size', type=int)
     parser.add_argument("--seq_length", dest='train.seq_length', type=int)
     parser.add_argument("--train_steps", dest='train.train_steps', type=int)
-    parser.add_argument("--logdir", dest='train.logdir', type=str)
+    parser.add_argument("--logdir", dest='logdir', type=str)
     parser.set_defaults(func=run_args)
 
 
@@ -139,7 +139,7 @@ class Model():
             )
 
         self.logger = logging.getLogger(__name__)
-        learning_phase = K.learning_phase()
+        self.learning_phase = K.learning_phase()
         self.dq = DataQueue(cfg, self.dataset, capacity=10*cfg.batch_size, trace=trace)
         input_signal: tf.Tensor = self.dq.batch_signal
         labels: tf.SparseTensor = self.dq.batch_labels
@@ -195,6 +195,8 @@ def run_args(args):
     for k, v in vars(args).items():
         if v is not None and "." in k:
             config = toolz.assoc_in(config, k.split("."), v)
+    if args.logdir is not None:
+        config['train']['logdir'] = args.logdir
     try:
         cfg = voluptuous.Schema(
             {
@@ -249,24 +251,26 @@ def run(cfg: TrainConfig):
         coord = tf.train.Coordinator()
         try:
             tf.train.start_queue_runners(sess=sess, coord=coord)
-            gg = sess.run(global_step)
-            with tqdm(total=cfg.train_steps, initial=gg) as pbar, train_model.input_wrapper(sess, coord), test_model.input_wrapper(sess, coord):
-                for i in range(gg + 1, cfg.train_steps + 1):
+            gs = sess.run(global_step)
+            with tqdm(total=cfg.train_steps, initial=gs) as pbar, train_model.input_wrapper(sess, coord), test_model.input_wrapper(sess, coord):
+                for i in range(gs + 1, cfg.train_steps + 1):
                     _, _, loss = sess.run([
                         step,
                         train_model.train_step,
                         train_model.ctc_loss,
                     ])
-                    pbar.set_postfix(loss=loss, refresh=False)
                     pbar.update()
 
                     if i % cfg.validate_every == 0:
-                        logits, predict, lb, loss, losses = sess.run([
+                        logits, predict, lb, val_loss, losses = sess.run([
                             test_model.logits, test_model.predict, test_model.dq.batch_labels, test_model.ctc_loss, test_model.losses
-                        ])
+                        ], feed_dict={
+                            test_model.learning_phase: 0,
+                        })
                         logger.info(
                             f"Logits[{logits.shape}]:\n describe:{pformat(stats.describe(logits, axis=None))}"
                         )
+                        pbar.set_postfix(loss=loss, val_loss=val_loss,refresh=False)
 
                         yt = defaultdict(list)
                         yp = defaultdict(list)
