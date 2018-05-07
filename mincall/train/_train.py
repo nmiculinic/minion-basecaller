@@ -1,5 +1,6 @@
 import argparse
 from collections import defaultdict
+from scipy import stats
 import sys
 import itertools
 import numpy as np
@@ -77,19 +78,24 @@ def run(cfg: TrainConfig):
         K.set_session(sess)
         close = dq.start_input_processes(sess, datapoints)
 
-        for i in tqdm(itertools.count()):
-            _, lbs, lbs_len, logits, predict, lb_ind, lb_val = sess.run([model.train_step,dq.batch_dense_labels, dq.batch_labels_len, model.logits, model.predict, dq.batch_labels.indices, dq.batch_labels.values])
-            logger.info(f"Labels:\n{lbs}\nlabels len\n{lbs_len}\nLogits[{logits.shape}]:\n{logits}\nPredict:\n{predict}")
+        with tqdm() as pbar:
+            for i in itertools.count():
+                _, lbs, lbs_len, logits, predict, lb, loss = sess.run([model.train_step,dq.batch_dense_labels, dq.batch_labels_len, model.logits, model.predict, dq.batch_labels, model.total_loss])
+                pbar.set_postfix(loss=loss, refresh=False)
+                pbar.update()
+                if i % 100 == 0:
+                    logger.info(f"Logits[{logits.shape}]:\n describe:{pformat(stats.describe(logits, axis=None))}")
 
-            yt = defaultdict(list)
-            yp = defaultdict(list)
-            for ind, val in zip(lb_ind, lb_val):
-                yt[ind[0]].append(val)
-            for ind, val in zip(predict.indices, predict.values):
-                yp[ind[0]].append(val)
+                    yt = defaultdict(list)
+                    yp = defaultdict(list)
+                    for ind, val in zip(lb.indices, lb.values):
+                        yt[ind[0]].append(val)
 
-            for x in range(cfg.batch_size):
-                logger.info(f"{x}: \nTarget    : {yt[x]}\nBasecalled:\n {yp[x]}")
+                    for ind, val in zip(predict.indices, predict.values):
+                        yp[ind[0]].append(val)
+
+                    for x in range(cfg.batch_size):
+                        logger.info(f"{x}: \nTarget    : {yt[x]}\nBasecalled: {yp[x]}\n")
         close()
 
 

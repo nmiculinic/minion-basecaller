@@ -3,6 +3,7 @@ import tensorflow as tf
 import logging
 from typing import *
 import voluptuous
+from itertools import count
 import os
 import random
 import gzip
@@ -25,7 +26,7 @@ class InputFeederCfg(NamedTuple):
             })(data))
 
 class DataQueue():
-    def __init__(self, cfg: InputFeederCfg, capacity=-1, min_after_deque=10, shuffle=True):
+    def __init__(self, cfg: InputFeederCfg, capacity=-1, min_after_deque=10, shuffle=True, trace=False):
         """
         :param cap: queue capacity
         :param batch_size: output batch size
@@ -61,8 +62,10 @@ class DataQueue():
             self.enq = self.queue.enqueue([self.values_ph, self.values_len_ph, self.signal_ph, self.signal_len_ph])
 
         values_op, values_len_op, signal_op, signal_len_op = self.queue.dequeue_many(cfg.batch_size)
-        values_op = tf.Print(values_op, [values_op, tf.shape(values_op)], message="values op")
-        values_len_op = tf.Print(values_len_op, [values_len_op, tf.shape(values_len_op)], message="values len op")
+        if trace:
+            values_op = tf.Print(values_op, [values_op, tf.shape(values_op)], message="values op")
+            values_len_op = tf.Print(values_len_op, [values_len_op, tf.shape(values_len_op)], message="values len op")
+
         sp = []
         for label_idx, label_len in zip(tf.split(values_op, cfg.batch_size), tf.split(values_len_op, cfg.batch_size)):
             label_len = tf.squeeze(label_len, axis=0)
@@ -97,7 +100,10 @@ class DataQueue():
             output_shape=self.batch_labels.dense_shape,
             default_value=9,
         )
-        self.batch_signal = tf.Print(signal_op, [self.batch_dense_labels, tf.shape(self.batch_dense_labels), tf.shape(signal_op)], "dense labels")
+        self.batch_signal = signal_op
+        if trace:
+            self.batch_signal = tf.Print(self.batch_signal, [self.batch_dense_labels, tf.shape(self.batch_dense_labels), tf.shape(signal_op)], "dense labels")
+
         self.batch_signal_len = signal_len_op
 
     def push_to_queue(self, sess: tf.Session, signal: np.ndarray, label: np.ndarray):
@@ -123,7 +129,8 @@ class DataQueue():
             processes.append(p)
 
         def worker_fn():
-            while True:
+            exs = 0
+            for i in count(start=1):
                 try:
                     poison_queue.get_nowait()
                     return
@@ -132,10 +139,13 @@ class DataQueue():
 
                 it = q.get(timeout=0.5)
                 if isinstance(it, Exception):
-                    self.logger.warning(f"Exception happened during processing data {type(it).__name__}:\n{it}")
+                    self.logger.debug(f"Exception happened during processing data {type(it).__name__}:\n{it}")
+                    exs += 1
                     continue
                 signal, labels = it
                 self.push_to_queue(sess, signal, labels)
+                if i % 2000 == 0:
+                    self.logger.info(f"sucessfully submitted {i - exs}/{i} samples; -- {(i-exs)/i:.2f}")
         Thread(target=worker_fn, daemon=True).start()
 
         def close():

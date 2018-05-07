@@ -1,14 +1,20 @@
 from keras import backend as K
 from keras.layers import Conv1D
+from keras import layers
 import logging
 import tensorflow as tf
 
 class Model():
-    def __init__(self, cfg, labels, input_signal, signal_len):
+    def __init__(self, cfg, labels, input_signal, signal_len, trace=False):
         self.logger = logging.getLogger(__name__)
         learning_phase = K.learning_phase()
 
         net = input_signal
+        net = layers.BatchNormalization()(net)
+        net = Conv1D(5, 3, input_shape=(cfg.batch_size, cfg.seq_length, 1), padding="same")(net)
+        net = layers.Activation('sigmoid')(net)
+        net = Conv1D(5, 3, input_shape=(cfg.batch_size, cfg.seq_length, 1), padding="same")(net)
+        net = layers.Activation('sigmoid')(net)
         net = Conv1D(5, 3, input_shape=(cfg.batch_size, cfg.seq_length, 1), padding="same")(net)
 
         net = net # Tensor of shape [batch_size, max_time, class_num]
@@ -16,9 +22,12 @@ class Model():
         self.logger.info(f"Logits shape: {self.logits.shape}")
 
         ratio = 1
-        self.logits = tf.Print(self.logits, [self.logits, tf.shape(self.logits), tf.shape(input_signal), labels.indices, labels.values, labels.dense_shape], message="varios debug out")
         seq_len = tf.cast(tf.floor_div(signal_len + ratio - 1, ratio), tf.int32)  # Round up
-        seq_len = tf.Print(seq_len, [tf.shape(seq_len), seq_len], message="seq len")
+
+        if trace:
+            self.logits = tf.Print(self.logits, [self.logits, tf.shape(self.logits), tf.shape(input_signal), labels.indices, labels.values, labels.dense_shape], message="varios debug out")
+            seq_len = tf.Print(seq_len, [tf.shape(seq_len), seq_len], message="seq len")
+
         self.loss = tf.reduce_mean(tf.nn.ctc_loss(
             labels=labels,
             inputs=self.logits,
