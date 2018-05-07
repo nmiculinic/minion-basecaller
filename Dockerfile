@@ -1,33 +1,43 @@
-FROM python:3
+FROM ubuntu:18.04
 
-ENV TENSORFLOW_SRC_PATH=/opt/tensorflow
-ENV WARP_CTC_PATH=/opt/warp-ctc/build
-ENV CUDA_HOME=/usr/local/cuda
+# Pick up some TF dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        curl \
+        libfreetype6-dev \
+        libhdf5-serial-dev \
+        libpng-dev \
+        libzmq3-dev \
+        pkg-config \
+        python3-pip \
+        python3-dev \
+        python3-setuptools \
+        python3-wheel \
+        rsync \
+        software-properties-common \
+        unzip \
+        && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# RUN git clone https://github.com/tensorflow/tensorflow.git tensorflow
-# RUN git clone https://github.com/nmiculinic/warp-ctc.git warp-ctc
-# RUN git clone https://github.com/isovic/graphmap.git graphmap --recursive
-# RUN git clone https://github.com/isovic/samscripts.git samscripts
-# RUN git clone https://github.com/samtools/samtools
-# RUN git clone https://github.com/samtools/htslib
-# RUN git clone https://github.com/samtools/bcftools
+RUN pip3 --no-cache-dir install \
+        Pillow \
+        h5py \
+        ipykernel \
+        jupyter \
+        matplotlib \
+        numpy \
+        pandas \
+        scipy \
+        sklearn \
+        && \
+    python3 -m ipykernel.kernelspec
 
-WORKDIR /opt
+# Install TensorFlow CPU version from central repo
+RUN pip3 --no-cache-dir install tensorflow
 
-#WORKDIR /opt/warp-ctc
-#RUN mkdir build
-#WORKDIR /opt/warp-ctc/build
-#RUN cmake .. && make
-#WORKDIR /opt/warp-ctc/tensorflow_binding
-#
-#RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
-#RUN LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs/:$LD_LIBRARY_PATH python3 setup.py install
-#RUN rm /usr/local/cuda/lib64/stubs/libcuda.so.1
-
-# For CUDA profiling, TensorFlow requires CUPTI.
-# ENV LD_LIBRARY_PATH /opt/warp-ctc/build:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
-
-
+# TensorBoard
+EXPOSE 6006
 
 WORKDIR /
 RUN mkdir /code
@@ -35,7 +45,7 @@ RUN mkdir /data
 WORKDIR /opt
 COPY requirements.txt requirements.txt.bak
 RUN cat requirements.txt.bak | grep -v tensorflow > requirements.txt && rm requirements.txt.bak
-RUN pip3 --no-cache-dir install -r requirements.txt && rm requirements.txt && pip3 install tensorflow
+RUN pip3 --no-cache-dir install -r requirements.txt && rm requirements.txt
 WORKDIR /code
 ENV PYTHONPATH=/code
 ENTRYPOINT ["python3", "-m", "mincall"]
