@@ -1,4 +1,5 @@
 import argparse
+import os
 import re
 from collections import defaultdict
 from scipy import stats
@@ -20,6 +21,7 @@ import queue
 from mincall import dataset_pb2
 from keras import backend as K
 from keras import models, layers
+from .models import dummy_model
 import edlib
 
 import toolz
@@ -95,6 +97,7 @@ class TrainConfig(NamedTuple):
     seq_length: int
     train_steps: int
     trace: bool
+    logdir: str
 
     @classmethod
     def schema(cls, data):
@@ -106,6 +109,7 @@ class TrainConfig(NamedTuple):
                 'seq_length': int,
                 voluptuous.Optional('train_steps', default=1000): int,
                 voluptuous.Optional('trace', default=False): bool,
+                'logdir': str,
             },
             required=True)(data))
 
@@ -116,6 +120,7 @@ def add_args(parser: argparse.ArgumentParser):
     parser.add_argument("--batch_size", dest='train.batch_size', type=int)
     parser.add_argument("--seq_length", dest='train.seq_length', type=int)
     parser.add_argument("--train_steps", dest='train.train_steps', type=int)
+    parser.add_argument("--logdir", dest='train.logdir', type=str)
     parser.set_defaults(func=run_args)
 
 
@@ -201,23 +206,12 @@ def run_args(args):
 
 
 def run(cfg: TrainConfig):
-
     config = tf.ConfigProto(allow_soft_placement=True)
     config.gpu_options.allow_growth = True
 
-    input = layers.Input(shape=(None, 1))
-    net = input
-    for _ in range(5):
-        net = layers.BatchNormalization()(net)
-        net = layers.Conv1D(10, 3, padding="same")(net)
-        net = layers.Activation('relu')(net)
+    os.makedirs(cfg.logdir, exist_ok=True)
+    model, _ = dummy_model()
 
-    net = layers.Conv1D(
-        5,
-        3,
-        padding="same")(net)
-
-    model = models.Model(inputs=[input], outputs=[net])
     train_model = Model(
         InputFeederCfg(batch_size=cfg.batch_size, seq_length=cfg.seq_length),
         model,
@@ -235,10 +229,10 @@ def run(cfg: TrainConfig):
 
     with tf.train.MonitoredSession(
             session_creator=tf.train.ChiefSessionCreator(
-                config=config)) as sess:
+                config=config), stop_grace_period_secs=10) as sess:
         K.set_session(sess)
         with tqdm(total=cfg.train_steps) as pbar, train_model.input_wrapper(sess), test_model.input_wrapper(sess):
-            for i in range(cfg.train_steps):
+            for i in range(1, cfg.train_steps + 1):
                 _, loss = sess.run([
                     train_model.train_step,
                     train_model.ctc_loss,
@@ -275,6 +269,7 @@ def run(cfg: TrainConfig):
                             f"Target    : {t}\n"
                             f"Loss      : {losses[x]}\n"
                             f"Edit dist : {alignment['editDistance'] * 'x'}\n")
+                    # model.save(os.path.join(cfg.logdir, f"chkp-{i}.save"), overwrite=True, include_optimizer=False)
             logger.info(f"Finished training")
 
 
