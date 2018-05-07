@@ -181,13 +181,15 @@ class DataQueue():
                         f"sucessfully submitted {i - exs}/{i} samples; -- {(i-exs)/i:.2f}"
                     )
 
-        Thread(target=worker_fn, daemon=True).start()
+        th = Thread(target=worker_fn, daemon=True)
+        th.start()
 
         def close():
             for _ in range(cnt + 1):
                 poison_queue.put(None)
             for p in processes:
                 p.join()
+            th.join()
 
         return close
 

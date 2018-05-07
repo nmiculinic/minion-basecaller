@@ -94,7 +94,8 @@ class TrainConfig(NamedTuple):
     test_data: List[DataDir]
     batch_size: int
     seq_length: int
-    trace: bool = False
+    train_steps: int
+    trace: bool
 
     @classmethod
     def schema(cls, data):
@@ -104,16 +105,18 @@ class TrainConfig(NamedTuple):
                 'test_data': [DataDir.schema],
                 'batch_size': int,
                 'seq_length': int,
-                'trace': bool,
+                voluptuous.Optional('train_steps', default=1000): int,
+                voluptuous.Optional('trace', default=False): bool,
             },
             required=True)(data))
 
 
 def add_args(parser: argparse.ArgumentParser):
     parser.add_argument("--config", "-c", help="config file", required=True)
-    parser.add_argument("--trace", dest='train.trace', help="trace", action="store_true")
+    parser.add_argument("--trace", dest='train.trace', help="trace", action="store_true", default=None)
     parser.add_argument("--batch_size", dest='train.batch_size', type=int)
     parser.add_argument("--seq_length", dest='train.seq_length', type=int)
+    parser.add_argument("--train_steps", dest='train.train_steps', type=int)
     parser.set_defaults(func=run_args)
 
 
@@ -165,8 +168,8 @@ def run(cfg: TrainConfig):
         K.set_session(sess)
         close = dq.start_input_processes(sess, datapoints)
 
-        with tqdm() as pbar:
-            for i in itertools.count():
+        with tqdm(total=cfg.train_steps) as pbar:
+            for i in range(cfg.train_steps):
                 _, lbs, lbs_len, logits, predict, lb, loss, losses = sess.run([
                     model.train_step, dq.batch_dense_labels,
                     dq.batch_labels_len, model.logits, model.predict,
@@ -201,5 +204,6 @@ def run(cfg: TrainConfig):
                             f"Loss      : {losses[x]}\n"
                             f"Edit dist : {alignment['editDistance'] * 'x'}\n")
         close()
+        logger.info("Closed all feeders")
 
 
