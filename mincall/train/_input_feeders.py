@@ -27,13 +27,15 @@ class InputFeederCfg(NamedTuple):
 
 
 class DataQueue():
-    def __init__(self,
-                 cfg: InputFeederCfg,
-                 fnames,
-                 capacity=-1,
-                 min_after_deque=10,
-                 shuffle=True,
-                 trace=False,):
+    def __init__(
+            self,
+            cfg: InputFeederCfg,
+            fnames,
+            capacity=-1,
+            min_after_deque=10,
+            shuffle=True,
+            trace=False,
+    ):
         """
         :param cap: queue capacity
         :param batch_size: output batch size
@@ -77,7 +79,8 @@ class DataQueue():
                 self.queue, [self.queue.enqueue(self.shuffle_queue.dequeue())
                              ] * num_threads)
             tf.train.add_queue_runner(qr)
-            self.closing.append(self.shuffle_queue.close(cancel_pending_enqueues=True))
+            self.closing.append(
+                self.shuffle_queue.close(cancel_pending_enqueues=True))
         else:
             self.enq = self.queue.enqueue([
                 self.values_ph, self.values_len_ph, self.signal_ph,
@@ -149,7 +152,10 @@ class DataQueue():
                 self.signal_len_ph: len(signal),
             })
 
-    def start_input_processes(self, sess: tf.Session, coord: tf.train.Coordinator, cnt=1):
+    def start_input_processes(self,
+                              sess: tf.Session,
+                              coord: tf.train.Coordinator,
+                              cnt=1):
         class Wrapper():
             def __init__(self):
                 pass
@@ -205,12 +211,14 @@ class DataQueue():
                 logging.getLogger(__name__).info("Started all feeders")
 
             def __exit__(iself, exc_type, exc_val, exc_tb):
-                logging.getLogger(__name__).info("Starting to close all feeders")
+                logging.getLogger(__name__).info(
+                    "Starting to close all feeders")
                 for x in self.closing:
                     try:
                         sess.run(x)
                     except Exception as ex:
-                        logging.getLogger(__name__).warning(f"Cannot close queue {type(ex).__name__}: {ex}")
+                        logging.getLogger(__name__).warning(
+                            f"Cannot close queue {type(ex).__name__}: {ex}")
                         pass
                 logging.getLogger(__name__).info("Closed all queues")
                 for _ in range(cnt + 1):
@@ -219,7 +227,6 @@ class DataQueue():
                     p.join(timeout=5)
                 iself.th.join(timeout=5)
                 logging.getLogger(__name__).info("Closed all feeders")
-
 
         return Wrapper()
 

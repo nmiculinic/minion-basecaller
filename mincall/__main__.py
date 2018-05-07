@@ -34,7 +34,9 @@ if __name__ == "__main__":
         root_logger.addHandler(h)
 
         if args.logdir:
-            fn = os.path.join(args.logdir,f"{getattr(args, 'name', 'mincall')}.log")
+            os.makedirs(args.logdir, exist_ok=True)
+            fn = os.path.join(args.logdir,
+                              f"{getattr(args, 'name', 'mincall')}.log")
             h = (logging.FileHandler(fn))
             h.setLevel(logging.DEBUG)
             h.setFormatter(formatter)
