@@ -1,4 +1,5 @@
 import argparse
+from collections import defaultdict
 import sys
 import itertools
 import numpy as np
@@ -67,7 +68,7 @@ def run(cfg: TrainConfig):
 
     config = tf.ConfigProto(allow_soft_placement=True)
     config.gpu_options.allow_growth = True
-    dq = DataQueue(10)
+    dq = DataQueue(InputFeederCfg(batch_size=cfg.batch_size, seq_length=cfg.seq_length))
 
     model = Model(cfg, dq.batch_labels, dq.batch_signal, dq.batch_signal_len)
     with tf.train.MonitoredSession(
@@ -77,7 +78,18 @@ def run(cfg: TrainConfig):
         close = dq.start_input_processes(sess, datapoints)
 
         for i in tqdm(itertools.count()):
-            sess.run(model.train_step)
+            _, lbs, lbs_len, logits, predict, lb_ind, lb_val = sess.run([model.train_step,dq.batch_dense_labels, dq.batch_labels_len, model.logits, model.predict, dq.batch_labels.indices, dq.batch_labels.values])
+            logger.info(f"Labels:\n{lbs}\nlabels len\n{lbs_len}\nLogits[{logits.shape}]:\n{logits}\nPredict:\n{predict}")
+
+            yt = defaultdict(list)
+            yp = defaultdict(list)
+            for ind, val in zip(lb_ind, lb_val):
+                yt[ind[0]].append(val)
+            for ind, val in zip(predict.indices, predict.values):
+                yp[ind[0]].append(val)
+
+            for x in range(cfg.batch_size):
+                logger.info(f"{x}: \nTarget    : {yt[x]}\nBasecalled:\n {yp[x]}")
         close()
 
 

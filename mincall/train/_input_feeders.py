@@ -25,11 +25,12 @@ class InputFeederCfg(NamedTuple):
             })(data))
 
 class DataQueue():
-    def __init__(self, batch_size, capacity=-1, min_after_deque=10, shuffle=True):
+    def __init__(self, cfg: InputFeederCfg, capacity=-1, min_after_deque=10, shuffle=True):
         """
         :param cap: queue capacity
         :param batch_size: output batch size
         """
+        self.cfg = cfg
         self.logger = logging.getLogger(__name__)
         self.values_ph = tf.placeholder(dtype=tf.int32, shape=[None], name="labels")
         self.values_len_ph = tf.placeholder(dtype=tf.int64, shape=[], name="labels_len")
@@ -59,9 +60,11 @@ class DataQueue():
         else:
             self.enq = self.queue.enqueue([self.values_ph, self.values_len_ph, self.signal_ph, self.signal_len_ph])
 
-        values_op, values_len_op, signal_op, signal_len_op = self.queue.dequeue_many(batch_size)
+        values_op, values_len_op, signal_op, signal_len_op = self.queue.dequeue_many(cfg.batch_size)
+        values_op = tf.Print(values_op, [values_op, tf.shape(values_op)], message="values op")
+        values_len_op = tf.Print(values_len_op, [values_len_op, tf.shape(values_len_op)], message="values len op")
         sp = []
-        for label_idx, label_len in zip(tf.split(values_op, batch_size), tf.split(values_len_op, batch_size)):
+        for label_idx, label_len in zip(tf.split(values_op, cfg.batch_size), tf.split(values_len_op, cfg.batch_size)):
             label_len = tf.squeeze(label_len, axis=0)
             ind = tf.transpose(
                 tf.stack(
@@ -75,7 +78,7 @@ class DataQueue():
                 tf.SparseTensor(
                     indices=ind,
                     values=tf.squeeze(label_idx, axis=0)[:label_len],
-                    dense_shape=tf.stack([1, label_len], 0)
+                    dense_shape=tf.stack([1, tf.maximum(label_len, 1)], 0)
                 )
             )
 
@@ -88,13 +91,14 @@ class DataQueue():
 
         self.batch_labels = tf.sparse_concat(axis=0, sp_inputs=sp, expand_nonconcat_dim=True)
         self.batch_labels_len = values_len_op
-        self.batch_signal = signal_op
-        self.batch_signal_len = signal_len_op
         self.batch_dense_labels=tf.sparse_to_dense(
             sparse_indices=self.batch_labels.indices,
             sparse_values=self.batch_labels.values,
             output_shape=self.batch_labels.dense_shape,
+            default_value=9,
         )
+        self.batch_signal = tf.Print(signal_op, [self.batch_dense_labels, tf.shape(self.batch_dense_labels), tf.shape(signal_op)], "dense labels")
+        self.batch_signal_len = signal_len_op
 
     def push_to_queue(self, sess: tf.Session, signal: np.ndarray, label: np.ndarray):
         sess.run(
@@ -107,11 +111,6 @@ class DataQueue():
         )
 
     def start_input_processes(self, sess: tf.Session, fnames: List[str], cnt=1):
-        input_feeder_cfg: InputFeederCfg = InputFeederCfg(
-            batch_size=10,
-            seq_length=30,
-        )
-
         m = Manager()
         q: Queue = m.Queue()
         poison_queue: Queue = m.Queue()
@@ -119,7 +118,7 @@ class DataQueue():
         processes: List[Process] = []
         for _ in range(cnt):
             p = Process(
-                target=produce_datapoints, args=(input_feeder_cfg, fnames, q, poison_queue))
+                target=produce_datapoints, args=(self.cfg, fnames, q, poison_queue))
             p.start()
             processes.append(p)
 
@@ -135,7 +134,7 @@ class DataQueue():
                 if isinstance(it, Exception):
                     self.logger.warning(f"Exception happened during processing data {type(it).__name__}:\n{it}")
                     continue
-                signal, labels = q.get(timeout=0.5)
+                signal, labels = it
                 self.push_to_queue(sess, signal, labels)
         Thread(target=worker_fn, daemon=True).start()
 
@@ -193,7 +192,10 @@ def produce_datapoints(cfg: InputFeederCfg, fnames: List[str], q: Queue, poison:
                         return
                     except queue.Empty:
                         pass
-                    q.put([
-                        signal[start:start + cfg.seq_length],
-                        np.copy(buff[:buff_idx]),
-                    ])
+                    if buff_idx == 0:
+                        q.put(ValueError("Empty labels"))
+                    else:
+                        q.put([
+                            signal[start:start + cfg.seq_length],
+                            np.copy(buff[:buff_idx]),
+                        ])
