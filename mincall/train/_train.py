@@ -1,4 +1,5 @@
 import argparse
+import re
 from collections import defaultdict
 from scipy import stats
 import sys
@@ -20,11 +21,58 @@ from mincall import dataset_pb2
 from keras import backend as K
 from keras.layers import Dense, Conv1D
 from .models import Model
+import edlib
 
 import toolz
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
+
+
+def decode(x):
+    return "".join(map(dataset_pb2.BasePair.Name, x))
+
+
+def squggle(query, target):
+    if len(query) > 0:
+        alignment = edlib.align(query, target, task='path')
+    else:
+        alignment = {
+            'editDistance': len(target),
+            'cigar': f"{len(target)}D",
+            'alphabetLength': 4,
+            'locations': [(0, len(target))],
+        }
+
+    cigar = alignment['cigar']
+    q_idx = 0
+    t_idx = 0
+
+    qq, tt = "", ""
+    for x in re.findall(r"\d+[=XIDSHM]", cigar):
+        cnt = int(x[:-1])
+        op = x[-1]
+        if op in ["=", "X"]:
+            qq += query[q_idx:q_idx + cnt]
+            q_idx += cnt
+
+            tt += target[t_idx:t_idx + cnt]
+            t_idx += cnt
+        elif op == "D":
+            qq += "-" * cnt
+
+            tt += target[t_idx:t_idx + cnt]
+            t_idx += cnt
+        elif op == "I":
+            qq += query[q_idx:q_idx + cnt]
+            q_idx += cnt
+
+            tt += "-" * cnt
+        else:
+            ValueError(f"Unknwon op {op}")
+    assert len(target) == t_idx, "Not all target base pairs used"
+    assert len(query) == q_idx, "Not all target base pairs used"
+    return qq, tt, alignment
 
 
 class DataDir(NamedTuple):
@@ -68,11 +116,17 @@ def run(cfg: TrainConfig):
             f"Added {len(dps)} datapoint from {x.name} to train set; dir: {x.dir}"
         )
 
-
     config = tf.ConfigProto(allow_soft_placement=True)
     config.gpu_options.allow_growth = True
-    dq = DataQueue(InputFeederCfg(batch_size=cfg.batch_size, seq_length=cfg.seq_length), trace=cfg.trace)
-    model = Model(cfg, dq.batch_labels, dq.batch_signal, dq.batch_signal_len, trace=cfg.trace)
+    dq = DataQueue(
+        InputFeederCfg(batch_size=cfg.batch_size, seq_length=cfg.seq_length),
+        trace=cfg.trace)
+    model = Model(
+        cfg,
+        dq.batch_labels,
+        dq.batch_signal,
+        dq.batch_signal_len,
+        trace=cfg.trace)
 
     with tf.train.MonitoredSession(
             session_creator=tf.train.ChiefSessionCreator(
@@ -82,11 +136,17 @@ def run(cfg: TrainConfig):
 
         with tqdm() as pbar:
             for i in itertools.count():
-                _, lbs, lbs_len, logits, predict, lb, loss = sess.run([model.train_step,dq.batch_dense_labels, dq.batch_labels_len, model.logits, model.predict, dq.batch_labels, model.total_loss])
+                _, lbs, lbs_len, logits, predict, lb, loss, losses = sess.run([
+                    model.train_step, dq.batch_dense_labels,
+                    dq.batch_labels_len, model.logits, model.predict,
+                    dq.batch_labels, model.total_loss, model.losses
+                ])
                 pbar.set_postfix(loss=loss, refresh=False)
                 pbar.update()
                 if i % 100 == 0:
-                    logger.info(f"Logits[{logits.shape}]:\n describe:{pformat(stats.describe(logits, axis=None))}")
+                    logger.info(
+                        f"Logits[{logits.shape}]:\n describe:{pformat(stats.describe(logits, axis=None))}"
+                    )
 
                     yt = defaultdict(list)
                     yp = defaultdict(list)
@@ -97,7 +157,18 @@ def run(cfg: TrainConfig):
                         yp[ind[0]].append(val)
 
                     for x in range(cfg.batch_size):
-                        logger.info(f"{x}: \nTarget    : {yt[x]}\nBasecalled: {yp[x]}\n")
+                        q, t, alignment = squggle(
+                            decode(yp[x]),
+                            decode(yt[x]),
+                        )
+                        logger.info(
+                            f"{x}: \n"
+                            # f"Target    : {yt[x]}\n"
+                            # f"Basecalled: {yp[x]}\n"
+                            f"Basecalled: {q}\n"
+                            f"Target    : {t}\n"
+                            f"Loss      : {losses[x]}\n"
+                            f"Edit dist : {alignment['editDistance'] * 'x'}\n")
         close()
 
 

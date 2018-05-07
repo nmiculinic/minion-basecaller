@@ -3,5 +3,5 @@ train:
   data:
     - name: "r9.4"
       dir: "./mincall/example"
-  seq_length: 30
+  seq_length: 40
   batch_size: 10
