@@ -190,8 +190,11 @@ class Model():
         if create_train_ops:
             self.train_step = tf.train.AdamOptimizer().minimize(self.ctc_loss)
 
-        self.summary = tf.summary.scalar(
-            f'loss', self.ctc_loss, family="losses")
+        self.summaries = [
+            tf.summary.scalar(
+            f'loss', self.ctc_loss, family="losses"),
+            *self.dq.summaries,
+        ]
 
         self.predict = tf.nn.ctc_beam_search_decoder(
             inputs=self.logits,
@@ -257,6 +260,22 @@ def run(cfg: TrainConfig):
     step = tf.assign_add(global_step, 1)
     saver = tf.train.Saver(max_to_keep=2)
     init_op = tf.global_variables_initializer()
+
+    var_summaries = []
+    for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
+        var : tf.Variable = var
+        mean = tf.reduce_mean(var)
+        var_summaries.extend([
+            tf.summary.scalar(var.name + '/mean', mean),
+            tf.summary.scalar(var.name + '/stddev', tf.sqrt(tf.reduce_mean(tf.square(var - mean)))),
+            tf.summary.scalar(var.name + '/max', tf.reduce_max(var)),
+            tf.summary.scalar(var.name + '/min', tf.reduce_min(var)),
+            tf.summary.histogram(var.name + '/histogram', var),
+        ])
+
+    train_model.summary = tf.summary.merge(train_model.summaries)
+    test_model.summary = tf.summary.merge(test_model.summaries + var_summaries)
+
     with tf.Session(config=config) as sess:
         summary_writer = tf.summary.FileWriter(
             os.path.join(cfg.logdir), sess.graph)

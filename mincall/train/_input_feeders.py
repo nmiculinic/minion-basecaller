@@ -63,6 +63,8 @@ class DataQueue():
                 [],
             ])
         # self.closing.append(self.queue.close()) Closed with queue runners...no idea how&why it works
+        self.summaries = []
+        self.summaries.append(tf.summary.scalar("paddingFIFOQueue_input", self.queue.size(), family="queue"))
 
         if shuffle:
             self.shuffle_queue = tf.RandomShuffleQueue(
@@ -81,6 +83,7 @@ class DataQueue():
             tf.train.add_queue_runner(qr)
             self.closing.append(
                 self.shuffle_queue.close(cancel_pending_enqueues=True))
+            self.summaries.append(tf.summary.scalar("randomShuffleQueue_input", self.queue.size(), family="queue"))
         else:
             self.enq = self.queue.enqueue([
                 self.values_ph, self.values_len_ph, self.signal_ph,
