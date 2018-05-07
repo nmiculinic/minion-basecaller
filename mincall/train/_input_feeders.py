@@ -29,15 +29,17 @@ class InputFeederCfg(NamedTuple):
 class DataQueue():
     def __init__(self,
                  cfg: InputFeederCfg,
+                 fnames,
                  capacity=-1,
                  min_after_deque=10,
                  shuffle=True,
-                 trace=False):
+                 trace=False,):
         """
         :param cap: queue capacity
         :param batch_size: output batch size
         """
         self.cfg = cfg
+        self.fnames = fnames
         self.logger = logging.getLogger(__name__)
         self.values_ph = tf.placeholder(
             dtype=tf.int32, shape=[None], name="labels")
@@ -144,8 +146,7 @@ class DataQueue():
                 self.signal_len_ph: len(signal),
             })
 
-    def start_input_processes(self, sess: tf.Session, fnames: List[str],
-                              cnt=1):
+    def start_input_processes(self, sess: tf.Session, cnt=1):
         m = Manager()
         q: Queue = m.Queue()
         poison_queue: Queue = m.Queue()
@@ -154,7 +155,7 @@ class DataQueue():
         for _ in range(cnt):
             p = Process(
                 target=produce_datapoints,
-                args=(self.cfg, fnames, q, poison_queue))
+                args=(self.cfg, self.fnames, q, poison_queue))
             p.start()
             processes.append(p)
 

@@ -120,11 +120,19 @@ def add_args(parser: argparse.ArgumentParser):
 
 
 class Model():
-    def __init__(self, cfg: InputFeederCfg, model: models.Model, trace=False):
+    def __init__(self, cfg: InputFeederCfg, model: models.Model, data_dir: List[DataDir], trace=False):
+        self.dataset = []
+        for x in data_dir:
+            dps = list(glob(f"{x.dir}/*.datapoint"))
+            self.dataset.extend(dps)
+            logger.info(
+                f"Added {len(dps)} datapoint from {x.name} to train set; dir: {x.dir}"
+            )
+
         self.logger = logging.getLogger(__name__)
         learning_phase = K.learning_phase()
         self.dq = DataQueue(
-            cfg,
+            cfg, self.dataset,
             trace=trace)
 
         input_signal: tf.Tensor = self.dq.batch_signal
@@ -197,13 +205,6 @@ def run_args(args):
 
 
 def run(cfg: TrainConfig):
-    datapoints = []
-    for x in cfg.train_data:
-        dps = list(glob(f"{x.dir}/*.datapoint"))
-        datapoints.extend(dps)
-        logger.info(
-            f"Added {len(dps)} datapoint from {x.name} to train set; dir: {x.dir}"
-        )
 
     config = tf.ConfigProto(allow_soft_placement=True)
     config.gpu_options.allow_growth = True
@@ -222,13 +223,15 @@ def run(cfg: TrainConfig):
     model = Model(
         InputFeederCfg(batch_size=cfg.batch_size, seq_length=cfg.seq_length),
         models.Model(inputs=[input], outputs=[net]),
-        trace=cfg.trace)
+        cfg.train_data,
+        trace=cfg.trace,
+    )
 
     with tf.train.MonitoredSession(
             session_creator=tf.train.ChiefSessionCreator(
                 config=config)) as sess:
         K.set_session(sess)
-        close = model.dq.start_input_processes(sess, datapoints)
+        close = model.dq.start_input_processes(sess)
 
         with tqdm(total=cfg.train_steps) as pbar:
             for i in range(cfg.train_steps):
