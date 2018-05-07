@@ -45,6 +45,7 @@ class TrainConfig(NamedTuple):
     data: List[DataDir]
     batch_size: int
     seq_length: int
+    trace: bool = False
 
     @classmethod
     def schema(cls, data):
@@ -53,6 +54,7 @@ class TrainConfig(NamedTuple):
                 'data': [DataDir.schema],
                 'batch_size': int,
                 'seq_length': int,
+                'trace': bool,
             },
             required=True)(data))
 
@@ -69,9 +71,9 @@ def run(cfg: TrainConfig):
 
     config = tf.ConfigProto(allow_soft_placement=True)
     config.gpu_options.allow_growth = True
-    dq = DataQueue(InputFeederCfg(batch_size=cfg.batch_size, seq_length=cfg.seq_length))
+    dq = DataQueue(InputFeederCfg(batch_size=cfg.batch_size, seq_length=cfg.seq_length), trace=cfg.trace)
+    model = Model(cfg, dq.batch_labels, dq.batch_signal, dq.batch_signal_len, trace=cfg.trace)
 
-    model = Model(cfg, dq.batch_labels, dq.batch_signal, dq.batch_signal_len)
     with tf.train.MonitoredSession(
             session_creator=tf.train.ChiefSessionCreator(
                 config=config)) as sess:
@@ -102,6 +104,7 @@ def run(cfg: TrainConfig):
 def run_args(args):
     with open(args.config) as f:
         config = yaml.load(f)
+        config['train']['trace'] = args.trace
     try:
         cfg = voluptuous.Schema(
             {
@@ -119,4 +122,5 @@ def run_args(args):
 
 def add_args(parser: argparse.ArgumentParser):
     parser.add_argument("--config", "-c", help="config file", required=True)
+    parser.add_argument("--trace", help="trace", action="store_true")
     parser.set_defaults(func=run_args)
