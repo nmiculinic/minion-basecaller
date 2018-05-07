@@ -187,12 +187,15 @@ class Model():
             time_major=True,
         )
         self.ctc_loss = tf.reduce_mean(self.losses)
+        self.regularization_loss = tf.add_n(model.losses)
+        self.total_loss = self.ctc_loss + self.regularization_loss
         if create_train_ops:
-            self.train_step = tf.train.AdamOptimizer().minimize(self.ctc_loss)
+            self.train_step = tf.train.AdamOptimizer().minimize(self.total_loss)
 
         self.summaries = [
-            tf.summary.scalar(
-            f'loss', self.ctc_loss, family="losses"),
+            tf.summary.scalar(f'total_loss', self.total_loss, family="losses"),
+            tf.summary.scalar(f'ctc_loss', self.ctc_loss, family="losses"),
+            tf.summary.scalar(f'regularization_loss', self.regularization_loss, family="losses"),
             *self.dq.summaries,
         ]
 
@@ -265,12 +268,13 @@ def run(cfg: TrainConfig):
     for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
         var: tf.Variable = var
         mean = tf.reduce_mean(var)
+        name = var.name.split(":")[0]
         var_summaries.extend([
-            tf.summary.scalar(var.name + '/mean', mean),
-            tf.summary.scalar(var.name + '/stddev', tf.sqrt(tf.reduce_mean(tf.square(var - mean)))),
-            tf.summary.scalar(var.name + '/max', tf.reduce_max(var)),
-            tf.summary.scalar(var.name + '/min', tf.reduce_min(var)),
-            tf.summary.histogram(var.name + '/histogram', var),
+            tf.summary.scalar(name + '/mean', mean),
+            tf.summary.scalar(name + '/stddev', tf.sqrt(tf.reduce_mean(tf.square(var - mean)))),
+            tf.summary.scalar(name + '/max', tf.reduce_max(var)),
+            tf.summary.scalar(name + '/min', tf.reduce_min(var)),
+            tf.summary.histogram(name + '/histogram', var),
         ])
 
     train_model.summary = tf.summary.merge(train_model.summaries)
