@@ -1,4 +1,5 @@
 from keras import backend as K
+from keras import models
 from keras.layers import Conv1D
 from keras import layers
 import logging
@@ -10,22 +11,22 @@ class Model():
         self.logger = logging.getLogger(__name__)
         learning_phase = K.learning_phase()
 
-        net = input_signal
-        # net = layers.Input(shape=(cfg.seq_length, 1))(net)
+        input = layers.Input(shape=(None, 1))
+        model = input
         for _ in range(5):
-            net = layers.BatchNormalization()(net)
-            net = Conv1D(10, 3, padding="same")(net)
-            net = layers.Activation('relu')(net)
+            model = layers.BatchNormalization()(model)
+            model = Conv1D(10, 3, padding="same")(model)
+            model = layers.Activation('relu')(model)
 
-        net = Conv1D(
+        model = Conv1D(
             5,
             3,
-            input_shape=(cfg.batch_size, cfg.seq_length, 1),
-            padding="same")(net)
+            padding="same")(model)
+        m = models.Model(inputs=[input], outputs=[model])
+        print(m)
 
-        net = net  # Tensor of shape [batch_size, max_time, class_num]
         self.logits = tf.transpose(
-            net, [1, 0, 2])  # [max_time, batch_size, class_num]
+            m(input_signal), [1, 0, 2])  # [max_time, batch_size, class_num]
         self.logger.info(f"Logits shape: {self.logits.shape}")
 
         ratio = 1
