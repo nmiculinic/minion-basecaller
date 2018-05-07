@@ -98,6 +98,8 @@ class TrainConfig(NamedTuple):
     train_steps: int
     trace: bool
     logdir: str
+    validate_every: int
+    save_every: int
 
     @classmethod
     def schema(cls, data):
@@ -110,6 +112,8 @@ class TrainConfig(NamedTuple):
                 voluptuous.Optional('train_steps', default=1000): int,
                 voluptuous.Optional('trace', default=False): bool,
                 'logdir': str,
+                voluptuous.Optional('save_every', default=2000): int,
+                voluptuous.Optional('validate_every', default=50): int,
             },
             required=True)(data))
 
@@ -181,8 +185,9 @@ class Model():
             top_paths=1,
             beam_width=50)[0][0]
 
-    def input_wrapper(self, sess:tf.Session):
-        return self.dq.start_input_processes(sess)
+    def input_wrapper(self, sess:tf.Session, coord: tf.train.Coordinator):
+        return self.dq.start_input_processes(sess, coord)
+
 
 def run_args(args):
     with open(args.config) as f:
@@ -227,49 +232,72 @@ def run(cfg: TrainConfig):
         trace=cfg.trace,
     )
 
-    with tf.train.MonitoredSession(
-            session_creator=tf.train.ChiefSessionCreator(
-                config=config), stop_grace_period_secs=10) as sess:
+    global_step = tf.train.get_or_create_global_step()
+    step = tf.assign_add(global_step, 1)
+    saver = tf.train.Saver(max_to_keep=2)
+    init_op = tf.global_variables_initializer()
+    with tf.Session(config=config) as sess:
         K.set_session(sess)
-        with tqdm(total=cfg.train_steps) as pbar, train_model.input_wrapper(sess), test_model.input_wrapper(sess):
-            for i in range(1, cfg.train_steps + 1):
-                _, loss = sess.run([
-                    train_model.train_step,
-                    train_model.ctc_loss,
-                ])
-                pbar.set_postfix(loss=loss, refresh=False)
-                pbar.update()
+        last_check = tf.train.latest_checkpoint(cfg.logdir)
+        if last_check is None:
+            logger.info(f"Running new checkpoint")
+            sess.run(init_op)
+        else:
+            logger.info(f"Restoring checkpoint {last_check}")
+            saver.restore(sess=sess, save_path=last_check)
 
-                if i % 100 == 0:
-                    logits, predict, lb, loss, losses = sess.run([
-                        test_model.logits, test_model.predict, test_model.dq.batch_labels, test_model.ctc_loss, test_model.losses
+        coord = tf.train.Coordinator()
+        try:
+            tf.train.start_queue_runners(sess=sess, coord=coord)
+            gg = sess.run(global_step)
+            with tqdm(total=cfg.train_steps, initial=gg) as pbar, train_model.input_wrapper(sess, coord), test_model.input_wrapper(sess, coord):
+                for i in range(gg + 1, cfg.train_steps + 1):
+                    _, _, loss = sess.run([
+                        step,
+                        train_model.train_step,
+                        train_model.ctc_loss,
                     ])
-                    logger.info(
-                        f"Logits[{logits.shape}]:\n describe:{pformat(stats.describe(logits, axis=None))}"
-                    )
+                    pbar.set_postfix(loss=loss, refresh=False)
+                    pbar.update()
 
-                    yt = defaultdict(list)
-                    yp = defaultdict(list)
-                    for ind, val in zip(lb.indices, lb.values):
-                        yt[ind[0]].append(val)
-
-                    for ind, val in zip(predict.indices, predict.values):
-                        yp[ind[0]].append(val)
-
-                    for x in range(cfg.batch_size):
-                        q, t, alignment = squggle(
-                            decode(yp[x]),
-                            decode(yt[x]),
-                        )
+                    if i % cfg.validate_every == 0:
+                        logits, predict, lb, loss, losses = sess.run([
+                            test_model.logits, test_model.predict, test_model.dq.batch_labels, test_model.ctc_loss, test_model.losses
+                        ])
                         logger.info(
-                            f"{x}: \n"
-                            # f"Target    : {yt[x]}\n"
-                            # f"Basecalled: {yp[x]}\n"
-                            f"Basecalled: {q}\n"
-                            f"Target    : {t}\n"
-                            f"Loss      : {losses[x]}\n"
-                            f"Edit dist : {alignment['editDistance'] * 'x'}\n")
-                    # model.save(os.path.join(cfg.logdir, f"chkp-{i}.save"), overwrite=True, include_optimizer=False)
-            logger.info(f"Finished training")
+                            f"Logits[{logits.shape}]:\n describe:{pformat(stats.describe(logits, axis=None))}"
+                        )
 
+                        yt = defaultdict(list)
+                        yp = defaultdict(list)
+                        for ind, val in zip(lb.indices, lb.values):
+                            yt[ind[0]].append(val)
 
+                        for ind, val in zip(predict.indices, predict.values):
+                            yp[ind[0]].append(val)
+
+                        for x in range(cfg.batch_size):
+                            q, t, alignment = squggle(
+                                decode(yp[x]),
+                                decode(yt[x]),
+                            )
+                            logger.info(
+                                f"{x}: \n"
+                                # f"Target    : {yt[x]}\n"
+                                # f"Basecalled: {yp[x]}\n"
+                                f"Basecalled: {q}\n"
+                                f"Target    : {t}\n"
+                                f"Loss      : {losses[x]}\n"
+                                f"Edit dist : {alignment['editDistance'] * 'x'}\n")
+
+                    if i % cfg.save_every == 0:
+                        saver.save(sess=sess, save_path=os.path.join(cfg.logdir, 'model.ckpt'), global_step=global_step)
+                        logger.info(f"Saved new model checkpoint")
+                coord.request_stop()
+                p = os.path.join(cfg.logdir, f"full-model.save")
+                model.save(p, overwrite=True, include_optimizer=False)
+                logger.info(f"Finished training saved model to {p}")
+            logger.info(f"Input queues exited ok")
+        finally:
+            coord.request_stop()
+            coord.join(stop_grace_period_secs=5)

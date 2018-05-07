@@ -50,6 +50,7 @@ class DataQueue():
         self.signal_len_ph = tf.placeholder(
             dtype=tf.int64, shape=[], name="signal_len")
 
+        self.closing = []
         self.queue = tf.PaddingFIFOQueue(
             capacity=capacity,
             dtypes=[tf.int32, tf.int64, tf.float32, tf.int64],
@@ -59,6 +60,7 @@ class DataQueue():
                 [None, 1],
                 [],
             ])
+        # self.closing.append(self.queue.close()) Closed with queue runners...no idea how&why it works
 
         if shuffle:
             self.shuffle_queue = tf.RandomShuffleQueue(
@@ -75,6 +77,7 @@ class DataQueue():
                 self.queue, [self.queue.enqueue(self.shuffle_queue.dequeue())
                              ] * num_threads)
             tf.train.add_queue_runner(qr)
+            self.closing.append(self.shuffle_queue.close(cancel_pending_enqueues=True))
         else:
             self.enq = self.queue.enqueue([
                 self.values_ph, self.values_len_ph, self.signal_ph,
@@ -146,7 +149,7 @@ class DataQueue():
                 self.signal_len_ph: len(signal),
             })
 
-    def start_input_processes(self, sess: tf.Session, cnt=1):
+    def start_input_processes(self, sess: tf.Session, coord: tf.train.Coordinator, cnt=1):
         class Wrapper():
             def __init__(self):
                 pass
@@ -172,31 +175,49 @@ class DataQueue():
                             return
                         except queue.Empty:
                             pass
-
-                        it = q.get(timeout=0.5)
-                        if isinstance(it, Exception):
-                            self.logger.debug(
-                                f"Exception happened during processing data {type(it).__name__}:\n{it}"
-                            )
-                            exs += 1
-                            continue
-                        signal, labels = it
-                        self.push_to_queue(sess, signal, labels)
-                        if i % 2000 == 0:
-                            self.logger.info(
-                                f"sucessfully submitted {i - exs}/{i} samples; -- {(i-exs)/i:.2f}"
-                            )
+                        if coord.should_stop():
+                            return
+                        try:
+                            it = q.get(timeout=0.5)
+                            if isinstance(it, Exception):
+                                self.logger.debug(
+                                    f"Exception happened during processing data {type(it).__name__}:\n{it}"
+                                )
+                                exs += 1
+                                continue
+                            signal, labels = it
+                            try:
+                                self.push_to_queue(sess, signal, labels)
+                            except tf.errors.CancelledError:
+                                if coord.should_stop():
+                                    return
+                                else:
+                                    raise
+                            if i % 2000 == 0:
+                                self.logger.info(
+                                    f"sucessfully submitted {i - exs}/{i} samples; -- {(i-exs)/i:.2f}"
+                                )
+                        except queue.Empty:
+                            pass
 
                 iself.th = Thread(target=worker_fn, daemon=True)
                 iself.th.start()
                 logging.getLogger(__name__).info("Started all feeders")
 
-            def __exit__(self, exc_type, exc_val, exc_tb):
+            def __exit__(iself, exc_type, exc_val, exc_tb):
+                logging.getLogger(__name__).info("Starting to close all feeders")
+                for x in self.closing:
+                    try:
+                        sess.run(x)
+                    except Exception as ex:
+                        logging.getLogger(__name__).warning(f"Cannot close queue {type(ex).__name__}: {ex}")
+                        pass
+                logging.getLogger(__name__).info("Closed all queues")
                 for _ in range(cnt + 1):
-                    self.poison_queue.put(None)
-                for p in self.processes:
-                    p.join()
-                self.th.join()
+                    iself.poison_queue.put(None)
+                for p in iself.processes:
+                    p.join(timeout=5)
+                iself.th.join(timeout=5)
                 logging.getLogger(__name__).info("Closed all feeders")
 
 
