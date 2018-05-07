@@ -10,7 +10,6 @@ from multiprocessing.pool import ThreadPool
 
 from . import util
 from . import model_utils
-from . import input_readers
 load_dotenv(find_dotenv())
 
 usage = """
