@@ -1,6 +1,9 @@
 version: "v0.1"
 train:
-  data:
+  train_data:
+    - name: "r9.4"
+      dir: "./mincall/example"
+  test_data:
     - name: "r9.4"
       dir: "./mincall/example"
   seq_length: 40

@@ -33,7 +33,7 @@ def decode(x):
     return "".join(map(dataset_pb2.BasePair.Name, x))
 
 
-def squggle(query, target):
+def squggle(query: str, target: str) -> Tuple[str, str, Dict]:
     if len(query) > 0:
         alignment = edlib.align(query, target, task='path')
     else:
@@ -69,7 +69,7 @@ def squggle(query, target):
 
             tt += "-" * cnt
         else:
-            ValueError(f"Unknwon op {op}")
+            ValueError(f"Unknown op {op}")
     assert len(target) == t_idx, "Not all target base pairs used"
     assert len(query) == q_idx, "Not all target base pairs used"
     return qq, tt, alignment
@@ -90,7 +90,8 @@ class DataDir(NamedTuple):
 
 
 class TrainConfig(NamedTuple):
-    data: List[DataDir]
+    train_data: List[DataDir]
+    test_data: List[DataDir]
     batch_size: int
     seq_length: int
     trace: bool = False
@@ -99,7 +100,8 @@ class TrainConfig(NamedTuple):
     def schema(cls, data):
         return cls(**voluptuous.Schema(
             {
-                'data': [DataDir.schema],
+                'train_data': [DataDir.schema],
+                'test_data': [DataDir.schema],
                 'batch_size': int,
                 'seq_length': int,
                 'trace': bool,
@@ -107,9 +109,38 @@ class TrainConfig(NamedTuple):
             required=True)(data))
 
 
+def add_args(parser: argparse.ArgumentParser):
+    parser.add_argument("--config", "-c", help="config file", required=True)
+    parser.add_argument("--trace", dest='train.trace', help="trace", action="store_true")
+    parser.add_argument("--batch_size", dest='train.batch_size', type=int)
+    parser.add_argument("--seq_length", dest='train.seq_length', type=int)
+    parser.set_defaults(func=run_args)
+
+
+def run_args(args):
+    with open(args.config) as f:
+        config = yaml.load(f)
+    for k, v in vars(args).items():
+        if v is not None and "." in k:
+            config = toolz.assoc_in(config, k.split("."), v)
+    try:
+        cfg = voluptuous.Schema(
+            {
+                'train': TrainConfig.schema,
+                'version': str,
+            },
+            extra=voluptuous.REMOVE_EXTRA,
+            required=True)(config)
+        logger.info(f"Parsed config\n{pformat(cfg)}")
+        run(cfg['train'])
+    except voluptuous.error.Error as e:
+        logger.error(humanize_error(config, e))
+        sys.exit(1)
+
+
 def run(cfg: TrainConfig):
     datapoints = []
-    for x in cfg.data:
+    for x in cfg.train_data:
         dps = list(glob(f"{x.dir}/*.datapoint"))
         datapoints.extend(dps)
         logger.info(
@@ -172,26 +203,3 @@ def run(cfg: TrainConfig):
         close()
 
 
-def run_args(args):
-    with open(args.config) as f:
-        config = yaml.load(f)
-        config['train']['trace'] = args.trace
-    try:
-        cfg = voluptuous.Schema(
-            {
-                'train': TrainConfig.schema,
-                'version': str,
-            },
-            extra=voluptuous.REMOVE_EXTRA,
-            required=True)(config)
-        logger.info(f"Parsed config\n{pformat(cfg)}")
-        run(cfg['train'])
-    except voluptuous.error.Error as e:
-        logger.error(humanize_error(config, e))
-        sys.exit(1)
-
-
-def add_args(parser: argparse.ArgumentParser):
-    parser.add_argument("--config", "-c", help="config file", required=True)
-    parser.add_argument("--trace", help="trace", action="store_true")
-    parser.set_defaults(func=run_args)
