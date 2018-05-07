@@ -120,12 +120,12 @@ def add_args(parser: argparse.ArgumentParser):
 
 
 class Model():
-    def __init__(self, cfg: TrainConfig, model: models.Model, trace=False):
+    def __init__(self, cfg: InputFeederCfg, model: models.Model, trace=False):
         self.logger = logging.getLogger(__name__)
         learning_phase = K.learning_phase()
         self.dq = DataQueue(
-            InputFeederCfg(batch_size=cfg.batch_size, seq_length=cfg.seq_length),
-            trace=cfg.trace)
+            cfg,
+            trace=trace)
 
         input_signal: tf.Tensor = self.dq.batch_signal
         labels: tf.SparseTensor = self.dq.batch_labels
@@ -220,7 +220,7 @@ def run(cfg: TrainConfig):
         3,
         padding="same")(net)
     model = Model(
-        cfg,
+        InputFeederCfg(batch_size=cfg.batch_size, seq_length=cfg.seq_length),
         models.Model(inputs=[input], outputs=[net]),
         trace=cfg.trace)
 
