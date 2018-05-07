@@ -126,6 +126,7 @@ def add_args(parser: argparse.ArgumentParser):
     parser.add_argument("--train_steps", dest='train.train_steps', type=int)
     parser.add_argument("--logdir", dest='logdir', type=str)
     parser.set_defaults(func=run_args)
+    parser.set_defaults(name="mincall_train")
 
 
 class Model():
