@@ -183,6 +183,9 @@ class Model():
             top_paths=1,
             beam_width=50)[0][0]
 
+    def input_wrapper(self, sess:tf.Session):
+        return self.dq.start_input_processes(sess)
+
 def run_args(args):
     with open(args.config) as f:
         config = yaml.load(f)
@@ -231,9 +234,7 @@ def run(cfg: TrainConfig):
             session_creator=tf.train.ChiefSessionCreator(
                 config=config)) as sess:
         K.set_session(sess)
-        close = model.dq.start_input_processes(sess)
-
-        with tqdm(total=cfg.train_steps) as pbar:
+        with tqdm(total=cfg.train_steps) as pbar, model.input_wrapper(sess):
             for i in range(cfg.train_steps):
                 _, lbs, lbs_len, logits, predict, lb, loss, losses = sess.run([
                     model.train_step, model.dq.batch_dense_labels,
@@ -268,7 +269,5 @@ def run(cfg: TrainConfig):
                             f"Target    : {t}\n"
                             f"Loss      : {losses[x]}\n"
                             f"Edit dist : {alignment['editDistance'] * 'x'}\n")
-        close()
-        logger.info("Closed all feeders")
 
 

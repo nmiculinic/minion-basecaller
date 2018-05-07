@@ -147,52 +147,60 @@ class DataQueue():
             })
 
     def start_input_processes(self, sess: tf.Session, cnt=1):
-        m = Manager()
-        q: Queue = m.Queue()
-        poison_queue: Queue = m.Queue()
+        class Wrapper():
+            def __init__(self):
+                pass
 
-        processes: List[Process] = []
-        for _ in range(cnt):
-            p = Process(
-                target=produce_datapoints,
-                args=(self.cfg, self.fnames, q, poison_queue))
-            p.start()
-            processes.append(p)
+            def __enter__(iself):
+                m = Manager()
+                q: Queue = m.Queue()
+                iself.poison_queue: Queue = m.Queue()
 
-        def worker_fn():
-            exs = 0
-            for i in count(start=1):
-                try:
-                    poison_queue.get_nowait()
-                    return
-                except queue.Empty:
-                    pass
+                iself.processes: List[Process] = []
+                for _ in range(cnt):
+                    p = Process(
+                        target=produce_datapoints,
+                        args=(self.cfg, self.fnames, q, iself.poison_queue))
+                    p.start()
+                    iself.processes.append(p)
 
-                it = q.get(timeout=0.5)
-                if isinstance(it, Exception):
-                    self.logger.debug(
-                        f"Exception happened during processing data {type(it).__name__}:\n{it}"
-                    )
-                    exs += 1
-                    continue
-                signal, labels = it
-                self.push_to_queue(sess, signal, labels)
-                if i % 2000 == 0:
-                    self.logger.info(
-                        f"sucessfully submitted {i - exs}/{i} samples; -- {(i-exs)/i:.2f}"
-                    )
+                def worker_fn():
+                    exs = 0
+                    for i in count(start=1):
+                        try:
+                            iself.poison_queue.get_nowait()
+                            return
+                        except queue.Empty:
+                            pass
 
-        th = Thread(target=worker_fn, daemon=True)
-        th.start()
+                        it = q.get(timeout=0.5)
+                        if isinstance(it, Exception):
+                            self.logger.debug(
+                                f"Exception happened during processing data {type(it).__name__}:\n{it}"
+                            )
+                            exs += 1
+                            continue
+                        signal, labels = it
+                        self.push_to_queue(sess, signal, labels)
+                        if i % 2000 == 0:
+                            self.logger.info(
+                                f"sucessfully submitted {i - exs}/{i} samples; -- {(i-exs)/i:.2f}"
+                            )
 
-        def close():
-            for _ in range(cnt + 1):
-                poison_queue.put(None)
-            for p in processes:
-                p.join()
-            th.join()
+                iself.th = Thread(target=worker_fn, daemon=True)
+                iself.th.start()
+                logging.getLogger(__name__).info("Started all feeders")
 
-        return close
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                for _ in range(cnt + 1):
+                    self.poison_queue.put(None)
+                for p in self.processes:
+                    p.join()
+                self.th.join()
+                logging.getLogger(__name__).info("Closed all feeders")
+
+
+        return Wrapper()
 
 
 def produce_datapoints(cfg: InputFeederCfg, fnames: List[str], q: Queue,
