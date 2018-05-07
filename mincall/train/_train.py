@@ -120,10 +120,16 @@ def add_args(parser: argparse.ArgumentParser):
 
 
 class Model():
-    def __init__(self, cfg, labels, input_signal, signal_len, model: models.Model, trace=False):
+    def __init__(self, cfg: TrainConfig, model: models.Model, trace=False):
         self.logger = logging.getLogger(__name__)
         learning_phase = K.learning_phase()
+        self.dq = DataQueue(
+            InputFeederCfg(batch_size=cfg.batch_size, seq_length=cfg.seq_length),
+            trace=cfg.trace)
 
+        input_signal: tf.Tensor = self.dq.batch_signal
+        labels: tf.SparseTensor = self.dq.batch_labels
+        signal_len: tf.Tensor = self.dq.batch_signal_len
 
         self.logits = tf.transpose(
             model(input_signal), [1, 0, 2])  # [max_time, batch_size, class_num]
@@ -201,9 +207,6 @@ def run(cfg: TrainConfig):
 
     config = tf.ConfigProto(allow_soft_placement=True)
     config.gpu_options.allow_growth = True
-    dq = DataQueue(
-        InputFeederCfg(batch_size=cfg.batch_size, seq_length=cfg.seq_length),
-        trace=cfg.trace)
 
     input = layers.Input(shape=(None, 1))
     net = input
@@ -216,27 +219,23 @@ def run(cfg: TrainConfig):
         5,
         3,
         padding="same")(net)
-    m = models.Model(inputs=[input], outputs=[net])
     model = Model(
         cfg,
-        dq.batch_labels,
-        dq.batch_signal,
-        dq.batch_signal_len,
-        m,
+        models.Model(inputs=[input], outputs=[net]),
         trace=cfg.trace)
 
     with tf.train.MonitoredSession(
             session_creator=tf.train.ChiefSessionCreator(
                 config=config)) as sess:
         K.set_session(sess)
-        close = dq.start_input_processes(sess, datapoints)
+        close = model.dq.start_input_processes(sess, datapoints)
 
         with tqdm(total=cfg.train_steps) as pbar:
             for i in range(cfg.train_steps):
                 _, lbs, lbs_len, logits, predict, lb, loss, losses = sess.run([
-                    model.train_step, dq.batch_dense_labels,
-                    dq.batch_labels_len, model.logits, model.predict,
-                    dq.batch_labels, model.total_loss, model.losses
+                    model.train_step, model.dq.batch_dense_labels,
+                    model.dq.batch_labels_len, model.logits, model.predict,
+                    model.dq.batch_labels, model.total_loss, model.losses
                 ])
                 pbar.set_postfix(loss=loss, refresh=False)
                 pbar.update()
