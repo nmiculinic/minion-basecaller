@@ -17,6 +17,9 @@ from pprint import pformat, pprint
 from ._input_feeders import InputFeederCfg, produce_datapoints, DataQueue
 from multiprocessing import Manager, Process, Queue
 import tensorflow as tf
+from tensorflow.python import debug as tf_debug
+from tensorflow.python.client import timeline
+from tensorboard.plugins.beholder import Beholder
 import queue
 from mincall import dataset_pb2
 from keras import backend as K
@@ -100,6 +103,9 @@ class TrainConfig(NamedTuple):
     logdir: str
     validate_every: int
     save_every: int
+    debug: bool
+    tensorboard_debug: str
+    run_trace_every: int
 
     @classmethod
     def schema(cls, data):
@@ -107,13 +113,26 @@ class TrainConfig(NamedTuple):
             {
                 'train_data': [DataDir.schema],
                 'test_data': [DataDir.schema],
-                'batch_size': int,
-                'seq_length': int,
-                voluptuous.Optional('train_steps', default=1000): int,
-                voluptuous.Optional('trace', default=False): bool,
-                'logdir': str,
-                voluptuous.Optional('save_every', default=2000): int,
-                voluptuous.Optional('validate_every', default=50): int,
+                'batch_size':
+                int,
+                'seq_length':
+                int,
+                voluptuous.Optional('train_steps', default=1000):
+                int,
+                voluptuous.Optional('trace', default=False):
+                bool,
+                'logdir':
+                str,
+                voluptuous.Optional('save_every', default=2000):
+                int,
+                voluptuous.Optional('run_trace_every', default=5000):
+                int,
+                voluptuous.Optional('validate_every', default=50):
+                int,
+                voluptuous.Optional('debug', default=False):
+                bool,
+                voluptuous.Optional('tensorboard_debug', default=None):
+                voluptuous.Any(str, None),
             },
             required=True)(data))
 
@@ -129,6 +148,23 @@ def add_args(parser: argparse.ArgumentParser):
     parser.add_argument("--batch_size", dest='train.batch_size', type=int)
     parser.add_argument("--seq_length", dest='train.seq_length', type=int)
     parser.add_argument("--train_steps", dest='train.train_steps', type=int)
+    parser.add_argument(
+        "--run_trace_every",
+        dest='train.run_trace_every',
+        type=int,
+        help="Full trace session.run() every x steps. Use 0 do disable")
+    parser.add_argument(
+        "--debug",
+        dest='train.debug',
+        default=None,
+        action="store_true",
+        help="activate debug mode")
+    parser.add_argument(
+        "--tensorboard_debug",
+        dest='train.tensorboard_debug',
+        help=
+        "if debug mode is activate and this is set, use tensorboard debugger")
+
     parser.add_argument("--logdir", dest='logdir', type=str)
     parser.set_defaults(func=run_args)
     parser.set_defaults(name="mincall_train")
@@ -190,12 +226,16 @@ class Model():
         self.regularization_loss = tf.add_n(model.losses)
         self.total_loss = self.ctc_loss + self.regularization_loss
         if create_train_ops:
-            self.train_step = tf.train.AdamOptimizer().minimize(self.total_loss)
+            self.train_step = tf.train.AdamOptimizer().minimize(
+                self.total_loss)
 
         self.summaries = [
             tf.summary.scalar(f'total_loss', self.total_loss, family="losses"),
             tf.summary.scalar(f'ctc_loss', self.ctc_loss, family="losses"),
-            tf.summary.scalar(f'regularization_loss', self.regularization_loss, family="losses"),
+            tf.summary.scalar(
+                f'regularization_loss',
+                self.regularization_loss,
+                family="losses"),
             *self.dq.summaries,
         ]
 
@@ -216,6 +256,7 @@ def run_args(args):
     for k, v in vars(args).items():
         if v is not None and "." in k:
             config = toolz.assoc_in(config, k.split("."), v)
+            print(k, v)
     if args.logdir is not None:
         config['train']['logdir'] = args.logdir
     try:
@@ -261,9 +302,13 @@ def run(cfg: TrainConfig):
 
     global_step = tf.train.get_or_create_global_step()
     step = tf.assign_add(global_step, 1)
-    saver = tf.train.Saver(max_to_keep=2)
+    saver = tf.train.Saver(max_to_keep=10)
     init_op = tf.global_variables_initializer()
 
+    # Basic only train summaries
+    train_model.summary = tf.summary.merge(train_model.summaries)
+
+    # Extended validation summaries
     var_summaries = []
     for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
         var: tf.Variable = var
@@ -271,16 +316,31 @@ def run(cfg: TrainConfig):
         name = var.name.split(":")[0]
         var_summaries.extend([
             tf.summary.scalar(name + '/mean', mean),
-            tf.summary.scalar(name + '/stddev', tf.sqrt(tf.reduce_mean(tf.square(var - mean)))),
+            tf.summary.scalar(name + '/stddev',
+                              tf.sqrt(tf.reduce_mean(tf.square(var - mean)))),
             tf.summary.scalar(name + '/max', tf.reduce_max(var)),
             tf.summary.scalar(name + '/min', tf.reduce_min(var)),
             tf.summary.histogram(name + '/histogram', var),
         ])
 
-    train_model.summary = tf.summary.merge(train_model.summaries)
-    test_model.summary = tf.summary.merge(test_model.summaries + var_summaries)
+    mean_logits, var_logits = tf.nn.moments(test_model.logits, axes=[])
+    test_model.summary = tf.summary.merge(
+        test_model.summaries + var_summaries + [
+            tf.summary.histogram("logits/histogram", test_model.logits),
+            tf.summary.histogram("logits/min", tf.minimum(test_model.logits)),
+            tf.summary.histogram("logits/max", tf.minimum(test_model.logits)),
+            tf.summary.histogram("logits/mean", mean_logits),
+            tf.summary.histogram("logits/stddev", tf.sqrt(var_logits)),
+        ])
+    beholder = Beholder(cfg.logdir)
 
     with tf.Session(config=config) as sess:
+        if cfg.debug:
+            if cfg.tensorboard_debug is None:
+                sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+            else:
+                sess = tf_debug.TensorBoardDebugWrapperSession(
+                    sess, cfg.tensorboard_debug)
         summary_writer = tf.summary.FileWriter(
             os.path.join(cfg.logdir), sess.graph)
         K.set_session(sess)
@@ -301,16 +361,45 @@ def run(cfg: TrainConfig):
                     initial=gs) as pbar, train_model.input_wrapper(
                         sess, coord), test_model.input_wrapper(sess, coord):
                 for i in range(gs + 1, cfg.train_steps + 1):
+                    #  Train hook
+                    opts = {}
+                    if cfg.run_trace_every > 0 and i % cfg.run_trace_every == 0:
+                        opts['options'] = tf.RunOptions(
+                            trace_level=tf.RunOptions.FULL_TRACE)
+                        opts['run_metadata'] = tf.RunMetadata()
+
                     _, _, loss, summary = sess.run([
                         step,
                         train_model.train_step,
                         train_model.ctc_loss,
                         train_model.summary,
-                    ])
+                    ], **opts)
                     summary_writer.add_summary(summary, i)
+
+                    if cfg.run_trace_every > 0 and i % cfg.run_trace_every == 0:
+                        opts['options'] = tf.RunOptions(
+                            trace_level=tf.RunOptions.FULL_TRACE)
+                        fetched_timeline = timeline.Timeline(
+                            opts['run_metadata'].step_stats)
+                        chrome_trace = fetched_timeline.generate_chrome_trace_format(
+                            show_memory=True)
+                        with open(
+                                os.path.join(cfg.logdir,
+                                             f'timeline_{i:05}.json'),
+                                'w') as f:
+                            f.write(chrome_trace)
+                        summary_writer.add_run_metadata(
+                            opts['run_metadata'],
+                            f"step_{i:05}",
+                            global_step=i)
+                        logger.info(
+                            f"Saved trace metadata both to timeline_{i:05}.json and step_{i:05} in tensorboard"
+                        )
                     pbar.update()
 
+                    #  Validate hook
                     if i % cfg.validate_every == 0:
+                        beholder.update(session=sess)
                         logits, predict, lb, val_loss, losses, test_summary = sess.run(
                             [
                                 test_model.logits,
@@ -323,6 +412,7 @@ def run(cfg: TrainConfig):
                             feed_dict={
                                 test_model.learning_phase: 0,
                             })
+
                         logger.info(
                             f"Logits[{logits.shape}]:\n describe:{pformat(stats.describe(logits, axis=None))}"
                         )
@@ -351,6 +441,7 @@ def run(cfg: TrainConfig):
                                 f"Edit dist : {alignment['editDistance'] * 'x'}\n"
                             )
 
+                    #  Save hook
                     if i % cfg.save_every == 0:
                         saver.save(
                             sess=sess,

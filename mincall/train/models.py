@@ -8,7 +8,12 @@ def dummy_model():
     net = input
     for _ in range(5):
         net = layers.BatchNormalization()(net)
-        net = layers.Conv1D(10, 3, padding="same", dilation_rate=2, bias_regularizer=regularizers.l1(0.1))(net)
+        net = layers.Conv1D(
+            10,
+            3,
+            padding="same",
+            dilation_rate=2,
+            bias_regularizer=regularizers.l1(0.1))(net)
         net = layers.Activation('relu')(net)
 
     net = layers.Conv1D(5, 3, padding="same")(net)
