@@ -1,7 +1,7 @@
 import argparse
 from tqdm import tqdm
 import logging
-from mincall import train
+from mincall import train, basecall
 import os
 
 

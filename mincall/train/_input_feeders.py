@@ -1,4 +1,4 @@
-from mincall import dataset_pb2
+from minion_data import dataset_pb2
 import tensorflow as tf
 import logging
 from typing import *
