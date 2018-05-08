@@ -3,8 +3,6 @@ import os
 import re
 from collections import defaultdict
 from scipy import stats
-import sys
-import itertools
 import numpy as np
 import voluptuous
 import sys
@@ -13,17 +11,15 @@ from typing import *
 import logging
 from voluptuous.humanize import humanize_error
 from glob import glob
-from pprint import pformat, pprint
-from ._input_feeders import InputFeederCfg, produce_datapoints, DataQueue
-from multiprocessing import Manager, Process, Queue
+from pprint import pformat
+from ._input_feeders import InputFeederCfg, DataQueue
 import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 from tensorflow.python.client import timeline
 from tensorboard.plugins.beholder import Beholder
-import queue
 from mincall import dataset_pb2
 from keras import backend as K
-from keras import models, layers
+from keras import models
 from .models import dummy_model
 import edlib
 
