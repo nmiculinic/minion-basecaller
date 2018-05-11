@@ -2,6 +2,8 @@ import argparse
 import tensorflow as tf
 import string
 import logging
+from tqdm import trange
+from threading import Thread
 import numpy as np
 import os
 import voluptuous
@@ -177,6 +179,101 @@ def decoding_queue(cfg: BasecallCfg, logits_queue, num_threads=6):
     return decode_predict, decode_fname, decode_idx, decodeedQueue.size()
 
 
+class SignalFeeder():
+    def __init__(self, max_seq_len, jump, capacity=1000):
+        """SignalFeeder handled signal queue
+
+        :param max_seq_len: max stripe length
+        :param jump: how much to jump between stripes
+        :param capacity: signal queue capacity
+        """
+        self.max_seq_len = max_seq_len
+        self.jump = jump
+        self.logger = logging.getLogger(__name__ + ".SignalFeeder")
+
+        self.signal_fname_ph = tf.placeholder(tf.string, shape=())
+        self.signal_start_ph = tf.placeholder(tf.int32, shape=())
+        self.signal_ph = tf.placeholder(tf.float32, shape=(max_seq_len, 1))
+        self.signal_length_ph = tf.placeholder(tf.int32, shape=())
+
+        vs = [
+            self.signal_fname_ph,
+            self.signal_start_ph,
+            self.signal_ph,
+            self.signal_length_ph,
+        ]
+        self.signal_queue = tf.FIFOQueue(
+            name="signal_queue",
+            capacity=capacity,
+            dtypes=[x.dtype for x in vs],
+            shapes=[x.shape for x in vs])
+        self.signal_queue_size = self.signal_queue.size()
+        self.signal_queue_close = self.signal_queue.close(
+            cancel_pending_enqueues=True)
+        self.signal_enqueue = self.signal_queue.enqueue(vs)
+
+    def feed_all(self, sess: tf.Session, coord: tf.train.Coordinator,
+                 fnames: List[str]):
+        for fn in tqdm(fnames, "loading files into memory"):
+            with h5py.File(fn, 'r') as input_data:
+                raw_attr = input_data['Raw/Reads/']
+                read_name = list(raw_attr.keys())[0]
+                raw_signal = np.array(raw_attr[read_name + "/Signal"].value)
+                for i in trange(
+                        0, len(raw_signal), self.jump,
+                        desc="stripes inserted"):
+                    if coord.should_stop():
+                        self.logger.warning(f"Coord should stop killing")
+                        sess.run(self.signal_queue_close)
+                        return
+
+                    signal = raw_signal[i:i + self.max_seq_len]
+                    signal_len = len(signal)
+                    try:
+                        sess.run(
+                            self.signal_enqueue,
+                            feed_dict={
+                                self.signal_fname_ph: fn,
+                                self.signal_start_ph: i,
+                                self.signal_ph: signal.reshape([-1, 1]),
+                                self.signal_length_ph: signal_len,
+                            })
+                    except tf.errors.CancelledError:
+                        if coord.should_stop():
+                            sess.run(self.signal_queue_close)
+                            return
+
+
+class LogitProcessing:
+    def __init__(self,
+                 signal: SignalFeeder,
+                 batch_size: int,
+                 model: models.Model,
+                 capacity: int = 1000,
+                 num_threads=4):
+        signal_fname, signal_start, signal, signal_length = signal.signal_queue.dequeue_up_to(
+            batch_size)
+
+        ratio = 1  # TODO: Compute this during runtime
+        vs = [
+            signal_fname,
+            signal_start,
+            model(signal),
+            signal_length / ratio,
+        ]
+        self.logits_queue = tf.FIFOQueue(
+            capacity=capacity,
+            dtypes=[x.dtype for x in vs],
+            shapes=[x.shape for x in vs])
+        self.logit_queue_size = self.logits_queue.size()
+        self.logit_queue_close = self.logits_queue.close()
+
+        self.logit_enqueue = self.logits_queue.enqueue_many(
+            self.logits_queue, vs)
+        self.logit_qr = tf.train.QueueRunner(
+            self.logits_queue, [self.logit_enqueue] * num_threads)
+
+
 def run(cfg: BasecallCfg):
     fnames = []
     for x in cfg.input_dir:
@@ -188,29 +285,49 @@ def run(cfg: BasecallCfg):
         elif os.path.isdir(x):
             fnames.extend(glob(f"{x}/*.fast5", recursive=cfg.recursive))
 
-    reads: List[Read] = []
-    for fn in tqdm(fnames, "loading files into memory"):
-        with h5py.File(fn, 'r') as input_data:
-            raw_attr = input_data['Raw/Reads/']
-            read_name = list(raw_attr.keys())[0]
-            reads.append(
-                Read(
-                    name=fn,
-                    signal=np.array(
-                        raw_attr[read_name + '/Signal'].value).reshape([-1,
-                                                                        1])))
+    signal_feeder = SignalFeeder(
+        max_seq_len=cfg.seq_length,
+        jump=cfg.jump,
+    )
 
     with tf.Session() as sess:
-        model: models.Model = models.load_model(cfg.model)
-        sum = []
-        model.summary(print_fn=lambda x: sum.append(x))
-        sum = "\n".join(sum)
-        logger.info(f"Model summary:\n{sum}")
+        coord = tf.train.Coordinator()
+        tf.train.start_queue_runners(sess=sess, coord=coord)
 
-        x = tf.placeholder(tf.float32, shape=[None, None, 1])
-        logits = model(x)
-        tf.get_default_graph().finalize()
-        for read in tqdm(reads, "basecalling"):
-            ll = sess.run(
-                logits, feed_dict={x: read.signal.reshape([1, -1, 1])})
-            tqdm.write(f"{ll}")
+        threads = []
+        close_fns = []
+        try:
+            model: models.Model = models.load_model(cfg.model)
+            sum = []
+            model.summary(print_fn=lambda x: sum.append(x))
+            sum = "\n".join(sum)
+            logger.info(f"Model summary:\n{sum}")
+
+            t = Thread(
+                target=signal_feeder.feed_all,
+                kwargs={
+                    'sess': sess,
+                    'coord': coord,
+                    'fnames': fnames,
+                },
+                daemon=False)
+            threads.append(t)
+            t.start()
+            close_fns.append(
+                lambda: sess.run(signal_feeder.signal_queue_close))
+
+            for t in threads:
+                t.join()
+        finally:
+            exc_type, exc_value, tb = sys.exc_info()
+            if exc_value is None or isinstance(exc_value, KeyboardInterrupt):
+                coord.request_stop()
+            else:
+                logging.critical("Critical error happened", exc_info=True)
+                coord.request_stop(exc_value)
+
+            for cl in close_fns:
+                cl()
+            for t in threads:
+                t.join()
+            coord.join()

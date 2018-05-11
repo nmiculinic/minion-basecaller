@@ -120,8 +120,7 @@ class TestInputFeeders(unittest.TestCase):
             with dq.start_input_processes(sess, coord=coord):
                 for _ in range(10):
                     batch_labels, signal, signal_len = sess.run([
-                        dq.batch_labels, dq.batch_signal,
-                        dq.batch_signal_len
+                        dq.batch_labels, dq.batch_signal, dq.batch_signal_len
                     ])
                 coord.request_stop()
 
