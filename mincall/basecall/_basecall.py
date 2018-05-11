@@ -179,7 +179,7 @@ def decoding_queue(cfg: BasecallCfg, logits_queue, num_threads=6):
     return decode_predict, decode_fname, decode_idx, decodeedQueue.size()
 
 
-class SignalFeeder():
+class SignalFeeder:
     def __init__(self, max_seq_len, jump, capacity=1000):
         """SignalFeeder handled signal queue
 
@@ -191,10 +191,10 @@ class SignalFeeder():
         self.jump = jump
         self.logger = logging.getLogger(__name__ + ".SignalFeeder")
 
-        self.signal_fname_ph = tf.placeholder(tf.string, shape=())
-        self.signal_start_ph = tf.placeholder(tf.int32, shape=())
-        self.signal_ph = tf.placeholder(tf.float32, shape=(max_seq_len, 1))
-        self.signal_length_ph = tf.placeholder(tf.int32, shape=())
+        self.signal_fname_ph = tf.placeholder(tf.string, shape=(), name="signal_fname")
+        self.signal_start_ph = tf.placeholder(tf.int32, shape=(), name="signal_start")
+        self.signal_ph = tf.placeholder(tf.float32, shape=(max_seq_len, 1), name="signal")
+        self.signal_length_ph = tf.placeholder(tf.int32, shape=(), name="signal_length")
 
         vs = [
             self.signal_fname_ph,
@@ -214,34 +214,42 @@ class SignalFeeder():
 
     def feed_all(self, sess: tf.Session, coord: tf.train.Coordinator,
                  fnames: List[str]):
-        for fn in tqdm(fnames, "loading files into memory"):
-            with h5py.File(fn, 'r') as input_data:
-                raw_attr = input_data['Raw/Reads/']
-                read_name = list(raw_attr.keys())[0]
-                raw_signal = np.array(raw_attr[read_name + "/Signal"].value)
-                for i in trange(
-                        0, len(raw_signal), self.jump,
-                        desc="stripes inserted"):
-                    if coord.should_stop():
-                        self.logger.warning(f"Coord should stop killing")
-                        sess.run(self.signal_queue_close)
-                        return
-
-                    signal = raw_signal[i:i + self.max_seq_len]
-                    signal_len = len(signal)
-                    try:
-                        sess.run(
-                            self.signal_enqueue,
-                            feed_dict={
-                                self.signal_fname_ph: fn,
-                                self.signal_start_ph: i,
-                                self.signal_ph: signal.reshape([-1, 1]),
-                                self.signal_length_ph: signal_len,
-                            })
-                    except tf.errors.CancelledError:
+        with tqdm(total=len(fnames), desc="loading files into memory") as pbar:
+            for fn in fnames:
+                with h5py.File(fn, 'r') as input_data:
+                    raw_attr = input_data['Raw/Reads/']
+                    read_name = list(raw_attr.keys())[0]
+                    raw_signal = np.array(raw_attr[read_name + "/Signal"].value)
+                    for i in trange(
+                            0, len(raw_signal), self.jump,
+                            desc="stripes inserted"):
                         if coord.should_stop():
+                            self.logger.warning(f"Coord should stop killing")
                             sess.run(self.signal_queue_close)
                             return
+
+                        signal = raw_signal[i:i + self.max_seq_len]
+                        signal_len = len(signal)
+                        if signal_len < self.max_seq_len:
+                           signal = np.pad(signal, (0, self.max_seq_len - signal_len), 'constant', constant_values=0)
+                        try:
+                            _, size = sess.run(
+                                [
+                                    self.signal_enqueue,
+                                    self.signal_queue_size,
+                                    ],
+                                feed_dict={
+                                    self.signal_fname_ph: fn,
+                                    self.signal_start_ph: i,
+                                    self.signal_ph: signal.reshape([-1, 1]),
+                                    self.signal_length_ph: signal_len,
+                                })
+                            pbar.set_postfix(q_len=size)
+                        except tf.errors.CancelledError:
+                            if coord.should_stop():
+                                sess.run(self.signal_queue_close)
+                                return
+                pbar.update()
 
 
 class LogitProcessing:
@@ -249,29 +257,36 @@ class LogitProcessing:
                  signal: SignalFeeder,
                  batch_size: int,
                  model: models.Model,
-                 capacity: int = 1000,
+                 capacity: int = 3000,
                  num_threads=4):
+        self.logger = logging.getLogger(__name__ + ".LogitProcessing")
+        assert batch_size <= capacity, f"Batch size {batch_size} is bigger than capacity {capacity}"
         signal_fname, signal_start, signal, signal_length = signal.signal_queue.dequeue_up_to(
             batch_size)
 
-        ratio = 1  # TODO: Compute this during runtime
-        vs = [
+        logits = model(signal)
+        ratio, rem = divmod(int(signal.shape[1]), int(logits.shape[1]))
+        assert rem == 0, "Non clear cut for signal, {signal.shape[1]}/{logits.shape[1]}"
+        self.logger.info(f"Signal2Logit squeeze ratio {ratio}  = {signal.shape[1]}/{logits.shape[1]}")
+        self.vs = [
             signal_fname,
             signal_start,
-            model(signal),
+            logits,
             signal_length / ratio,
         ]
         self.logits_queue = tf.FIFOQueue(
             capacity=capacity,
-            dtypes=[x.dtype for x in vs],
-            shapes=[x.shape for x in vs])
+            dtypes=[x.dtype for x in self.vs],
+            shapes=[x.shape[1:] for x in self.vs],
+        name="logits_queue")
         self.logit_queue_size = self.logits_queue.size()
         self.logit_queue_close = self.logits_queue.close()
 
-        self.logit_enqueue = self.logits_queue.enqueue_many(
-            self.logits_queue, vs)
+        self.logit_enqueue = self.logits_queue.enqueue_many(self.vs, "enqueue_logits")
+        self.logit_dequeue = self.logits_queue.dequeue_up_to(batch_size)
         self.logit_qr = tf.train.QueueRunner(
             self.logits_queue, [self.logit_enqueue] * num_threads)
+        tf.train.add_queue_runner(self.logit_qr)
 
 
 def run(cfg: BasecallCfg):
@@ -285,23 +300,30 @@ def run(cfg: BasecallCfg):
         elif os.path.isdir(x):
             fnames.extend(glob(f"{x}/*.fast5", recursive=cfg.recursive))
 
-    signal_feeder = SignalFeeder(
-        max_seq_len=cfg.seq_length,
-        jump=cfg.jump,
-    )
-
     with tf.Session() as sess:
+        model: models.Model = models.load_model(cfg.model)
+        sum = []
+        model.summary(print_fn=lambda x: sum.append(x))
+        sum = "\n".join(sum)
+        logger.info(f"Model summary:\n{sum}")
+
+        signal_feeder = SignalFeeder(
+            max_seq_len=cfg.seq_length,
+            jump=cfg.jump,
+        )
+
+        logit_processing = LogitProcessing(
+            signal=signal_feeder,
+            batch_size=cfg.batch_size,
+            model=model,
+        )
+
         coord = tf.train.Coordinator()
         tf.train.start_queue_runners(sess=sess, coord=coord)
 
         threads = []
         close_fns = []
         try:
-            model: models.Model = models.load_model(cfg.model)
-            sum = []
-            model.summary(print_fn=lambda x: sum.append(x))
-            sum = "\n".join(sum)
-            logger.info(f"Model summary:\n{sum}")
 
             t = Thread(
                 target=signal_feeder.feed_all,
@@ -313,8 +335,13 @@ def run(cfg: BasecallCfg):
                 daemon=False)
             threads.append(t)
             t.start()
+
             close_fns.append(
                 lambda: sess.run(signal_feeder.signal_queue_close))
+
+            while True:
+                x = sess.run(logit_processing.logit_dequeue)
+                print(x)
 
             for t in threads:
                 t.join()
