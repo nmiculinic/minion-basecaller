@@ -1,4 +1,5 @@
 import argparse
+from collections import defaultdict
 import tensorflow as tf
 import string
 import logging
@@ -22,15 +23,6 @@ import toolz
 from tqdm import tqdm
 
 logger = logging.getLogger("mincall.basecall")
-
-
-def decode(x):
-    return "".join(map(dataset_pb2.BasePair.Name, x))
-
-
-class Read(NamedTuple):
-    name: str
-    signal: np.ndarray
 
 
 class BasecallCfg(NamedTuple):
@@ -131,54 +123,6 @@ def run_args(args):
         sys.exit(1)
 
 
-def decoding_queue(cfg: BasecallCfg, logits_queue, num_threads=6):
-    q_logits, q_name, q_index, seq_length = logits_queue.dequeue()
-    if cfg.beam_width == 0:
-        decode_decoded, decode_log_prob = tf.nn.ctc_greedy_decoder(
-            tf.transpose(q_logits, perm=[1, 0, 2]),
-            seq_length,
-            merge_repeated=True)
-    else:
-        decode_decoded, decode_log_prob = tf.nn.ctc_beam_search_decoder(
-            tf.transpose(q_logits, perm=[1, 0, 2]),
-            seq_length,
-            merge_repeated=False,
-            beam_width=cfg.beam_width)
-        # There will be a second merge operation after the decoding process
-        # if the merge_repeated for decode search decoder set to True.
-        # Check this issue https://github.com/tensorflow/tensorflow/issues/9550
-    decodeedQueue = tf.FIFOQueue(
-        capacity=2 * num_threads,
-        dtypes=[tf.int64 for _ in decode_decoded] * 3 +
-        [tf.float32, tf.float32, tf.string, tf.int32],
-    )
-    ops = []
-    for x in decode_decoded:
-        ops.append(x.indices)
-        ops.append(x.values)
-        ops.append(x.dense_shape)
-    decode_enqueue = decodeedQueue.enqueue(
-        tuple(ops + [decode_log_prob, q_name, q_index]))
-
-    decode_dequeue = decodeedQueue.dequeue()
-    decode_fname, decode_idx = decode_dequeue[-2:]
-
-    decode_dequeue = decode_dequeue[:-3]
-    decode_predict = [[], decode_dequeue[-1]]
-    for i in range(0, len(decode_dequeue) - 1, 3):
-        decode_predict[0].append(
-            tf.SparseTensor(
-                indices=decode_dequeue[i],
-                values=decode_dequeue[i + 1],
-                dense_shape=decode_dequeue[i + 2],
-            ))
-
-    decode_qr = tf.train.QueueRunner(decodeedQueue,
-                                     [decode_enqueue] * num_threads)
-    tf.train.add_queue_runner(decode_qr)
-    return decode_predict, decode_fname, decode_idx, decodeedQueue.size()
-
-
 class SignalFeeder:
     def __init__(self, max_seq_len, jump, capacity=1000):
         """SignalFeeder handled signal queue
@@ -251,7 +195,6 @@ class SignalFeeder:
                                 return
                 pbar.update()
 
-
 class LogitProcessing:
     def __init__(self,
                  signal: SignalFeeder,
@@ -272,7 +215,7 @@ class LogitProcessing:
             signal_fname,
             signal_start,
             logits,
-            signal_length / ratio,
+            tf.cast(signal_length / ratio, dtype=tf.int32),
         ]
         self.logits_queue = tf.FIFOQueue(
             capacity=capacity,
@@ -287,6 +230,84 @@ class LogitProcessing:
         self.logit_qr = tf.train.QueueRunner(
             self.logits_queue, [self.logit_enqueue] * num_threads)
         tf.train.add_queue_runner(self.logit_qr)
+
+class Basecall:
+    def __init__(self, max_seq_len:int, jump:int, logit_processing: LogitProcessing, output_file: str = None):
+        self.max_seq_len = max_seq_len
+        self.jump = jump
+        self.output_file = output_file
+        self.logger = logging.getLogger(__name__ + ".Basecall")
+        self.logit_processing = logit_processing
+
+        self.read_fname,\
+        self.read_start,\
+        self.logits,\
+        self.signal_length = self.logit_processing.logit_dequeue
+        self._construct_graph()
+
+    def basecall_all(self, sess: tf.Session, coord: tf.train.Coordinator, fnames: List[str]):
+        with tqdm(total=len(fnames), desc="basecalling all") as pbar, open(self.output_file, 'w') as fasta_out:
+            cache = defaultdict(dict)
+            for fn in fnames:
+                with h5py.File(fn, 'r') as input_data:
+                    raw_attr = input_data['Raw/Reads/']
+                    read_name = list(raw_attr.keys())[0]
+                    raw_signal_len = len(np.array(raw_attr[read_name + "/Signal"].value))
+
+                    for i in trange(0, raw_signal_len, self.jump, desc="stripes inserted"):
+                        while i not in cache[fn]:
+                            if coord.should_stop():
+                                self.logger.warning(f"Coord should stop killing")
+                                return
+                            try:
+                                bread_fname, bread_start, blogits, signal_len, size = sess.run(
+                                    [
+                                        self.read_fname,
+                                        self.read_start,
+                                        self.logits,
+                                        self.signal_length,
+                                        self.logit_processing.logit_queue_size,
+                                    ])
+                                for j in range(bread_fname.shape[0]):
+                                    read_start = bread_start[j]
+                                    read_fname = bread_fname[j].decode("UTF-8")
+                                    cache[read_fname][read_start] = blogits[j, :signal_len[j], :]
+                                    self.logger.debug(f"Inserted {read_fname}:{read_start}, wants {fn}:{i}")
+                                pbar.set_postfix(logit_q_size=size)
+                            except tf.errors.CancelledError:
+                                if coord.should_stop():
+                                    return
+                    assembly = cache.pop(fn)
+                    predicted, log_prob = self.construct_stripes(sess, assembly, raw_signal_len)
+                    fasta = "".join([dataset_pb2.BasePair.Name(x) for x in predicted[0].values])
+
+                    print(f">{fn}", file=fasta_out)
+                    for i in range(0, len(fasta), 80):
+                        print(fasta[i:i+80], file=fasta_out)
+                    self.logger.info(f"Decoded: {fn} to file {self.output_file}")
+                pbar.update()
+
+    def _construct_graph(self):
+        self.logits_ph = tf.placeholder(tf.float32, shape=(None, 1, 5))
+        self.seq_len = tf.placeholder(tf.int32, shape=(1, ))
+
+        self.predict = tf.nn.ctc_beam_search_decoder(
+            inputs=self.logits_ph,
+            sequence_length=self.seq_len,
+            merge_repeated=False,
+            top_paths=1,
+            beam_width=50)
+
+    def construct_stripes(self, sess: tf.Session, assembly: Dict[int, np.ndarray], raw_signal_len):
+        logits = np.zeros(shape=(raw_signal_len, 5), dtype=np.float32)
+        for i in reversed(range(0, raw_signal_len, self.jump)):
+            l = assembly[i]
+            logits[i:i + l.shape[0], :] = l
+
+        return sess.run(self.predict, feed_dict={
+            self.logits_ph: logits.reshape(-1, 1, 5),
+            self.seq_len: np.array([raw_signal_len])
+        })
 
 
 def run(cfg: BasecallCfg):
@@ -318,6 +339,13 @@ def run(cfg: BasecallCfg):
             model=model,
         )
 
+        basecall = Basecall(
+            max_seq_len=cfg.seq_length,
+            jump=cfg.jump,
+            logit_processing= logit_processing,
+            output_file=cfg.output_fasta,
+        )
+
         coord = tf.train.Coordinator()
         tf.train.start_queue_runners(sess=sess, coord=coord)
 
@@ -336,12 +364,19 @@ def run(cfg: BasecallCfg):
             threads.append(t)
             t.start()
 
+            t = Thread(
+                target=basecall.basecall_all,
+                kwargs={
+                    'sess': sess,
+                    'coord': coord,
+                    'fnames': fnames,
+                },
+                daemon=False)
+            threads.append(t)
+            t.start()
+
             close_fns.append(
                 lambda: sess.run(signal_feeder.signal_queue_close))
-
-            while True:
-                x = sess.run(logit_processing.logit_dequeue)
-                print(x)
 
             for t in threads:
                 t.join()
