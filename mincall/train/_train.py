@@ -323,8 +323,10 @@ def run(cfg: TrainConfig):
     test_model.summary = tf.summary.merge(
         test_model.summaries + var_summaries + [
             tf.summary.histogram("logits/histogram", test_model.logits),
-            tf.summary.histogram("logits/min", tf.reduce_min(test_model.logits)),
-            tf.summary.histogram("logits/max", tf.reduce_max(test_model.logits)),
+            tf.summary.histogram("logits/min", tf.reduce_min(
+                test_model.logits)),
+            tf.summary.histogram("logits/max", tf.reduce_max(
+                test_model.logits)),
             tf.summary.histogram("logits/mean", mean_logits),
             tf.summary.histogram("logits/stddev", tf.sqrt(var_logits)),
         ])
