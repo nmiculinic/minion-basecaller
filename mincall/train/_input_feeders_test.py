@@ -1,4 +1,5 @@
 import unittest
+import logging
 import numpy as np
 import itertools
 import threading
@@ -101,6 +102,30 @@ class TestInputFeeders(unittest.TestCase):
                                                   70]]).reshape(2, 7, 1))
             np.testing.assert_allclose(signal_len, np.array([5, 7]))
 
+    def test_end2end(self):
+        g = tf.Graph()
+        with g.as_default():
+            dq = _input_feeders.DataQueue(
+                cfg=_input_feeders.InputFeederCfg(
+                    batch_size=2,
+                    seq_length=50,
+                ),
+                fnames=[ex_fname],
+                min_after_deque=40,
+                shuffle=True,
+            )
+        with tf.Session(graph=g) as sess:
+            coord = tf.train.Coordinator()
+            tf.train.start_queue_runners(sess=sess, coord=coord)
+            with dq.start_input_processes(sess, coord=coord):
+                for _ in range(10):
+                    batch_labels, signal, signal_len = sess.run([
+                        dq.batch_labels, dq.batch_signal,
+                        dq.batch_signal_len
+                    ])
+                coord.request_stop()
+
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     unittest.main()
