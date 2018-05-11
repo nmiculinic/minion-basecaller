@@ -1,5 +1,6 @@
 from minion_data import dataset_pb2
 import tensorflow as tf
+import itertools
 import logging
 from typing import *
 import voluptuous
@@ -11,6 +12,7 @@ import numpy as np
 from multiprocessing import Queue, Manager, Process
 import queue
 from threading import Thread
+import sys
 
 
 class InputFeederCfg(NamedTuple):
@@ -241,7 +243,7 @@ class DataQueue():
 
 
 def produce_datapoints(cfg: InputFeederCfg, fnames: List[str], q: Queue,
-                       poison: Queue):
+                       poison: Queue, repeat=True):
     """
 
     Pushes single instances to the queue of the form:
@@ -252,7 +254,7 @@ def produce_datapoints(cfg: InputFeederCfg, fnames: List[str], q: Queue,
     :param q:
     :return:
     """
-    while True:
+    for cnt in itertools.count(1):
         random.seed(os.urandom(20))
         random.shuffle(fnames)
         for x in fnames:
@@ -296,3 +298,5 @@ def produce_datapoints(cfg: InputFeederCfg, fnames: List[str], q: Queue,
                             signal[start:start + cfg.seq_length],
                             np.copy(buff[:buff_idx]),
                         ])
+        if not repeat:
+            break
