@@ -1,10 +1,8 @@
 absl-py==0.2.0
 astor==0.6.2
 bleach==1.5.0
-Cython==0.28.2
 cytoolz==0.9.0.1
-edlib==1.2.3
-gast==0.2.0
+edlib==1.2.3.post1
 gast==0.2.0
 grpcio==1.11.0
 grpcio-tools==1.11.0
@@ -18,7 +16,7 @@ numpy==1.14.3
 pandas==0.22.0
 protobuf==3.5.2.post1
 pysam==0.14.1
-python-dateutil==2.7.2
+python-dateutil==2.7.3
 pytz==2018.4
 PyYAML==3.12
 scipy==1.0.1
