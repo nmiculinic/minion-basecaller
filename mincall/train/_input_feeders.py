@@ -1,5 +1,6 @@
-from mincall import dataset_pb2
+from minion_data import dataset_pb2
 import tensorflow as tf
+import itertools
 import logging
 from typing import *
 import voluptuous
@@ -11,6 +12,7 @@ import numpy as np
 from multiprocessing import Queue, Manager, Process
 import queue
 from threading import Thread
+import sys
 
 
 class InputFeederCfg(NamedTuple):
@@ -43,13 +45,13 @@ class DataQueue():
         self.cfg = cfg
         self.fnames = fnames
         self.logger = logging.getLogger(__name__)
-        self.values_ph = tf.placeholder(
+        self._values_ph = tf.placeholder(
             dtype=tf.int32, shape=[None], name="labels")
-        self.values_len_ph = tf.placeholder(
+        self._values_len_ph = tf.placeholder(
             dtype=tf.int64, shape=[], name="labels_len")
-        self.signal_ph = tf.placeholder(
+        self._signal_ph = tf.placeholder(
             dtype=tf.float32, shape=[None, 1], name="signal")
-        self.signal_len_ph = tf.placeholder(
+        self._signal_len_ph = tf.placeholder(
             dtype=tf.int64, shape=[], name="signal_len")
 
         self.closing = []
@@ -72,11 +74,11 @@ class DataQueue():
             self.shuffle_queue = tf.RandomShuffleQueue(
                 capacity=capacity,
                 dtypes=[tf.int32, tf.int64, tf.float32, tf.int64],
-                min_after_dequeue=10,
+                min_after_dequeue=min_after_deque,
             )
             self.enq = self.shuffle_queue.enqueue([
-                self.values_ph, self.values_len_ph, self.signal_ph,
-                self.signal_len_ph
+                self._values_ph, self._values_len_ph, self._signal_ph,
+                self._signal_len_ph
             ])
             num_threads = 4
             qr = tf.train.QueueRunner(
@@ -92,8 +94,8 @@ class DataQueue():
                     family="queue"))
         else:
             self.enq = self.queue.enqueue([
-                self.values_ph, self.values_len_ph, self.signal_ph,
-                self.signal_len_ph
+                self._values_ph, self._values_len_ph, self._signal_ph,
+                self._signal_len_ph
             ])
 
         values_op, values_len_op, signal_op, signal_len_op = self.queue.dequeue_many(
@@ -155,10 +157,10 @@ class DataQueue():
         sess.run(
             self.enq,
             feed_dict={
-                self.values_ph: label,
-                self.values_len_ph: len(label),
-                self.signal_ph: signal.reshape((-1, 1)),
-                self.signal_len_ph: len(signal),
+                self._values_ph: label,
+                self._values_len_ph: len(label),
+                self._signal_ph: signal.reshape((-1, 1)),
+                self._signal_len_ph: len(signal),
             })
 
     def start_input_processes(self,
@@ -240,8 +242,11 @@ class DataQueue():
         return Wrapper()
 
 
-def produce_datapoints(cfg: InputFeederCfg, fnames: List[str], q: Queue,
-                       poison: Queue):
+def produce_datapoints(cfg: InputFeederCfg,
+                       fnames: List[str],
+                       q: Queue,
+                       poison: Queue,
+                       repeat=True):
     """
 
     Pushes single instances to the queue of the form:
@@ -252,7 +257,7 @@ def produce_datapoints(cfg: InputFeederCfg, fnames: List[str], q: Queue,
     :param q:
     :return:
     """
-    while True:
+    for cnt in itertools.count(1):
         random.seed(os.urandom(20))
         random.shuffle(fnames)
         for x in fnames:
@@ -296,3 +301,5 @@ def produce_datapoints(cfg: InputFeederCfg, fnames: List[str], q: Queue,
                             signal[start:start + cfg.seq_length],
                             np.copy(buff[:buff_idx]),
                         ])
+        if not repeat:
+            break

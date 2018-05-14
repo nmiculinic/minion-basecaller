@@ -17,7 +17,7 @@ import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 from tensorflow.python.client import timeline
 from tensorboard.plugins.beholder import Beholder
-from mincall import dataset_pb2
+from minion_data import dataset_pb2
 from keras import backend as K
 from keras import models
 from .models import dummy_model
@@ -323,8 +323,10 @@ def run(cfg: TrainConfig):
     test_model.summary = tf.summary.merge(
         test_model.summaries + var_summaries + [
             tf.summary.histogram("logits/histogram", test_model.logits),
-            tf.summary.histogram("logits/min", tf.minimum(test_model.logits)),
-            tf.summary.histogram("logits/max", tf.minimum(test_model.logits)),
+            tf.summary.histogram("logits/min", tf.reduce_min(
+                test_model.logits)),
+            tf.summary.histogram("logits/max", tf.reduce_max(
+                test_model.logits)),
             tf.summary.histogram("logits/mean", mean_logits),
             tf.summary.histogram("logits/stddev", tf.sqrt(var_logits)),
         ])

@@ -1,7 +1,7 @@
 import argparse
 from tqdm import tqdm
 import logging
-from mincall import train
+from mincall import train, basecall
 import os
 
 
@@ -17,6 +17,7 @@ if __name__ == "__main__":
     subparsers = parser.add_subparsers()
 
     train.add_args(subparsers.add_parser("train"))
+    basecall.add_args(subparsers.add_parser("basecall"))
 
     args = parser.parse_args()
     if hasattr(args, 'func'):
