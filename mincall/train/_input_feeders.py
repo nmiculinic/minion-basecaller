@@ -1,5 +1,6 @@
-from mincall import dataset_pb2
+from minion_data import dataset_pb2
 import tensorflow as tf
+import itertools
 import logging
 from typing import *
 import voluptuous
@@ -11,6 +12,7 @@ import numpy as np
 from multiprocessing import Queue, Manager, Process
 import queue
 from threading import Thread
+import sys
 
 
 class InputFeederCfg(NamedTuple):
@@ -27,27 +29,32 @@ class InputFeederCfg(NamedTuple):
 
 
 class DataQueue():
-    def __init__(self,
-                 cfg: InputFeederCfg,
-                 capacity=-1,
-                 min_after_deque=10,
-                 shuffle=True,
-                 trace=False):
+    def __init__(
+            self,
+            cfg: InputFeederCfg,
+            fnames,
+            capacity=-1,
+            min_after_deque=10,
+            shuffle=True,
+            trace=False,
+    ):
         """
         :param cap: queue capacity
         :param batch_size: output batch size
         """
         self.cfg = cfg
+        self.fnames = fnames
         self.logger = logging.getLogger(__name__)
-        self.values_ph = tf.placeholder(
+        self._values_ph = tf.placeholder(
             dtype=tf.int32, shape=[None], name="labels")
-        self.values_len_ph = tf.placeholder(
+        self._values_len_ph = tf.placeholder(
             dtype=tf.int64, shape=[], name="labels_len")
-        self.signal_ph = tf.placeholder(
+        self._signal_ph = tf.placeholder(
             dtype=tf.float32, shape=[None, 1], name="signal")
-        self.signal_len_ph = tf.placeholder(
+        self._signal_len_ph = tf.placeholder(
             dtype=tf.int64, shape=[], name="signal_len")
 
+        self.closing = []
         self.queue = tf.PaddingFIFOQueue(
             capacity=capacity,
             dtypes=[tf.int32, tf.int64, tf.float32, tf.int64],
@@ -57,26 +64,38 @@ class DataQueue():
                 [None, 1],
                 [],
             ])
+        # self.closing.append(self.queue.close()) Closed with queue runners...no idea how&why it works
+        self.summaries = []
+        self.summaries.append(
+            tf.summary.scalar(
+                "paddingFIFOQueue_input", self.queue.size(), family="queue"))
 
         if shuffle:
             self.shuffle_queue = tf.RandomShuffleQueue(
                 capacity=capacity,
                 dtypes=[tf.int32, tf.int64, tf.float32, tf.int64],
-                min_after_dequeue=10,
+                min_after_dequeue=min_after_deque,
             )
             self.enq = self.shuffle_queue.enqueue([
-                self.values_ph, self.values_len_ph, self.signal_ph,
-                self.signal_len_ph
+                self._values_ph, self._values_len_ph, self._signal_ph,
+                self._signal_len_ph
             ])
             num_threads = 4
             qr = tf.train.QueueRunner(
                 self.queue, [self.queue.enqueue(self.shuffle_queue.dequeue())
                              ] * num_threads)
             tf.train.add_queue_runner(qr)
+            self.closing.append(
+                self.shuffle_queue.close(cancel_pending_enqueues=True))
+            self.summaries.append(
+                tf.summary.scalar(
+                    "randomShuffleQueue_input",
+                    self.queue.size(),
+                    family="queue"))
         else:
             self.enq = self.queue.enqueue([
-                self.values_ph, self.values_len_ph, self.signal_ph,
-                self.signal_len_ph
+                self._values_ph, self._values_len_ph, self._signal_ph,
+                self._signal_len_ph
             ])
 
         values_op, values_len_op, signal_op, signal_len_op = self.queue.dequeue_many(
@@ -138,64 +157,96 @@ class DataQueue():
         sess.run(
             self.enq,
             feed_dict={
-                self.values_ph: label,
-                self.values_len_ph: len(label),
-                self.signal_ph: signal.reshape((-1, 1)),
-                self.signal_len_ph: len(signal),
+                self._values_ph: label,
+                self._values_len_ph: len(label),
+                self._signal_ph: signal.reshape((-1, 1)),
+                self._signal_len_ph: len(signal),
             })
 
-    def start_input_processes(self, sess: tf.Session, fnames: List[str],
+    def start_input_processes(self,
+                              sess: tf.Session,
+                              coord: tf.train.Coordinator,
                               cnt=1):
-        m = Manager()
-        q: Queue = m.Queue()
-        poison_queue: Queue = m.Queue()
+        class Wrapper():
+            def __init__(self):
+                pass
 
-        processes: List[Process] = []
-        for _ in range(cnt):
-            p = Process(
-                target=produce_datapoints,
-                args=(self.cfg, fnames, q, poison_queue))
-            p.start()
-            processes.append(p)
+            def __enter__(iself):
+                m = Manager()
+                q: Queue = m.Queue()
+                iself.poison_queue: Queue = m.Queue()
 
-        def worker_fn():
-            exs = 0
-            for i in count(start=1):
-                try:
-                    poison_queue.get_nowait()
-                    return
-                except queue.Empty:
-                    pass
+                iself.processes: List[Process] = []
+                for _ in range(cnt):
+                    p = Process(
+                        target=produce_datapoints,
+                        args=(self.cfg, self.fnames, q, iself.poison_queue))
+                    p.start()
+                    iself.processes.append(p)
 
-                it = q.get(timeout=0.5)
-                if isinstance(it, Exception):
-                    self.logger.debug(
-                        f"Exception happened during processing data {type(it).__name__}:\n{it}"
-                    )
-                    exs += 1
-                    continue
-                signal, labels = it
-                self.push_to_queue(sess, signal, labels)
-                if i % 2000 == 0:
-                    self.logger.info(
-                        f"sucessfully submitted {i - exs}/{i} samples; -- {(i-exs)/i:.2f}"
-                    )
+                def worker_fn():
+                    exs = 0
+                    for i in count(start=1):
+                        try:
+                            iself.poison_queue.get_nowait()
+                            return
+                        except queue.Empty:
+                            pass
+                        if coord.should_stop():
+                            return
+                        try:
+                            it = q.get(timeout=0.5)
+                            if isinstance(it, Exception):
+                                self.logger.debug(
+                                    f"Exception happened during processing data {type(it).__name__}:\n{it}"
+                                )
+                                exs += 1
+                                continue
+                            signal, labels = it
+                            try:
+                                self.push_to_queue(sess, signal, labels)
+                            except tf.errors.CancelledError:
+                                if coord.should_stop():
+                                    return
+                                else:
+                                    raise
+                            if i % 2000 == 0:
+                                self.logger.info(
+                                    f"sucessfully submitted {i - exs}/{i} samples; -- {(i-exs)/i:.2f}"
+                                )
+                        except queue.Empty:
+                            pass
 
-        th = Thread(target=worker_fn, daemon=True)
-        th.start()
+                iself.th = Thread(target=worker_fn, daemon=True)
+                iself.th.start()
+                logging.getLogger(__name__).info("Started all feeders")
 
-        def close():
-            for _ in range(cnt + 1):
-                poison_queue.put(None)
-            for p in processes:
-                p.join()
-            th.join()
+            def __exit__(iself, exc_type, exc_val, exc_tb):
+                logging.getLogger(__name__).info(
+                    "Starting to close all feeders")
+                for x in self.closing:
+                    try:
+                        sess.run(x)
+                    except Exception as ex:
+                        logging.getLogger(__name__).warning(
+                            f"Cannot close queue {type(ex).__name__}: {ex}")
+                        pass
+                logging.getLogger(__name__).info("Closed all queues")
+                for _ in range(cnt + 1):
+                    iself.poison_queue.put(None)
+                for p in iself.processes:
+                    p.join(timeout=5)
+                iself.th.join(timeout=5)
+                logging.getLogger(__name__).info("Closed all feeders")
 
-        return close
+        return Wrapper()
 
 
-def produce_datapoints(cfg: InputFeederCfg, fnames: List[str], q: Queue,
-                       poison: Queue):
+def produce_datapoints(cfg: InputFeederCfg,
+                       fnames: List[str],
+                       q: Queue,
+                       poison: Queue,
+                       repeat=True):
     """
 
     Pushes single instances to the queue of the form:
@@ -206,7 +257,7 @@ def produce_datapoints(cfg: InputFeederCfg, fnames: List[str], q: Queue,
     :param q:
     :return:
     """
-    while True:
+    for cnt in itertools.count(1):
         random.seed(os.urandom(20))
         random.shuffle(fnames)
         for x in fnames:
@@ -250,3 +301,5 @@ def produce_datapoints(cfg: InputFeederCfg, fnames: List[str], q: Queue,
                             signal[start:start + cfg.seq_length],
                             np.copy(buff[:buff_idx]),
                         ])
+        if not repeat:
+            break
