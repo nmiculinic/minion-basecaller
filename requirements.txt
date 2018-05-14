@@ -5,6 +5,7 @@ Cython==0.28.2
 cytoolz==0.9.0.1
 edlib==1.2.3
 gast==0.2.0
+gast==0.2.0
 grpcio==1.11.0
 grpcio-tools==1.11.0
 h5py==2.7.1
