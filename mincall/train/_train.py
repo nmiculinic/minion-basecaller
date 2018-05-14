@@ -191,7 +191,7 @@ class Model():
 
         self.logits = tf.transpose(
             model(input_signal),
-            [1, 0, 2])  # [max_time, batch_size, class_num]
+            [1, 0, 2], name="logits")  # [max_time, batch_size, class_num]
         self.logger.info(f"Logits shape: {self.logits.shape}")
 
         ratio = 1
@@ -449,7 +449,16 @@ def run(cfg: TrainConfig):
                 coord.request_stop()
                 p = os.path.join(cfg.logdir, f"full-model.save")
                 model.save(p, overwrite=True, include_optimizer=False)
+
                 logger.info(f"Finished training saved model to {p}")
+                g: tf.Graph = tf.get_default_graph()
+                gdef = g.as_graph_def()
+                gdef = tf.graph_util.convert_variables_to_constants(
+                    sess,
+                    gdef,
+                    ["train/logits"],
+                )
+                tf.train.write_graph(gdef, logdir=cfg.logdir, name="grapfdef_prod.pb", as_text=False)
             logger.info(f"Input queues exited ok")
         finally:
             coord.request_stop()

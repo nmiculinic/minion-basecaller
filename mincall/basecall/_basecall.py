@@ -29,7 +29,8 @@ class BasecallCfg(NamedTuple):
     input_dir: List[str]
     recursive: bool
     output_fasta: str
-    model: str
+    keras_model: str
+    graphdef_model: str
     batch_size: int
     seq_length: int
     beam_width: int
@@ -49,8 +50,8 @@ class BasecallCfg(NamedTuple):
                 bool,
                 'output_fasta':
                 str,
-                'model':
-                voluptuous.validators.IsFile(),
+                voluptuous.Optional('keras_model'): voluptuous.validators.IsFile(),
+                voluptuous.Optional('graphdef_model'): voluptuous.validators.IsFile(),
                 voluptuous.Optional('batch_size', default=1100):
                 int,
                 voluptuous.Optional('seq_length', default=300):
@@ -70,7 +71,9 @@ def add_args(parser: argparse.ArgumentParser):
     parser.add_argument("--in", "-i", nargs="*", dest='basecall.input_dir')
     parser.add_argument("--out", "-o", dest='basecall.output_fasta')
     parser.add_argument(
-        "--model", "-m", dest='basecall.model', help="model savepoint")
+        "--keras-model", dest='basecall.keras_model', help="Keras model snapshot")
+    parser.add_argument(
+        "--graphdef-model", dest='basecall.grapfdef_model', help="graphdef model snapshot ((one where variables are converted into constants)) ")
     parser.add_argument(
         "--batch_size", "-b", dest='basecall.batch_size', type=int)
     parser.add_argument(
@@ -199,7 +202,8 @@ class LogitProcessing:
     def __init__(self,
                  signal: SignalFeeder,
                  batch_size: int,
-                 model: models.Model,
+                 keras_model: models.Model=None,
+                 graphdef_file=None,
                  capacity: int = 3000,
                  num_threads=4):
         self.logger = logging.getLogger(__name__ + ".LogitProcessing")
@@ -207,7 +211,27 @@ class LogitProcessing:
         signal_fname, signal_start, signal, signal_length = signal.signal_queue.dequeue_up_to(
             batch_size)
 
-        logits = model(signal)
+        if keras_model:
+            logits = keras_model(signal)
+            self.logger.info("Using keras model")
+        elif graphdef_file:
+            self.logger.info("Using graphdef file")
+            with open(graphdef_file,'rb') as f:
+                graph_def = tf.GraphDef()
+                graph_def.ParseFromString(f.read())
+
+            logits = tf.import_graph_def(
+                graph_def,
+                input_map={
+                    "signal:0": signal,
+                },
+                return_elements=["logits:0"],
+                name=None,
+                op_dict=None,
+                producer_op_list=None
+            )
+        else:
+            raise ValueError("Neither keras no graphdef models defined")
         ratio, rem = divmod(int(signal.shape[1]), int(logits.shape[1]))
         assert rem == 0, "Non clear cut for signal, {signal.shape[1]}/{logits.shape[1]}"
         self.logger.info(f"Signal2Logit squeeze ratio {ratio}  = {signal.shape[1]}/{logits.shape[1]}")
@@ -322,11 +346,13 @@ def run(cfg: BasecallCfg):
             fnames.extend(glob(f"{x}/*.fast5", recursive=cfg.recursive))
 
     with tf.Session() as sess:
-        model: models.Model = models.load_model(cfg.model)
-        sum = []
-        model.summary(print_fn=lambda x: sum.append(x))
-        sum = "\n".join(sum)
-        logger.info(f"Model summary:\n{sum}")
+        keras_model: models.Model = None
+        if cfg.keras_model is not None:
+            keras_model: models.Model = models.load_model(cfg.keras_model)
+            sum = []
+            keras_model.summary(print_fn=lambda x: sum.append(x))
+            sum = "\n".join(sum)
+            logger.info(f"Model summary:\n{sum}")
 
         signal_feeder = SignalFeeder(
             max_seq_len=cfg.seq_length,
@@ -336,7 +362,8 @@ def run(cfg: BasecallCfg):
         logit_processing = LogitProcessing(
             signal=signal_feeder,
             batch_size=cfg.batch_size,
-            model=model,
+            keras_model=keras_model,
+            graphdef_file=cfg.graphdef_model,
         )
 
         basecall = Basecall(
