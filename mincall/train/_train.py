@@ -20,7 +20,7 @@ from tensorboard.plugins.beholder import Beholder
 from minion_data import dataset_pb2
 from keras import backend as K
 from keras import models
-from .models import dummy_model
+from .models import all_models
 import edlib
 
 import toolz
@@ -102,6 +102,8 @@ class TrainConfig(NamedTuple):
     debug: bool
     tensorboard_debug: str
     run_trace_every: int
+    model_name: str
+    model_hparams: str
 
     @classmethod
     def schema(cls, data):
@@ -129,6 +131,8 @@ class TrainConfig(NamedTuple):
                 bool,
                 voluptuous.Optional('tensorboard_debug', default=None):
                 voluptuous.Any(str, None),
+                voluptuous.Optional('model_name', default='dummy'): str,
+                voluptuous.Optional('model_hparams', default=''): str,
             },
             required=True)(data))
 
@@ -161,6 +165,8 @@ def add_args(parser: argparse.ArgumentParser):
         help=
         "if debug mode is activate and this is set, use tensorboard debugger")
 
+    parser.add_argument("--model", dest='train.model_name', type=str)
+    parser.add_argument("--hparams", dest='train.model_hparams', type=str)
     parser.add_argument("--logdir", dest='logdir', type=str)
     parser.set_defaults(func=run_args)
     parser.set_defaults(name="mincall_train")
@@ -275,7 +281,7 @@ def run(cfg: TrainConfig):
     config.gpu_options.allow_growth = True
 
     os.makedirs(cfg.logdir, exist_ok=True)
-    model, _ = dummy_model()
+    model = all_models[cfg.model_name](cfg.model_hparams)
 
     with tf.name_scope("train"):
         train_model = Model(
