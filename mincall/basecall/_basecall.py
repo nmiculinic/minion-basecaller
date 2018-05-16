@@ -18,6 +18,7 @@ from pprint import pformat, pprint
 from minion_data import dataset_pb2
 from keras import models
 import h5py
+from mincall.train.models import custom_layers
 
 import toolz
 from tqdm import tqdm
@@ -322,7 +323,7 @@ def run(cfg: BasecallCfg):
             fnames.extend(glob(f"{x}/*.fast5", recursive=cfg.recursive))
 
     with tf.Session() as sess:
-        model: models.Model = models.load_model(cfg.model)
+        model: models.Model = models.load_model(cfg.model, custom_objects=custom_layers)
         sum = []
         model.summary(print_fn=lambda x: sum.append(x))
         sum = "\n".join(sum)

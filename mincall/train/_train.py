@@ -225,7 +225,10 @@ class Model():
             time_major=True,
         )
         self.ctc_loss = tf.reduce_mean(self.losses)
-        self.regularization_loss = tf.add_n(model.losses)
+        if model.losses:
+            self.regularization_loss = tf.add_n(model.losses)
+        else:
+            self.regularization_loss = tf.constant(0.0)
         self.total_loss = self.ctc_loss + self.regularization_loss
         if create_train_ops:
             self.train_step = tf.train.AdamOptimizer().minimize(
