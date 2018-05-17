@@ -131,8 +131,10 @@ class TrainConfig(NamedTuple):
                 bool,
                 voluptuous.Optional('tensorboard_debug', default=None):
                 voluptuous.Any(str, None),
-                voluptuous.Optional('model_name', default='dummy'): str,
-                voluptuous.Optional('model_hparams', default=''): str,
+                voluptuous.Optional('model_name', default='dummy'):
+                str,
+                voluptuous.Optional('model_hparams', default=''):
+                str,
             },
             required=True)(data))
 

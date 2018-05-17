@@ -136,10 +136,14 @@ class SignalFeeder:
         self.jump = jump
         self.logger = logging.getLogger(__name__ + ".SignalFeeder")
 
-        self.signal_fname_ph = tf.placeholder(tf.string, shape=(), name="signal_fname")
-        self.signal_start_ph = tf.placeholder(tf.int32, shape=(), name="signal_start")
-        self.signal_ph = tf.placeholder(tf.float32, shape=(max_seq_len, 1), name="signal")
-        self.signal_length_ph = tf.placeholder(tf.int32, shape=(), name="signal_length")
+        self.signal_fname_ph = tf.placeholder(
+            tf.string, shape=(), name="signal_fname")
+        self.signal_start_ph = tf.placeholder(
+            tf.int32, shape=(), name="signal_start")
+        self.signal_ph = tf.placeholder(
+            tf.float32, shape=(max_seq_len, 1), name="signal")
+        self.signal_length_ph = tf.placeholder(
+            tf.int32, shape=(), name="signal_length")
 
         vs = [
             self.signal_fname_ph,
@@ -164,7 +168,8 @@ class SignalFeeder:
                 with h5py.File(fn, 'r') as input_data:
                     raw_attr = input_data['Raw/Reads/']
                     read_name = list(raw_attr.keys())[0]
-                    raw_signal = np.array(raw_attr[read_name + "/Signal"].value)
+                    raw_signal = np.array(
+                        raw_attr[read_name + "/Signal"].value)
                     for i in trange(
                             0, len(raw_signal), self.jump,
                             desc="stripes inserted"):
@@ -176,13 +181,16 @@ class SignalFeeder:
                         signal = raw_signal[i:i + self.max_seq_len]
                         signal_len = len(signal)
                         if signal_len < self.max_seq_len:
-                           signal = np.pad(signal, (0, self.max_seq_len - signal_len), 'constant', constant_values=0)
+                            signal = np.pad(
+                                signal, (0, self.max_seq_len - signal_len),
+                                'constant',
+                                constant_values=0)
                         try:
                             _, size = sess.run(
                                 [
                                     self.signal_enqueue,
                                     self.signal_queue_size,
-                                    ],
+                                ],
                                 feed_dict={
                                     self.signal_fname_ph: fn,
                                     self.signal_start_ph: i,
@@ -195,6 +203,7 @@ class SignalFeeder:
                                 sess.run(self.signal_queue_close)
                                 return
                 pbar.update()
+
 
 class LogitProcessing:
     def __init__(self,
@@ -211,7 +220,9 @@ class LogitProcessing:
         logits = model(signal)
         ratio, rem = divmod(int(signal.shape[1]), int(logits.shape[1]))
         assert rem == 0, "Non clear cut for signal, {signal.shape[1]}/{logits.shape[1]}"
-        self.logger.info(f"Signal2Logit squeeze ratio {ratio}  = {signal.shape[1]}/{logits.shape[1]}")
+        self.logger.info(
+            f"Signal2Logit squeeze ratio {ratio}  = {signal.shape[1]}/{logits.shape[1]}"
+        )
         self.vs = [
             signal_fname,
             signal_start,
@@ -222,18 +233,24 @@ class LogitProcessing:
             capacity=capacity,
             dtypes=[x.dtype for x in self.vs],
             shapes=[x.shape[1:] for x in self.vs],
-        name="logits_queue")
+            name="logits_queue")
         self.logit_queue_size = self.logits_queue.size()
         self.logit_queue_close = self.logits_queue.close()
 
-        self.logit_enqueue = self.logits_queue.enqueue_many(self.vs, "enqueue_logits")
+        self.logit_enqueue = self.logits_queue.enqueue_many(
+            self.vs, "enqueue_logits")
         self.logit_dequeue = self.logits_queue.dequeue_up_to(batch_size)
         self.logit_qr = tf.train.QueueRunner(
             self.logits_queue, [self.logit_enqueue] * num_threads)
         tf.train.add_queue_runner(self.logit_qr)
 
+
 class Basecall:
-    def __init__(self, max_seq_len:int, jump:int, logit_processing: LogitProcessing, output_file: str = None):
+    def __init__(self,
+                 max_seq_len: int,
+                 jump: int,
+                 logit_processing: LogitProcessing,
+                 output_file: str = None):
         self.max_seq_len = max_seq_len
         self.jump = jump
         self.output_file = output_file
@@ -246,19 +263,26 @@ class Basecall:
         self.signal_length = self.logit_processing.logit_dequeue
         self._construct_graph()
 
-    def basecall_all(self, sess: tf.Session, coord: tf.train.Coordinator, fnames: List[str]):
-        with tqdm(total=len(fnames), desc="basecalling all") as pbar, open(self.output_file, 'w') as fasta_out:
+    def basecall_all(self, sess: tf.Session, coord: tf.train.Coordinator,
+                     fnames: List[str]):
+        with tqdm(
+                total=len(fnames), desc="basecalling all") as pbar, open(
+                    self.output_file, 'w') as fasta_out:
             cache = defaultdict(dict)
             for fn in fnames:
                 with h5py.File(fn, 'r') as input_data:
                     raw_attr = input_data['Raw/Reads/']
                     read_name = list(raw_attr.keys())[0]
-                    raw_signal_len = len(np.array(raw_attr[read_name + "/Signal"].value))
+                    raw_signal_len = len(
+                        np.array(raw_attr[read_name + "/Signal"].value))
 
-                    for i in trange(0, raw_signal_len, self.jump, desc="stripes inserted"):
+                    for i in trange(
+                            0, raw_signal_len, self.jump,
+                            desc="stripes inserted"):
                         while i not in cache[fn]:
                             if coord.should_stop():
-                                self.logger.warning(f"Coord should stop killing")
+                                self.logger.warning(
+                                    f"Coord should stop killing")
                                 return
                             try:
                                 bread_fname, bread_start, blogits, signal_len, size = sess.run(
@@ -272,20 +296,28 @@ class Basecall:
                                 for j in range(bread_fname.shape[0]):
                                     read_start = bread_start[j]
                                     read_fname = bread_fname[j].decode("UTF-8")
-                                    cache[read_fname][read_start] = blogits[j, :signal_len[j], :]
-                                    self.logger.debug(f"Inserted {read_fname}:{read_start}, wants {fn}:{i}")
+                                    cache[read_fname][read_start] = blogits[
+                                        j, :signal_len[j], :]
+                                    self.logger.debug(
+                                        f"Inserted {read_fname}:{read_start}, wants {fn}:{i}"
+                                    )
                                 pbar.set_postfix(logit_q_size=size)
                             except tf.errors.CancelledError:
                                 if coord.should_stop():
                                     return
                     assembly = cache.pop(fn)
-                    predicted, log_prob = self.construct_stripes(sess, assembly, raw_signal_len)
-                    fasta = "".join([dataset_pb2.BasePair.Name(x) for x in predicted[0].values])
+                    predicted, log_prob = self.construct_stripes(
+                        sess, assembly, raw_signal_len)
+                    fasta = "".join([
+                        dataset_pb2.BasePair.Name(x)
+                        for x in predicted[0].values
+                    ])
 
                     print(f">{fn}", file=fasta_out)
                     for i in range(0, len(fasta), 80):
-                        print(fasta[i:i+80], file=fasta_out)
-                    self.logger.info(f"Decoded: {fn} to file {self.output_file}")
+                        print(fasta[i:i + 80], file=fasta_out)
+                    self.logger.info(
+                        f"Decoded: {fn} to file {self.output_file}")
                 pbar.update()
 
     def _construct_graph(self):
@@ -299,16 +331,19 @@ class Basecall:
             top_paths=1,
             beam_width=50)
 
-    def construct_stripes(self, sess: tf.Session, assembly: Dict[int, np.ndarray], raw_signal_len):
+    def construct_stripes(self, sess: tf.Session,
+                          assembly: Dict[int, np.ndarray], raw_signal_len):
         logits = np.zeros(shape=(raw_signal_len, 5), dtype=np.float32)
         for i in reversed(range(0, raw_signal_len, self.jump)):
             l = assembly[i]
             logits[i:i + l.shape[0], :] = l
 
-        return sess.run(self.predict, feed_dict={
-            self.logits_ph: logits.reshape(-1, 1, 5),
-            self.seq_len: np.array([raw_signal_len])
-        })
+        return sess.run(
+            self.predict,
+            feed_dict={
+                self.logits_ph: logits.reshape(-1, 1, 5),
+                self.seq_len: np.array([raw_signal_len])
+            })
 
 
 def run(cfg: BasecallCfg):
@@ -323,7 +358,8 @@ def run(cfg: BasecallCfg):
             fnames.extend(glob(f"{x}/*.fast5", recursive=cfg.recursive))
 
     with tf.Session() as sess:
-        model: models.Model = models.load_model(cfg.model, custom_objects=custom_layers)
+        model: models.Model = models.load_model(
+            cfg.model, custom_objects=custom_layers)
         sum = []
         model.summary(print_fn=lambda x: sum.append(x))
         sum = "\n".join(sum)
@@ -343,7 +379,7 @@ def run(cfg: BasecallCfg):
         basecall = Basecall(
             max_seq_len=cfg.seq_length,
             jump=cfg.jump,
-            logit_processing= logit_processing,
+            logit_processing=logit_processing,
             output_file=cfg.output_fasta,
         )
 
