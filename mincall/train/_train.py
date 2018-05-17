@@ -75,6 +75,19 @@ def squggle(query: str, target: str) -> Tuple[str, str, Dict]:
     return qq, tt, alignment
 
 
+def tensor_default_summaries(name, tensor)->List[tf.Summary]:
+    mean = tf.reduce_mean(tensor)
+    return [
+        tf.summary.scalar(name + '/mean', mean),
+        tf.summary.scalar(name + '/stddev',
+                          tf.sqrt(tf.reduce_mean(tf.square(tensor - mean)))),
+        tf.summary.scalar(name + '/max', tf.reduce_max(tensor)),
+        tf.summary.scalar(name + '/min', tf.reduce_min(tensor)),
+        tf.summary.histogram(name + '/histogram', tensor),
+    ]
+
+
+
 class DataDir(NamedTuple):
     name: str
     dir: str
@@ -180,7 +193,7 @@ class Model():
                  model: models.Model,
                  data_dir: List[DataDir],
                  trace=False,
-                 create_train_ops=False):
+         ):
         self.dataset = []
         for x in data_dir:
             dps = list(glob(f"{x.dir}/*.datapoint"))
@@ -232,9 +245,6 @@ class Model():
         else:
             self.regularization_loss = tf.constant(0.0)
         self.total_loss = self.ctc_loss + self.regularization_loss
-        if create_train_ops:
-            self.train_step = tf.train.AdamOptimizer().minimize(
-                self.total_loss)
 
         self.summaries = [
             tf.summary.scalar(f'total_loss', self.total_loss, family="losses"),
@@ -295,7 +305,6 @@ def run(cfg: TrainConfig):
             model,
             cfg.train_data,
             trace=cfg.trace,
-            create_train_ops=True,
         )
 
     with tf.name_scope("test"):
@@ -309,6 +318,12 @@ def run(cfg: TrainConfig):
 
     global_step = tf.train.get_or_create_global_step()
     step = tf.assign_add(global_step, 1)
+
+    learning_rate = tf.train.exponential_decay(1e-4, global_step, 100000, 0.5)
+    optimizer = tf.train.AdamOptimizer(learning_rate)
+    grads_and_vars = optimizer.compute_gradients(train_model.total_loss)
+    train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
+
     saver = tf.train.Saver(max_to_keep=10)
     init_op = tf.global_variables_initializer()
 
@@ -318,17 +333,13 @@ def run(cfg: TrainConfig):
     # Extended validation summaries
     var_summaries = []
     for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
-        var: tf.Variable = var
-        mean = tf.reduce_mean(var)
         name = var.name.split(":")[0]
-        var_summaries.extend([
-            tf.summary.scalar(name + '/mean', mean),
-            tf.summary.scalar(name + '/stddev',
-                              tf.sqrt(tf.reduce_mean(tf.square(var - mean)))),
-            tf.summary.scalar(name + '/max', tf.reduce_max(var)),
-            tf.summary.scalar(name + '/min', tf.reduce_min(var)),
-            tf.summary.histogram(name + '/histogram', var),
-        ])
+        var_summaries.extend(tensor_default_summaries(name, var))
+
+    for grad, var in grads_and_vars:
+        if grad is not None:
+            name = var.name.split(":")[0]
+            var_summaries.extend(tensor_default_summaries(name + "/grad", grad))
 
     mean_logits, var_logits = tf.nn.moments(test_model.logits, axes=[])
     test_model.summary = tf.summary.merge(
@@ -379,7 +390,7 @@ def run(cfg: TrainConfig):
 
                     _, _, loss, summary = sess.run([
                         step,
-                        train_model.train_step,
+                        train_op,
                         train_model.ctc_loss,
                         train_model.summary,
                     ], **opts)
