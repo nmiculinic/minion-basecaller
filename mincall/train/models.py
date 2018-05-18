@@ -1,4 +1,4 @@
-from keras import models, layers, regularizers, backend as K
+from keras import models, layers, regularizers, constraints,  backend as K
 from keras.engine.topology import Layer
 from typing import *
 import logging
@@ -18,6 +18,7 @@ class ConstMultiplierLayer(Layer):
             initializer='ones',
             dtype='float32',
             trainable=True,
+            constraint=constraints.MinMaxNorm(min_value=0.0, max_value=1.0),
         )
         super(ConstMultiplierLayer, self).build(input_shape)
 
@@ -95,14 +96,15 @@ def big_01(hparams: str):
     net = layers.Conv1D(
         256, 3, padding="same", bias_regularizer=regularizers.l1(0.1))(net)
 
-    for _ in range(5):
-        x = ConstMultiplierLayer()(net)
+    for _ in range(3):
+        x = net
         net = layers.Conv1D(256, 5, padding='same')(net)
         net = layers.BatchNormalization()(net)
         net = layers.Activation('relu')(net)
         net = layers.Conv1D(256, 5, padding='same')(net)
         net = layers.BatchNormalization()(net)
         net = layers.Activation('relu')(net)
+        net = ConstMultiplierLayer()(net)
         net = layers.add([x, net])
 
     net = layers.Conv1D(5, 3, padding="same")(net)
