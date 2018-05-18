@@ -215,9 +215,8 @@ class Model():
             [1, 0, 2])  # [max_time, batch_size, class_num]
         self.logger.info(f"Logits shape: {self.logits.shape}")
 
-        ratio = 1
         seq_len = tf.cast(
-            tf.floor_div(signal_len + ratio - 1, ratio), tf.int32)  # Round up
+            tf.floor_div(signal_len + cfg.ratio - 1, cfg.ratio), tf.int32)  # Round up
 
         if trace:
             self.logits = tf.Print(
@@ -296,23 +295,23 @@ def run(cfg: TrainConfig):
     config.gpu_options.allow_growth = True
 
     os.makedirs(cfg.logdir, exist_ok=True)
-    model = all_models[cfg.model_name](cfg.model_hparams)
+    model, ratio = all_models[cfg.model_name](cfg.model_hparams)
 
     with tf.name_scope("train"):
         train_model = Model(
             InputFeederCfg(
-                batch_size=cfg.batch_size, seq_length=cfg.seq_length),
-            model,
-            cfg.train_data,
+                batch_size=cfg.batch_size, seq_length=cfg.seq_length, ratio=ratio),
+            model=model,
+            data_dir=cfg.train_data,
             trace=cfg.trace,
         )
 
     with tf.name_scope("test"):
         test_model = Model(
             InputFeederCfg(
-                batch_size=cfg.batch_size, seq_length=cfg.seq_length),
-            model,
-            cfg.test_data,
+                batch_size=cfg.batch_size, seq_length=cfg.seq_length, ratio=ratio),
+            model=model,
+            data_dir=cfg.test_data,
             trace=cfg.trace,
         )
 
@@ -371,6 +370,7 @@ def run(cfg: TrainConfig):
         try:
             tf.train.start_queue_runners(sess=sess, coord=coord)
             gs = sess.run(global_step)
+            val_loss = None
             with tqdm(
                     total=cfg.train_steps,
                     initial=gs) as pbar, train_model.input_wrapper(
@@ -432,8 +432,6 @@ def run(cfg: TrainConfig):
                             f"Logits[{logits.shape}]:\n describe:{pformat(stats.describe(logits, axis=None))}"
                         )
                         summary_writer.add_summary(test_summary, i)
-                        pbar.set_postfix(
-                            loss=loss, val_loss=val_loss, refresh=False)
 
                         yt = defaultdict(list)
                         yp = defaultdict(list)
@@ -448,7 +446,7 @@ def run(cfg: TrainConfig):
                                 decode(yp[x]),
                                 decode(yt[x]),
                             )
-                            logger.info(
+                            logger.debug(
                                 f"{x}: \n"
                                 f"Basecalled: {q}\n"
                                 f"Target    : {t}\n"
@@ -456,6 +454,8 @@ def run(cfg: TrainConfig):
                                 f"Edit dist : {alignment['editDistance'] * 'x'}\n"
                             )
 
+                    pbar.set_postfix(
+                        loss=loss, val_loss=val_loss, refresh=False)
                     #  Save hook
                     if i % cfg.save_every == 0:
                         saver.save(

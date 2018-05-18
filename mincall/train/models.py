@@ -18,7 +18,7 @@ class ConstMultiplierLayer(Layer):
             initializer='ones',
             dtype='float32',
             trainable=True,
-            constraint=constraints.MinMaxNorm(min_value=0.0, max_value=1.0),
+            constraint=constraints.MinMaxNorm(min_value=0.0, max_value=1.0, axis=[]),
         )
         super(ConstMultiplierLayer, self).build(input_shape)
 
@@ -86,17 +86,16 @@ def dummy_model(hparams: str = None):
         net = layers.Activation('relu')(net)
 
     net = layers.Conv1D(5, 3, padding="same")(net)
-    return models.Model(inputs=[input], outputs=[net])
+    return models.Model(inputs=[input], outputs=[net]), 1
 
 
 def big_01(hparams: str):
     input = layers.Input(shape=(None, 1))
-    net = layers.BatchNormalization(momentum=0.999)(input)
-
+    net = layers.BatchNormalization()(input)
     net = layers.Conv1D(
         256, 3, padding="same", bias_regularizer=regularizers.l1(0.1))(net)
 
-    for _ in range(3):
+    for _ in range(2):
         x = net
         net = layers.Conv1D(256, 5, padding='same')(net)
         net = layers.BatchNormalization()(net)
@@ -106,10 +105,11 @@ def big_01(hparams: str):
         net = layers.Activation('relu')(net)
         net = ConstMultiplierLayer()(net)
         net = layers.add([x, net])
+        net = layers.MaxPool1D(padding='same', pool_size=2)(net)
 
     net = layers.Conv1D(5, 3, padding="same")(net)
-    net = layers.BatchNormalization(momentum=0.999)(net)
-    return models.Model(inputs=[input], outputs=[net])
+    net = layers.BatchNormalization()(net)
+    return models.Model(inputs=[input], outputs=[net]), 2 * 2
 
 
 all_models: Dict[str, Callable[[str], models.Model]] = {
