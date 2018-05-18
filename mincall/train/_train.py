@@ -117,6 +117,7 @@ class TrainConfig(NamedTuple):
     run_trace_every: int
     model_name: str
     model_hparams: str
+    grad_clipping: float
 
     @classmethod
     def schema(cls, data):
@@ -148,6 +149,8 @@ class TrainConfig(NamedTuple):
                 str,
                 voluptuous.Optional('model_hparams', default=''):
                 str,
+                voluptuous.Optional('grad_clipping', default=5.0):
+                    voluptuous.Coerce(float),
             },
             required=True)(data))
 
@@ -183,6 +186,7 @@ def add_args(parser: argparse.ArgumentParser):
     parser.add_argument("--model", dest='train.model_name', type=str)
     parser.add_argument("--hparams", dest='train.model_hparams', type=str)
     parser.add_argument("--logdir", dest='logdir', type=str)
+    parser.add_argument("--grad_clipping", dest='train.grad_clipping', type=float, help="max grad clipping norm")
     parser.set_defaults(func=run_args)
     parser.set_defaults(name="mincall_train")
 
@@ -332,7 +336,10 @@ def run(cfg: TrainConfig):
     learning_rate = tf.train.exponential_decay(1e-4, global_step, 100000, 0.5)
     optimizer = tf.train.AdamOptimizer(learning_rate)
     grads_and_vars = optimizer.compute_gradients(train_model.total_loss)
-    train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
+
+    train_op = optimizer.apply_gradients([
+        (tf.clip_by_value(grad, -cfg.grad_clipping, cfg.grad_clipping), var) for grad, var in grads_and_vars
+    ], global_step=global_step)
 
     saver = tf.train.Saver(max_to_keep=10)
     init_op = tf.global_variables_initializer()
