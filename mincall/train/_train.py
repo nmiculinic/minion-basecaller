@@ -204,8 +204,9 @@ class Model():
 
         self.logger = logging.getLogger(__name__)
         self.learning_phase = K.learning_phase()
-        self.dq = DataQueue(
-            cfg, self.dataset, capacity=10 * cfg.batch_size, trace=trace)
+        with K.name_scope("data_in"):
+            self.dq = DataQueue(
+                cfg, self.dataset, capacity=10 * cfg.batch_size, trace=trace)
         input_signal: tf.Tensor = self.dq.batch_signal
         labels: tf.SparseTensor = self.dq.batch_labels
         signal_len: tf.Tensor = self.dq.batch_signal_len
