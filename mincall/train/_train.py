@@ -76,11 +76,11 @@ def squggle(query: str, target: str) -> Tuple[str, str, Dict]:
 
 
 def tensor_default_summaries(name, tensor)->List[tf.Summary]:
-    mean = tf.reduce_mean(tensor)
+    mean, var = tf.nn.moments(tensor, axes=list(range(len(tensor.shape))))
     return [
         tf.summary.scalar(name + '/mean', mean),
         tf.summary.scalar(name + '/stddev',
-                          tf.sqrt(tf.reduce_mean(tf.square(tensor - mean)))),
+                          tf.sqrt(var)),
         tf.summary.scalar(name + '/max', tf.reduce_max(tensor)),
         tf.summary.scalar(name + '/min', tf.reduce_min(tensor)),
         tf.summary.histogram(name + '/histogram', tensor),
@@ -328,7 +328,10 @@ def run(cfg: TrainConfig):
     init_op = tf.global_variables_initializer()
 
     # Basic only train summaries
-    train_model.summary = tf.summary.merge(train_model.summaries)
+    train_model.summary = tf.summary.merge(
+        train_model.summaries + [
+        tf.summary.scalar("learning_rate", learning_rate),
+    ])
 
     # Extended validation summaries
     var_summaries = []
@@ -341,17 +344,9 @@ def run(cfg: TrainConfig):
             name = var.name.split(":")[0]
             var_summaries.extend(tensor_default_summaries(name + "/grad", grad))
 
-    mean_logits, var_logits = tf.nn.moments(test_model.logits, axes=[])
-    test_model.summary = tf.summary.merge(
-        test_model.summaries + var_summaries + [
-            tf.summary.histogram("logits/histogram", test_model.logits),
-            tf.summary.histogram("logits/min", tf.reduce_min(
-                test_model.logits)),
-            tf.summary.histogram("logits/max", tf.reduce_max(
-                test_model.logits)),
-            tf.summary.histogram("logits/mean", mean_logits),
-            tf.summary.histogram("logits/stddev", tf.sqrt(var_logits)),
-        ])
+    var_summaries.extend(tensor_default_summaries("logits", test_model.logits))
+    test_model.summary = tf.summary.merge(test_model.summaries + var_summaries)
+
     beholder = Beholder(cfg.logdir)
 
     with tf.Session(config=config) as sess:

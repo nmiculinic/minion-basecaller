@@ -97,15 +97,16 @@ def big_01(hparams: str):
 
     for _ in range(5):
         x = ConstMultiplierLayer()(net)
-        net = layers.Conv1D(256, 5, activation='linear', padding='same')(net)
+        net = layers.Conv1D(256, 5, padding='same')(net)
         net = layers.BatchNormalization()(net)
         net = layers.Activation('relu')(net)
-        net = layers.Conv1D(256, 5, activation='linear', padding='same')(net)
+        net = layers.Conv1D(256, 5, padding='same')(net)
         net = layers.BatchNormalization()(net)
         net = layers.Activation('relu')(net)
         net = layers.add([x, net])
 
     net = layers.Conv1D(5, 3, padding="same")(net)
+    net = layers.BatchNormalization(momentum=0.999)(net)
     return models.Model(inputs=[input], outputs=[net])
 
 
