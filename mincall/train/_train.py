@@ -243,6 +243,16 @@ class Model():
             self.regularization_loss = tf.add_n(model.losses)
         else:
             self.regularization_loss = tf.constant(0.0)
+        # Nice little hack to get inf/NaNs out of the way. In the beginning of the training
+        # logits shall move to some unrealistically large numbers and it shall be hard
+        # finding path through the network
+        self.regularization_loss += tf.train.exponential_decay(
+            learning_rate=tf.nn.l2_loss(self.logits),
+            global_step=tf.train.get_or_create_global_step(),
+            decay_rate=0.5,
+            decay_steps=20,
+        )
+
         self.total_loss = self.ctc_loss + self.regularization_loss
 
         self.summaries = [
