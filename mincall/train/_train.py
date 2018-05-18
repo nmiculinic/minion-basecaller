@@ -149,7 +149,7 @@ class TrainConfig(NamedTuple):
                 str,
                 voluptuous.Optional('model_hparams', default=''):
                 str,
-                voluptuous.Optional('grad_clipping', default=5.0):
+                voluptuous.Optional('grad_clipping', default=1.0):
                     voluptuous.Coerce(float),
             },
             required=True)(data))
@@ -243,7 +243,14 @@ class Model():
             ctc_merge_repeated=True,
             time_major=True,
         )
-        self.ctc_loss = tf.reduce_mean(self.losses)
+
+        # self.ctc_loss = tf.reduce_mean(self.losses)
+        self.ctc_loss = tf.reduce_mean(tf.boolean_mask(self.losses, tf.logical_not(
+            tf.logical_or(
+                tf.is_nan(self.losses),
+                tf.is_inf(self.losses),
+            )
+        )))
         if model.losses:
             self.regularization_loss = tf.add_n(model.losses)
         else:
@@ -255,7 +262,7 @@ class Model():
             learning_rate=tf.nn.l2_loss(self.logits),
             global_step=tf.train.get_or_create_global_step(),
             decay_rate=0.5,
-            decay_steps=20,
+            decay_steps=200,
         )
 
         self.total_loss = self.ctc_loss + self.regularization_loss
@@ -338,7 +345,7 @@ def run(cfg: TrainConfig):
     grads_and_vars = optimizer.compute_gradients(train_model.total_loss)
 
     train_op = optimizer.apply_gradients([
-        (tf.clip_by_value(grad, -cfg.grad_clipping, cfg.grad_clipping), var) for grad, var in grads_and_vars
+        (tf.clip_by_norm(grad, cfg.grad_clipping), var) for grad, var in grads_and_vars
     ], global_step=global_step)
 
     saver = tf.train.Saver(max_to_keep=10)
