@@ -2,6 +2,7 @@ import tensorflow as tf
 from google.protobuf import json_format, text_format
 from tensorflow.contrib import graph_editor as ge
 
+
 def save():
     with tf.Graph().as_default() as g:
         x = tf.placeholder(tf.float32, name="input")
@@ -14,35 +15,34 @@ def save():
         gdef = g.as_graph_def()
         gdef = tf.graph_util.convert_variables_to_constants(
             sess,
-            gdef,
-            ["mul"],
+            gdef, ["mul"],
             variable_names_whitelist=None,
-            variable_names_blacklist=None
-        )
+            variable_names_blacklist=None)
         tf.train.write_graph(gdef, logdir="/tmp/k", name="test")
+
 
 def load():
     with tf.Graph().as_default() as g:
         with tf.Session(graph=g) as sess:
             x = tf.placeholder(tf.float32)
             xx = 2 * x + 7
-            with open("/tmp/k/test",'rb') as f:
+            with open("/tmp/k/test", 'rb') as f:
                 graph_def = tf.GraphDef()
                 text_format.Merge(f.read(), graph_def)
 
             y = tf.import_graph_def(
                 graph_def,
                 input_map={
-                    "input:0":xx,
+                    "input:0": xx,
                 },
                 return_elements=["mul:0"],
                 name=None,
                 op_dict=None,
-                producer_op_list=None
-            )
+                producer_op_list=None)
             print(sess.run(y, feed_dict={
                 x: 15,
             }))
+
 
 def main():
     # save()
@@ -50,9 +50,9 @@ def main():
     with tf.Graph().as_default():
         rr = tf.constant(15.0)
 
-
         with tf.Session() as sess:
-            meta_graph_def = tf.saved_model.loader.load(sess, [tf.saved_model.tag_constants.SERVING], "/tmp/lll")
+            meta_graph_def = tf.saved_model.loader.load(
+                sess, [tf.saved_model.tag_constants.SERVING], "/tmp/lll")
 
             signature = meta_graph_def.signature_def
             signature_key = tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY

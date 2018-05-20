@@ -18,6 +18,7 @@ import sys
 class InputFeederCfg(NamedTuple):
     batch_size: int
     seq_length: int
+    ratio: int
 
     @classmethod
     def schema(cls, data):

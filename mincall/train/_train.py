@@ -20,7 +20,7 @@ from tensorboard.plugins.beholder import Beholder
 from minion_data import dataset_pb2
 from keras import backend as K
 from keras import models
-from .models import dummy_model
+from .models import all_models
 import edlib
 
 import toolz
@@ -75,6 +75,19 @@ def squggle(query: str, target: str) -> Tuple[str, str, Dict]:
     return qq, tt, alignment
 
 
+def tensor_default_summaries(name, tensor)->List[tf.Summary]:
+    mean, var = tf.nn.moments(tensor, axes=list(range(len(tensor.shape))))
+    return [
+        tf.summary.scalar(name + '/mean', mean),
+        tf.summary.scalar(name + '/stddev',
+                          tf.sqrt(var)),
+        tf.summary.scalar(name + '/max', tf.reduce_max(tensor)),
+        tf.summary.scalar(name + '/min', tf.reduce_min(tensor)),
+        tf.summary.histogram(name + '/histogram', tensor),
+    ]
+
+
+
 class DataDir(NamedTuple):
     name: str
     dir: str
@@ -102,6 +115,9 @@ class TrainConfig(NamedTuple):
     debug: bool
     tensorboard_debug: str
     run_trace_every: int
+    model_name: str
+    model_hparams: str
+    grad_clipping: float
 
     @classmethod
     def schema(cls, data):
@@ -129,6 +145,12 @@ class TrainConfig(NamedTuple):
                 bool,
                 voluptuous.Optional('tensorboard_debug', default=None):
                 voluptuous.Any(str, None),
+                voluptuous.Optional('model_name', default='dummy'):
+                str,
+                voluptuous.Optional('model_hparams', default=''):
+                str,
+                voluptuous.Optional('grad_clipping', default=1.0):
+                    voluptuous.Coerce(float),
             },
             required=True)(data))
 
@@ -161,7 +183,10 @@ def add_args(parser: argparse.ArgumentParser):
         help=
         "if debug mode is activate and this is set, use tensorboard debugger")
 
+    parser.add_argument("--model", dest='train.model_name', type=str)
+    parser.add_argument("--hparams", dest='train.model_hparams', type=str)
     parser.add_argument("--logdir", dest='logdir', type=str)
+    parser.add_argument("--grad_clipping", dest='train.grad_clipping', type=float, help="max grad clipping norm")
     parser.set_defaults(func=run_args)
     parser.set_defaults(name="mincall_train")
 
@@ -172,7 +197,7 @@ class Model():
                  model: models.Model,
                  data_dir: List[DataDir],
                  trace=False,
-                 create_train_ops=False):
+         ):
         self.dataset = []
         for x in data_dir:
             dps = list(glob(f"{x.dir}/*.datapoint"))
@@ -183,8 +208,9 @@ class Model():
 
         self.logger = logging.getLogger(__name__)
         self.learning_phase = K.learning_phase()
-        self.dq = DataQueue(
-            cfg, self.dataset, capacity=10 * cfg.batch_size, trace=trace)
+        with K.name_scope("data_in"):
+            self.dq = DataQueue(
+                cfg, self.dataset, capacity=10 * cfg.batch_size, trace=trace)
         input_signal: tf.Tensor = self.dq.batch_signal
         labels: tf.SparseTensor = self.dq.batch_labels
         signal_len: tf.Tensor = self.dq.batch_signal_len
@@ -194,9 +220,8 @@ class Model():
             [1, 0, 2])  # [max_time, batch_size, class_num]
         self.logger.info(f"Logits shape: {self.logits.shape}")
 
-        ratio = 1
         seq_len = tf.cast(
-            tf.floor_div(signal_len + ratio - 1, ratio), tf.int32)  # Round up
+            tf.floor_div(signal_len + cfg.ratio - 1, cfg.ratio), tf.int32)  # Round up
 
         if trace:
             self.logits = tf.Print(
@@ -218,12 +243,29 @@ class Model():
             ctc_merge_repeated=True,
             time_major=True,
         )
-        self.ctc_loss = tf.reduce_mean(self.losses)
-        self.regularization_loss = tf.add_n(model.losses)
+
+        # self.ctc_loss = tf.reduce_mean(self.losses)
+        self.ctc_loss = tf.reduce_mean(tf.boolean_mask(self.losses, tf.logical_not(
+            tf.logical_or(
+                tf.is_nan(self.losses),
+                tf.is_inf(self.losses),
+            )
+        )))
+        if model.losses:
+            self.regularization_loss = tf.add_n(model.losses)
+        else:
+            self.regularization_loss = tf.constant(0.0)
+        # Nice little hack to get inf/NaNs out of the way. In the beginning of the training
+        # logits shall move to some unrealistically large numbers and it shall be hard
+        # finding path through the network
+        self.regularization_loss += tf.train.exponential_decay(
+            learning_rate=tf.nn.l2_loss(self.logits),
+            global_step=tf.train.get_or_create_global_step(),
+            decay_rate=0.5,
+            decay_steps=200,
+        )
+
         self.total_loss = self.ctc_loss + self.regularization_loss
-        if create_train_ops:
-            self.train_step = tf.train.AdamOptimizer().minimize(
-                self.total_loss)
 
         self.summaries = [
             tf.summary.scalar(f'total_loss', self.total_loss, family="losses"),
@@ -275,61 +317,60 @@ def run(cfg: TrainConfig):
     config.gpu_options.allow_growth = True
 
     os.makedirs(cfg.logdir, exist_ok=True)
-    model, _ = dummy_model()
+    model, ratio = all_models[cfg.model_name](cfg.model_hparams)
 
     with tf.name_scope("train"):
         train_model = Model(
             InputFeederCfg(
-                batch_size=cfg.batch_size, seq_length=cfg.seq_length),
-            model,
-            cfg.train_data,
+                batch_size=cfg.batch_size, seq_length=cfg.seq_length, ratio=ratio),
+            model=model,
+            data_dir=cfg.train_data,
             trace=cfg.trace,
-            create_train_ops=True,
         )
 
     with tf.name_scope("test"):
         test_model = Model(
             InputFeederCfg(
-                batch_size=cfg.batch_size, seq_length=cfg.seq_length),
-            model,
-            cfg.test_data,
+                batch_size=cfg.batch_size, seq_length=cfg.seq_length, ratio=ratio),
+            model=model,
+            data_dir=cfg.test_data,
             trace=cfg.trace,
         )
 
     global_step = tf.train.get_or_create_global_step()
     step = tf.assign_add(global_step, 1)
+
+    learning_rate = tf.train.exponential_decay(1e-4, global_step, 100000, 0.5)
+    optimizer = tf.train.AdamOptimizer(learning_rate)
+    grads_and_vars = optimizer.compute_gradients(train_model.total_loss)
+
+    train_op = optimizer.apply_gradients([
+        (tf.clip_by_norm(grad, cfg.grad_clipping), var) for grad, var in grads_and_vars
+    ], global_step=global_step)
+
     saver = tf.train.Saver(max_to_keep=10)
     init_op = tf.global_variables_initializer()
 
     # Basic only train summaries
-    train_model.summary = tf.summary.merge(train_model.summaries)
+    train_model.summary = tf.summary.merge(
+        train_model.summaries + [
+        tf.summary.scalar("learning_rate", learning_rate),
+    ])
 
     # Extended validation summaries
     var_summaries = []
     for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
-        var: tf.Variable = var
-        mean = tf.reduce_mean(var)
         name = var.name.split(":")[0]
-        var_summaries.extend([
-            tf.summary.scalar(name + '/mean', mean),
-            tf.summary.scalar(name + '/stddev',
-                              tf.sqrt(tf.reduce_mean(tf.square(var - mean)))),
-            tf.summary.scalar(name + '/max', tf.reduce_max(var)),
-            tf.summary.scalar(name + '/min', tf.reduce_min(var)),
-            tf.summary.histogram(name + '/histogram', var),
-        ])
+        var_summaries.extend(tensor_default_summaries(name, var))
 
-    mean_logits, var_logits = tf.nn.moments(test_model.logits, axes=[])
-    test_model.summary = tf.summary.merge(
-        test_model.summaries + var_summaries + [
-            tf.summary.histogram("logits/histogram", test_model.logits),
-            tf.summary.histogram("logits/min", tf.reduce_min(
-                test_model.logits)),
-            tf.summary.histogram("logits/max", tf.reduce_max(
-                test_model.logits)),
-            tf.summary.histogram("logits/mean", mean_logits),
-            tf.summary.histogram("logits/stddev", tf.sqrt(var_logits)),
-        ])
+    for grad, var in grads_and_vars:
+        if grad is not None:
+            name = var.name.split(":")[0]
+            var_summaries.extend(tensor_default_summaries(name + "/grad", grad))
+
+    var_summaries.extend(tensor_default_summaries("logits", test_model.logits))
+    test_model.summary = tf.summary.merge(test_model.summaries + var_summaries)
+
     beholder = Beholder(cfg.logdir)
 
     with tf.Session(config=config) as sess:
@@ -354,6 +395,7 @@ def run(cfg: TrainConfig):
         try:
             tf.train.start_queue_runners(sess=sess, coord=coord)
             gs = sess.run(global_step)
+            val_loss = None
             with tqdm(
                     total=cfg.train_steps,
                     initial=gs) as pbar, train_model.input_wrapper(
@@ -368,7 +410,7 @@ def run(cfg: TrainConfig):
 
                     _, _, loss, summary = sess.run([
                         step,
-                        train_model.train_step,
+                        train_op,
                         train_model.ctc_loss,
                         train_model.summary,
                     ], **opts)
@@ -415,8 +457,6 @@ def run(cfg: TrainConfig):
                             f"Logits[{logits.shape}]:\n describe:{pformat(stats.describe(logits, axis=None))}"
                         )
                         summary_writer.add_summary(test_summary, i)
-                        pbar.set_postfix(
-                            loss=loss, val_loss=val_loss, refresh=False)
 
                         yt = defaultdict(list)
                         yp = defaultdict(list)
@@ -431,7 +471,7 @@ def run(cfg: TrainConfig):
                                 decode(yp[x]),
                                 decode(yt[x]),
                             )
-                            logger.info(
+                            logger.debug(
                                 f"{x}: \n"
                                 f"Basecalled: {q}\n"
                                 f"Target    : {t}\n"
@@ -439,6 +479,8 @@ def run(cfg: TrainConfig):
                                 f"Edit dist : {alignment['editDistance'] * 'x'}\n"
                             )
 
+                    pbar.set_postfix(
+                        loss=loss, val_loss=val_loss, refresh=False)
                     #  Save hook
                     if i % cfg.save_every == 0:
                         saver.save(
