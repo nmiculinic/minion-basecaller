@@ -35,6 +35,7 @@ class TestInputFeeders(unittest.TestCase):
         cfg: _input_feeders.InputFeederCfg = _input_feeders.InputFeederCfg(
             batch_size=None,
             seq_length=50,
+            ratio=1,
         )
         _input_feeders.produce_datapoints(
             cfg,
@@ -68,6 +69,7 @@ class TestInputFeeders(unittest.TestCase):
                 cfg=_input_feeders.InputFeederCfg(
                     batch_size=2,
                     seq_length=None,
+                    ratio=1,
                 ),
                 fnames=None,
                 min_after_deque=0,
@@ -109,6 +111,7 @@ class TestInputFeeders(unittest.TestCase):
                 cfg=_input_feeders.InputFeederCfg(
                     batch_size=2,
                     seq_length=50,
+                    ratio=1,
                 ),
                 fnames=[ex_fname],
                 min_after_deque=40,
