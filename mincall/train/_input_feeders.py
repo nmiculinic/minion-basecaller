@@ -19,6 +19,7 @@ class InputFeederCfg(NamedTuple):
     batch_size: int
     seq_length: int
     ratio: int
+    min_signal_size: int = 10000
 
     @classmethod
     def schema(cls, data):
@@ -26,6 +27,7 @@ class InputFeederCfg(NamedTuple):
             **voluptuous.Schema({
                 voluptuous.Optional('batch_size', 10): int,
                 'seq_length': int,
+                voluptuous.Optional("min_signal_size"): int,
             })(data))
 
 
@@ -265,8 +267,11 @@ def produce_datapoints(cfg: InputFeederCfg,
             with gzip.open(x, "r") as f:
                 dp = dataset_pb2.DataPoint()
                 dp.ParseFromString(f.read())
-
                 signal = np.array(dp.signal, dtype=np.float32)
+                if len(signal) < cfg.min_signal_size:
+                    q.put(ValueError(f"Signal too short {len(dp.signal)} < {cfg.min_signal_size}"))
+                    continue
+
                 buff = np.zeros(cfg.seq_length, dtype=np.int32)
 
                 label_idx = 0
