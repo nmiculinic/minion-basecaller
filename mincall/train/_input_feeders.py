@@ -163,8 +163,8 @@ class DataQueue():
                       label: np.ndarray):
         if self.cfg.surrogate_base_pair:
             for i in range(1, len(label)):
-                if label[i] == label[i + 1]:
-                    label[i + 1] += self.cfg.num_bases
+                if label[i - 1] == label[i]:
+                    label[i] += self.cfg.num_bases
 
         sess.run(
             self.enq,

@@ -85,7 +85,7 @@ def dummy_model(n_classes: int, hparams: str = None):
             bias_regularizer=regularizers.l1(0.1))(net)
         net = layers.Activation('relu')(net)
 
-    net = layers.Conv1D(5, n_classes, padding="same")(net)
+    net = layers.Conv1D(n_classes, 3, padding="same")(net)
     return models.Model(inputs=[input], outputs=[net]), 1
 
 
@@ -107,7 +107,7 @@ def big_01(n_classes: int, hparams: str):
         net = layers.add([x, net])
         net = layers.MaxPool1D(padding='same', pool_size=2)(net)
 
-    net = layers.Conv1D(5, n_classes, padding="same")(net)
+    net = layers.Conv1D(n_classes, 3, padding="same")(net)
     net = layers.BatchNormalization()(net)
     return models.Model(inputs=[input], outputs=[net]), 2 * 2
 

@@ -29,8 +29,8 @@ from tqdm import tqdm
 logger = logging.getLogger(__name__)
 
 
-def decode(x):
-    return "".join(map(dataset_pb2.BasePair.Name, x))
+def decode(seq):
+    return "".join([dataset_pb2.BasePair.Name(x % 4) for x in seq])
 
 
 def squggle(query: str, target: str) -> Tuple[str, str, Dict]:
@@ -329,7 +329,6 @@ def run(cfg: TrainConfig):
     num_bases = 4
     if cfg.surrogate_base_pair:
         num_bases += 4
-
     model, ratio = all_models[cfg.model_name](n_classes=num_bases + 1, hparams=cfg.model_hparams)
 
     with tf.name_scope("train"):
