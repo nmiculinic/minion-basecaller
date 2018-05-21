@@ -120,6 +120,9 @@ class TrainConfig(NamedTuple):
     model_hparams: str
     grad_clipping: float
     surrogate_base_pair: bool
+    init_learning_rate: float
+    lr_decay_steps: int
+    lr_decay_rate: float
 
     @classmethod
     def schema(cls, data):
@@ -154,6 +157,9 @@ class TrainConfig(NamedTuple):
                 voluptuous.Optional('grad_clipping', default=1.0):
                     voluptuous.Coerce(float),
                 voluptuous.Optional('surrogate_base_pair', default=False): bool,
+                "init_learning_rate": voluptuous.Coerce(float),
+                "lr_decay_steps": voluptuous.Coerce(int),
+                "lr_decay_rate": voluptuous.Coerce(float),
             },
             required=True)(data))
 
@@ -359,7 +365,12 @@ def run(cfg: TrainConfig):
     global_step = tf.train.get_or_create_global_step()
     step = tf.assign_add(global_step, 1)
 
-    learning_rate = tf.train.exponential_decay(1e-4, global_step, 100000, 0.5)
+    learning_rate = tf.train.exponential_decay(
+        learning_rate=cfg.init_learning_rate,
+        global_step=global_step,
+        decay_steps=10000,
+        decay_rate=0.5,
+    )
     optimizer = tf.train.AdamOptimizer(learning_rate)
     grads_and_vars = optimizer.compute_gradients(train_model.total_loss)
 
