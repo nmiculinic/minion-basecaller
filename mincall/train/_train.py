@@ -28,9 +28,10 @@ from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
+TOTAL_BASES = 4  # Total number of bases (A, C, T, G)
 
 def decode(seq):
-    return "".join([dataset_pb2.BasePair.Name(x % 4) for x in seq])
+    return "".join([dataset_pb2.BasePair.Name(x % TOTAL_BASES) for x in seq])
 
 
 def squggle(query: str, target: str) -> Tuple[str, str, Dict]:
@@ -326,9 +327,9 @@ def run(cfg: TrainConfig):
     config.gpu_options.allow_growth = True
 
     os.makedirs(cfg.logdir, exist_ok=True)
-    num_bases = 4
+    num_bases = TOTAL_BASES
     if cfg.surrogate_base_pair:
-        num_bases += 4
+        num_bases += TOTAL_BASES
     model, ratio = all_models[cfg.model_name](n_classes=num_bases + 1, hparams=cfg.model_hparams)
 
     with tf.name_scope("train"):
