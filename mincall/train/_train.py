@@ -118,6 +118,7 @@ class TrainConfig(NamedTuple):
     model_name: str
     model_hparams: str
     grad_clipping: float
+    use_warp_ctc: bool = False
 
     @classmethod
     def schema(cls, data):
@@ -151,6 +152,7 @@ class TrainConfig(NamedTuple):
                 str,
                 voluptuous.Optional('grad_clipping', default=1.0):
                     voluptuous.Coerce(float),
+                voluptuous.Optional('use_warp_ctc'): bool,
             },
             required=True)(data))
 
@@ -182,6 +184,12 @@ def add_args(parser: argparse.ArgumentParser):
         dest='train.tensorboard_debug',
         help=
         "if debug mode is activate and this is set, use tensorboard debugger")
+    parser.add_argument(
+        "--use-warp-ctc",
+        dest='train.use_warp_ctc',
+        default=None,
+        action="store_true",
+        help="Use warp ctc loss (GPU only)")
 
     parser.add_argument("--model", dest='train.model_name', type=str)
     parser.add_argument("--hparams", dest='train.model_hparams', type=str)
@@ -240,7 +248,7 @@ class Model():
             inputs=self.logits,
             sequence_length=seq_len,
             preprocess_collapse_repeated=False,
-            ctc_merge_repeated=True,
+            ctc_merge_repeated=True,  # Should I merge repeated at this stage???
             time_major=True,
         )
 
@@ -313,6 +321,9 @@ def run_args(args):
 
 
 def run(cfg: TrainConfig):
+    if cfg.use_warp_ctc:
+        import warpctc_tensorflow
+        # https://github.com/baidu-research/warp-ctc/tree/master/tensorflow_binding
     config = tf.ConfigProto(allow_soft_placement=True)
     config.gpu_options.allow_growth = True
 
