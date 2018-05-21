@@ -20,7 +20,7 @@ class InputFeederCfg(NamedTuple):
     seq_length: int
     ratio: int
     surrogate_base_pair: bool
-    num_bases: int = 4
+    num_bases: int
     min_signal_size: int = 10000
 
     @classmethod

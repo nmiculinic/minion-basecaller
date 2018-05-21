@@ -332,10 +332,17 @@ def run(cfg: TrainConfig):
         num_bases += TOTAL_BASES
     model, ratio = all_models[cfg.model_name](n_classes=num_bases + 1, hparams=cfg.model_hparams)
 
+    input_feeder_cfg = InputFeederCfg(
+        batch_size=cfg.batch_size,
+        seq_length=cfg.seq_length,
+        ratio=ratio,
+        surrogate_base_pair=cfg.surrogate_base_pair,
+        num_bases=TOTAL_BASES,
+    )
+
     with tf.name_scope("train"):
         train_model = Model(
-            InputFeederCfg(
-                batch_size=cfg.batch_size, seq_length=cfg.seq_length, ratio=ratio, surrogate_base_pair=cfg.surrogate_base_pair),
+            input_feeder_cfg,
             model=model,
             data_dir=cfg.train_data,
             trace=cfg.trace,
@@ -343,8 +350,7 @@ def run(cfg: TrainConfig):
 
     with tf.name_scope("test"):
         test_model = Model(
-            InputFeederCfg(
-                batch_size=cfg.batch_size, seq_length=cfg.seq_length, ratio=ratio, surrogate_base_pair=cfg.surrogate_base_pair),
+            input_feeder_cfg,
             model=model,
             data_dir=cfg.test_data,
             trace=cfg.trace,
