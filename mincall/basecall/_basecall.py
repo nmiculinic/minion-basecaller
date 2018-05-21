@@ -261,6 +261,15 @@ class Basecall:
         self.read_start,\
         self.logits,\
         self.signal_length = self.logit_processing.logit_dequeue
+
+        self.n_classes = self.logits.shape[-1]
+        if self.n_classes == 5:
+            self.surrogate_base_pair = False
+        elif self.n_classes == 9:
+            self.surrogate_base_pair = True
+        else:
+            raise ValueError(f"Not sure what to do with {self.n_classes}")
+
         self._construct_graph()
 
     def basecall_all(self, sess: tf.Session, coord: tf.train.Coordinator,
@@ -321,19 +330,19 @@ class Basecall:
                 pbar.update()
 
     def _construct_graph(self):
-        self.logits_ph = tf.placeholder(tf.float32, shape=(None, 1, 5))
+        self.logits_ph = tf.placeholder(tf.float32, shape=(None, 1, self.n_classes))
         self.seq_len = tf.placeholder(tf.int32, shape=(1, ))
 
         self.predict = tf.nn.ctc_beam_search_decoder(
             inputs=self.logits_ph,
             sequence_length=self.seq_len,
-            merge_repeated=False,
+            merge_repeated=self.surrogate_base_pair,
             top_paths=1,
             beam_width=50)
 
     def construct_stripes(self, sess: tf.Session,
                           assembly: Dict[int, np.ndarray], raw_signal_len):
-        logits = np.zeros(shape=(raw_signal_len, 5), dtype=np.float32)
+        logits = np.zeros(shape=(raw_signal_len, self.n_classes), dtype=np.float32)
         for i in reversed(range(0, raw_signal_len, self.jump)):
             l = assembly[i]
             logits[i:i + l.shape[0], :] = l
@@ -341,7 +350,7 @@ class Basecall:
         return sess.run(
             self.predict,
             feed_dict={
-                self.logits_ph: logits.reshape(-1, 1, 5),
+                self.logits_ph: logits.reshape(-1, 1, self.n_classes),
                 self.seq_len: np.array([raw_signal_len])
             })
 

@@ -118,6 +118,7 @@ class TrainConfig(NamedTuple):
     model_name: str
     model_hparams: str
     grad_clipping: float
+    surrogate_base_pair: bool
 
     @classmethod
     def schema(cls, data):
@@ -151,6 +152,7 @@ class TrainConfig(NamedTuple):
                 str,
                 voluptuous.Optional('grad_clipping', default=1.0):
                     voluptuous.Coerce(float),
+                voluptuous.Optional('surrogate_base_pair', default=False): bool,
             },
             required=True)(data))
 
@@ -187,6 +189,13 @@ def add_args(parser: argparse.ArgumentParser):
     parser.add_argument("--hparams", dest='train.model_hparams', type=str)
     parser.add_argument("--logdir", dest='logdir', type=str)
     parser.add_argument("--grad_clipping", dest='train.grad_clipping', type=float, help="max grad clipping norm")
+    parser.add_argument(
+        "--surrogate-base-pair",
+        dest='train.surrogate_base_pair',
+        default=None,
+        action="store_true",
+        help="Activate surrogate base pairs, that is repeated base pair shall be replaces with surrogate during training phase."
+             "for example, let A=0. We have AAAA, which ordinarily will be 0, 0, 0, 0. With surrogate base pairs this will be 0, 4, 0, 4")
     parser.set_defaults(func=run_args)
     parser.set_defaults(name="mincall_train")
 
@@ -317,12 +326,16 @@ def run(cfg: TrainConfig):
     config.gpu_options.allow_growth = True
 
     os.makedirs(cfg.logdir, exist_ok=True)
-    model, ratio = all_models[cfg.model_name](cfg.model_hparams)
+    num_bases = 4
+    if cfg.surrogate_base_pair:
+        num_bases += 4
+
+    model, ratio = all_models[cfg.model_name](n_classes=num_bases + 1, hparams=cfg.model_hparams)
 
     with tf.name_scope("train"):
         train_model = Model(
             InputFeederCfg(
-                batch_size=cfg.batch_size, seq_length=cfg.seq_length, ratio=ratio),
+                batch_size=cfg.batch_size, seq_length=cfg.seq_length, ratio=ratio, surrogate_base_pair=cfg.surrogate_base_pair),
             model=model,
             data_dir=cfg.train_data,
             trace=cfg.trace,
@@ -331,7 +344,7 @@ def run(cfg: TrainConfig):
     with tf.name_scope("test"):
         test_model = Model(
             InputFeederCfg(
-                batch_size=cfg.batch_size, seq_length=cfg.seq_length, ratio=ratio),
+                batch_size=cfg.batch_size, seq_length=cfg.seq_length, ratio=ratio, surrogate_base_pair=cfg.surrogate_base_pair),
             model=model,
             data_dir=cfg.test_data,
             trace=cfg.trace,
