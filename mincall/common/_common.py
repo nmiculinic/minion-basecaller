@@ -8,6 +8,8 @@ __all__ = [
     "tensor_default_summaries",
     "squggle",
 ]
+
+
 def decode(x):
     return "".join(map(dataset_pb2.BasePair.Name, x))
 

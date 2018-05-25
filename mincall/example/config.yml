@@ -17,3 +17,4 @@ embed:
   stride: 10
   receptive_field: 5
   embedding_size: 10
+  train_steps: 1000

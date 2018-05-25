@@ -14,6 +14,10 @@ import voluptuous
 from keras import models, layers, regularizers, constraints, backend as K
 from voluptuous.humanize import humanize_error
 from pprint import pformat
+from tensorflow.python import debug as tf_debug
+import os
+from tensorflow.python.client import timeline
+from tensorboard.plugins.beholder import Beholder
 from mincall.common import *
 
 logger = logging.getLogger(__name__)
@@ -28,21 +32,37 @@ class EmbeddingCfg(NamedTuple):
     receptive_field: int  # Receptive field -- e.g. how many raw signal samples consists single "word"
     stride: int  # How many raw signal steps to take between adjacent "words"
     embedding_size: int
+    train_steps: int
+    run_trace_every: int = 10000
     grad_clipping: float = 5.0
     mode: str = "SkipGram"
+    logdir: str = None
+    init_learning_rate: float = 1e-3
+    lr_decay_steps: int = 10000
+    lr_decay_rate: float = 0.5
+    debug: bool = False
+    tensorboard_debug: str = None
+    save_every: int = 5000
 
     @classmethod
     def schema(cls, data):
-        return cls(**voluptuous.Schema(
+        known = {
+            voluptuous.Optional('mode'): voluptuous.In({"SkipGram"}),
+        }
+        for k, v in cls.__annotations__.items():
+            if k not in known:
+                if k in cls._field_defaults:
+                    known[voluptuous.Optional(k)] = voluptuous.Coerce(v)
+                else:
+                    known[k] = voluptuous.Coerce(v)
+        schema = voluptuous.Schema(
             {
-                'files': str,
-                'window': int,
-                'stride': int,
-                'receptive_field': int,
-                'embedding_size': int,
-                voluptuous.Optional('mode'): voluptuous.In({"SkipGram"})
+                **known,
             },
-            required=True)(data))
+            required=True,
+        )
+        print(schema)
+        return cls(**schema(data))
 
 
 def add_args(parser: argparse.ArgumentParser):
@@ -88,6 +108,11 @@ def run_args(args):
         sys.exit(1)
 
 
+################
+# Input pipeline
+################
+
+
 def get_chunks(fname: str, cfg: EmbeddingCfg) -> List[np.ndarray]:
     with h5py.File(cfg.files, 'r') as f:
         raw_dat = list(f['/Raw/Reads/'].values())[0]
@@ -126,23 +151,28 @@ def real_chunks_gen(cfg: EmbeddingCfg):
             chunks = get_chunks(x, cfg)
             for i in range(len(chunks)):
                 for j in range(
-                        max(0, i - cfg.window), min(i + cfg.window + 1, len(chunks))):
+                        max(0, i - cfg.window),
+                        min(i + cfg.window + 1, len(chunks))):
                     if i != j:
                         yield chunks[j], chunks[i]
 
     return tf.data.Dataset.from_generator(
         f(),
         output_types=(tf.float32, tf.float32),
-        output_shapes=([cfg.receptive_field], [cfg.receptive_field])
-    ).repeat()
+        output_shapes=([cfg.receptive_field], [cfg.receptive_field])).repeat()
 
 
 def run(cfg: EmbeddingCfg):
-
+    model = models.Model()
     global_step = tf.train.get_or_create_global_step()
     step = tf.assign_add(global_step, 1)
 
-    learning_rate = tf.train.exponential_decay(1e-4, global_step, 100000, 0.5)
+    learning_rate = tf.train.exponential_decay(
+        learning_rate=cfg.init_learning_rate,
+        global_step=global_step,
+        decay_steps=10000,
+        decay_rate=0.5,
+    )
     optimizer = tf.train.AdamOptimizer(learning_rate)
     grads_and_vars = optimizer.compute_gradients(loss)
 
@@ -155,33 +185,87 @@ def run(cfg: EmbeddingCfg):
     init_op = tf.global_variables_initializer()
 
     # Basic only train summaries
-    summaries = tf.summary.merge([
+    summaries = [
         tf.summary.scalar("learning_rate", learning_rate),
-    ])
+    ]
 
     # Extended validation summaries
-    var_summaries = []
     for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
         name = var.name.split(":")[0]
-        var_summaries.extend(tensor_default_summaries(name, var))
+        summaries.extend(tensor_default_summaries(name, var))
 
     for grad, var in grads_and_vars:
         if grad is not None:
             name = var.name.split(":")[0]
-            var_summaries.extend(
-                tensor_default_summaries(name + "/grad", grad))
+            summaries.extend(tensor_default_summaries(name + "/grad", grad))
 
-    dx = tf.data.Dataset.from_generator(
-        generator(cfg),
-        output_types=(tf.float32, tf.float32),
-        output_shapes=([cfg.receptive_field], [cfg.receptive_field])
-    ).repeat().shuffle(50).batch(10)
-    dx = tf.data.Dataset.zip((dx, dx))
-    # create a one-shot iterator
-    iterator = dx.make_one_shot_iterator()
-    # extract an element
-    a, b = iterator.get_next()
-    with tf.Session() as sess:
-        for i in range(11):
-            val = sess.run([a, b])
-            print(val)
+    config = tf.ConfigProto(allow_soft_placement=True)
+    config.gpu_options.allow_growth = True
+    beholder = Beholder(cfg.logdir)
+    with tf.Session(config=config) as sess:
+        if cfg.debug:
+            if cfg.tensorboard_debug is None:
+                sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+            else:
+                sess = tf_debug.TensorBoardDebugWrapperSession(
+                    sess, cfg.tensorboard_debug)
+        summary_writer = tf.summary.FileWriter(
+            os.path.join(cfg.logdir), sess.graph)
+        K.set_session(sess)
+        last_check = tf.train.latest_checkpoint(cfg.logdir)
+        if last_check is None:
+            logger.info(f"Running new checkpoint")
+            sess.run(init_op)
+        else:
+            logger.info(f"Restoring checkpoint {last_check}")
+            saver.restore(sess=sess, save_path=last_check)
+
+        gs = sess.run(global_step)
+        for i in trange(gs, cfg.train_steps + 1):
+            #  Train hook
+            opts = {}
+            if cfg.run_trace_every > 0 and i % cfg.run_trace_every == 0:
+                opts['options'] = tf.RunOptions(
+                    trace_level=tf.RunOptions.FULL_TRACE)
+                opts['run_metadata'] = tf.RunMetadata()
+
+            _, _, loss, summary = sess.run([
+                step,
+                train_op,
+            ], **opts)
+            summary_writer.add_summary(summary, i)
+
+            if cfg.run_trace_every > 0 and i % cfg.run_trace_every == 0:
+                opts['options'] = tf.RunOptions(
+                    trace_level=tf.RunOptions.FULL_TRACE)
+                fetched_timeline = timeline.Timeline(
+                    opts['run_metadata'].step_stats)
+                chrome_trace = fetched_timeline.generate_chrome_trace_format(
+                    show_memory=True)
+                with open(
+                        os.path.join(cfg.logdir, f'timeline_{i:05}.json'),
+                        'w') as f:
+                    f.write(chrome_trace)
+                summary_writer.add_run_metadata(
+                    opts['run_metadata'], f"step_{i:05}", global_step=i)
+                logger.info(
+                    f"Saved trace metadata both to timeline_{i:05}.json and step_{i:05} in tensorboard"
+                )
+
+            beholder.update(session=sess)
+
+            #  Save hook
+            if i % cfg.save_every == 0:
+                saver.save(
+                    sess=sess,
+                    save_path=os.path.join(cfg.logdir, 'model.ckpt'),
+                    global_step=global_step)
+                logger.info(f"Saved new model checkpoint")
+            p = os.path.join(cfg.logdir, f"full-model.save")
+            model.save(p, overwrite=True, include_optimizer=False)
+            logger.info(f"Finished training saved model to {p}")
+        logger.info(f"Input queues exited ok")
+
+    # dx = tf.data.Dataset.zip((dx, dx))
+    # iterator = dx.make_one_shot_iterator()
+    # a, b = iterator.get_next()

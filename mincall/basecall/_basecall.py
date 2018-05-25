@@ -65,7 +65,8 @@ class BasecallCfg(NamedTuple):
                 int,
                 voluptuous.Optional('logdir', default=None):
                 voluptuous.Any(str, None),
-                voluptuous.Optional('gzip', default=False): bool,
+                voluptuous.Optional('gzip', default=False):
+                bool,
             },
             required=True)(data))
 
@@ -93,7 +94,13 @@ def add_args(parser: argparse.ArgumentParser):
         help=
         "Beam width used in beam search decoder, default is 50, set to 0 to use a greedy decoder. Large beam width give better decoding result but require longer decoding time."
     )
-    parser.add_argument("--gzip", "-z", default=None, action="store_true", dest="basecall.gzip", help="gzip the output")
+    parser.add_argument(
+        "--gzip",
+        "-z",
+        default=None,
+        action="store_true",
+        dest="basecall.gzip",
+        help="gzip the output")
     parser.set_defaults(func=run_args)
     parser.set_defaults(name="mincall_basecall")
 
@@ -251,13 +258,14 @@ class LogitProcessing:
 
 
 class Basecall:
-    def __init__(self,
-                 max_seq_len: int,
-                 jump: int,
-                 logit_processing: LogitProcessing,
-                 output_file: str = None,
-                 gzip=False,
-         ):
+    def __init__(
+            self,
+            max_seq_len: int,
+            jump: int,
+            logit_processing: LogitProcessing,
+            output_file: str = None,
+            gzip=False,
+    ):
         self.max_seq_len = max_seq_len
         self.jump = jump
         self.output_file = output_file
@@ -288,7 +296,8 @@ class Basecall:
             file = open(self.output_file, 'wb')
 
         with tqdm(
-                total=len(fnames), desc="basecalling all") as pbar, file as fasta_out:
+                total=len(fnames),
+                desc="basecalling all") as pbar, file as fasta_out:
             cache = defaultdict(dict)
             for fn in fnames:
                 with h5py.File(fn, 'r') as input_data:
@@ -342,7 +351,8 @@ class Basecall:
                 pbar.update()
 
     def _construct_graph(self):
-        self.logits_ph = tf.placeholder(tf.float32, shape=(None, 1, self.n_classes))
+        self.logits_ph = tf.placeholder(
+            tf.float32, shape=(None, 1, self.n_classes))
         self.seq_len = tf.placeholder(tf.int32, shape=(1, ))
 
         self.predict = tf.nn.ctc_beam_search_decoder(
@@ -354,7 +364,8 @@ class Basecall:
 
     def construct_stripes(self, sess: tf.Session,
                           assembly: Dict[int, np.ndarray], raw_signal_len):
-        logits = np.zeros(shape=(raw_signal_len, self.n_classes), dtype=np.float32)
+        logits = np.zeros(
+            shape=(raw_signal_len, self.n_classes), dtype=np.float32)
         for i in reversed(range(0, raw_signal_len, self.jump)):
             l = assembly[i]
             logits[i:i + l.shape[0], :] = l
