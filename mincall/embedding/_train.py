@@ -133,12 +133,12 @@ def random_chunk_dataset(cfg: EmbeddingCfg) -> tf.data.Dataset:
                 chunks = get_chunks(x, cfg)
                 random.shuffle(chunks)
                 for y in chunks:
-                    yield y
+                    yield list(y)
 
     return tf.data.Dataset.from_generator(
         f,
-        output_types=(tf.float32, ),
-        output_shapes=([cfg.receptive_field], ),
+        output_types=tf.float32,
+        output_shapes=[cfg.receptive_field],
     ).shuffle(1024)
 
 
@@ -159,7 +159,8 @@ def real_chunks_gen(cfg: EmbeddingCfg):
     return tf.data.Dataset.from_generator(
         f,
         output_types=(tf.float32, tf.float32),
-        output_shapes=([cfg.receptive_field], [cfg.receptive_field])).shuffle(1024)
+        output_shapes=([cfg.receptive_field], [cfg.receptive_field])
+    ).shuffle(1024)
 
 ###########################
 # Model creation & training
@@ -222,6 +223,7 @@ def train_model(cfg: EmbeddingCfg, model: models.Model, loss: tf.Tensor):
             name = var.name.split(":")[0]
             summaries.extend(tensor_default_summaries(name + "/grad", grad))
 
+    merged_summary = tf.summary.merge(summaries)
     config = tf.ConfigProto(allow_soft_placement=True)
     config.gpu_options.allow_growth = True
     beholder = Beholder(cfg.logdir)
@@ -252,9 +254,11 @@ def train_model(cfg: EmbeddingCfg, model: models.Model, loss: tf.Tensor):
                     trace_level=tf.RunOptions.FULL_TRACE)
                 opts['run_metadata'] = tf.RunMetadata()
 
-            _, _, loss, summary = sess.run([
+            _, _, curr_loss, summary = sess.run([
                 step,
                 train_op,
+                loss,
+                merged_summary,
             ], **opts)
             summary_writer.add_summary(summary, i)
 
@@ -284,7 +288,7 @@ def train_model(cfg: EmbeddingCfg, model: models.Model, loss: tf.Tensor):
                     save_path=os.path.join(cfg.logdir, 'model.ckpt'),
                     global_step=global_step)
                 logger.info(f"Saved new model checkpoint")
-            p = os.path.join(cfg.logdir, f"full-model.save")
-            model.save(p, overwrite=True, include_optimizer=False)
-            logger.info(f"Finished training saved model to {p}")
+        p = os.path.join(cfg.logdir, f"full-model.save")
+        model.save(p, overwrite=True, include_optimizer=False)
+        logger.info(f"Finished training saved model to {p}")
 
