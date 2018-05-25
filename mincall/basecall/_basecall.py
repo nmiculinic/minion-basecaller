@@ -1,4 +1,5 @@
 import argparse
+import gzip
 from collections import defaultdict
 import tensorflow as tf
 import string
@@ -24,6 +25,7 @@ import toolz
 from tqdm import tqdm
 
 logger = logging.getLogger("mincall.basecall")
+TOTAL_BASES = 4  # Total number of bases (A, C, T, G)  # Total number of bases (A, C, T, G)
 
 
 class BasecallCfg(NamedTuple):
@@ -36,6 +38,7 @@ class BasecallCfg(NamedTuple):
     beam_width: int
     logdir: str
     jump: int
+    gzip: bool
 
     @classmethod
     def schema(cls, data):
@@ -62,6 +65,7 @@ class BasecallCfg(NamedTuple):
                 int,
                 voluptuous.Optional('logdir', default=None):
                 voluptuous.Any(str, None),
+                voluptuous.Optional('gzip', default=False): bool,
             },
             required=True)(data))
 
@@ -89,6 +93,7 @@ def add_args(parser: argparse.ArgumentParser):
         help=
         "Beam width used in beam search decoder, default is 50, set to 0 to use a greedy decoder. Large beam width give better decoding result but require longer decoding time."
     )
+    parser.add_argument("--gzip", "-z", default=None, action="store_true", dest="basecall.gzip", help="gzip the output")
     parser.set_defaults(func=run_args)
     parser.set_defaults(name="mincall_basecall")
 
@@ -250,10 +255,13 @@ class Basecall:
                  max_seq_len: int,
                  jump: int,
                  logit_processing: LogitProcessing,
-                 output_file: str = None):
+                 output_file: str = None,
+                 gzip=False,
+         ):
         self.max_seq_len = max_seq_len
         self.jump = jump
         self.output_file = output_file
+        self.gzip = gzip
         self.logger = logging.getLogger(__name__ + ".Basecall")
         self.logit_processing = logit_processing
 
@@ -261,13 +269,26 @@ class Basecall:
         self.read_start,\
         self.logits,\
         self.signal_length = self.logit_processing.logit_dequeue
+
+        self.n_classes = self.logits.shape[-1]
+        if self.n_classes == TOTAL_BASES + 1:
+            self.surrogate_base_pair = False
+        elif self.n_classes == 2 * TOTAL_BASES + 1:
+            self.surrogate_base_pair = True
+        else:
+            raise ValueError(f"Not sure what to do with {self.n_classes}")
+
         self._construct_graph()
 
     def basecall_all(self, sess: tf.Session, coord: tf.train.Coordinator,
                      fnames: List[str]):
+        if self.gzip:
+            file = gzip.open(self.output_file, "wb")
+        else:
+            file = open(self.output_file, 'wb')
+
         with tqdm(
-                total=len(fnames), desc="basecalling all") as pbar, open(
-                    self.output_file, 'w') as fasta_out:
+                total=len(fnames), desc="basecalling all") as pbar, file as fasta_out:
             cache = defaultdict(dict)
             for fn in fnames:
                 with h5py.File(fn, 'r') as input_data:
@@ -309,31 +330,31 @@ class Basecall:
                     predicted, log_prob = self.construct_stripes(
                         sess, assembly, raw_signal_len)
                     fasta = "".join([
-                        dataset_pb2.BasePair.Name(x)
+                        dataset_pb2.BasePair.Name(x % TOTAL_BASES)
                         for x in predicted[0].values
                     ])
 
-                    print(f">{fn}", file=fasta_out)
+                    fasta_out.write(f">{fn}\n".encode("ASCII"))
                     for i in range(0, len(fasta), 80):
-                        print(fasta[i:i + 80], file=fasta_out)
+                        fasta_out.write(f"{fasta[i: i+80]}\n".encode("ASCII"))
                     self.logger.info(
                         f"Decoded: {fn} to file {self.output_file}")
                 pbar.update()
 
     def _construct_graph(self):
-        self.logits_ph = tf.placeholder(tf.float32, shape=(None, 1, 5))
+        self.logits_ph = tf.placeholder(tf.float32, shape=(None, 1, self.n_classes))
         self.seq_len = tf.placeholder(tf.int32, shape=(1, ))
 
         self.predict = tf.nn.ctc_beam_search_decoder(
             inputs=self.logits_ph,
             sequence_length=self.seq_len,
-            merge_repeated=False,
+            merge_repeated=self.surrogate_base_pair,
             top_paths=1,
             beam_width=50)
 
     def construct_stripes(self, sess: tf.Session,
                           assembly: Dict[int, np.ndarray], raw_signal_len):
-        logits = np.zeros(shape=(raw_signal_len, 5), dtype=np.float32)
+        logits = np.zeros(shape=(raw_signal_len, self.n_classes), dtype=np.float32)
         for i in reversed(range(0, raw_signal_len, self.jump)):
             l = assembly[i]
             logits[i:i + l.shape[0], :] = l
@@ -341,7 +362,7 @@ class Basecall:
         return sess.run(
             self.predict,
             feed_dict={
-                self.logits_ph: logits.reshape(-1, 1, 5),
+                self.logits_ph: logits.reshape(-1, 1, self.n_classes),
                 self.seq_len: np.array([raw_signal_len])
             })
 
@@ -381,6 +402,7 @@ def run(cfg: BasecallCfg):
             jump=cfg.jump,
             logit_processing=logit_processing,
             output_file=cfg.output_fasta,
+            gzip=cfg.gzip,
         )
 
         coord = tf.train.Coordinator()

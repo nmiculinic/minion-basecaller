@@ -17,7 +17,6 @@ import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 from tensorflow.python.client import timeline
 from tensorboard.plugins.beholder import Beholder
-from minion_data import dataset_pb2
 from keras import backend as K
 from keras import models
 from .models import all_models
@@ -28,6 +27,7 @@ from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
+TOTAL_BASES = 4  # Total number of bases (A, C, T, G)
 
 class DataDir(NamedTuple):
     name: str
@@ -59,6 +59,10 @@ class TrainConfig(NamedTuple):
     model_name: str
     model_hparams: str
     grad_clipping: float
+    surrogate_base_pair: bool
+    init_learning_rate: float
+    lr_decay_steps: int
+    lr_decay_rate: float
 
     @classmethod
     def schema(cls, data):
@@ -91,7 +95,11 @@ class TrainConfig(NamedTuple):
                 voluptuous.Optional('model_hparams', default=''):
                 str,
                 voluptuous.Optional('grad_clipping', default=1.0):
-                voluptuous.Coerce(float),
+                    voluptuous.Coerce(float),
+                voluptuous.Optional('surrogate_base_pair', default=False): bool,
+                "init_learning_rate": voluptuous.Coerce(float),
+                "lr_decay_steps": voluptuous.Coerce(int),
+                "lr_decay_rate": voluptuous.Coerce(float),
             },
             required=True)(data))
 
@@ -132,6 +140,14 @@ def add_args(parser: argparse.ArgumentParser):
         dest='train.grad_clipping',
         type=float,
         help="max grad clipping norm")
+    parser.add_argument("--grad_clipping", dest='train.grad_clipping', type=float, help="max grad clipping norm")
+    parser.add_argument(
+        "--surrogate-base-pair",
+        dest='train.surrogate_base_pair',
+        default=None,
+        action="store_true",
+        help="Activate surrogate base pairs, that is repeated base pair shall be replaces with surrogate during training phase."
+             "for example, let A=0. We have AAAA, which ordinarily will be 0, 0, 0, 0. With surrogate base pairs this will be 0, 4, 0, 4")
     parser.set_defaults(func=run_args)
     parser.set_defaults(name="mincall_train")
 
@@ -265,14 +281,22 @@ def run(cfg: TrainConfig):
     config.gpu_options.allow_growth = True
 
     os.makedirs(cfg.logdir, exist_ok=True)
-    model, ratio = all_models[cfg.model_name](cfg.model_hparams)
+    num_bases = TOTAL_BASES
+    if cfg.surrogate_base_pair:
+        num_bases += TOTAL_BASES
+    model, ratio = all_models[cfg.model_name](n_classes=num_bases + 1, hparams=cfg.model_hparams)
+
+    input_feeder_cfg = InputFeederCfg(
+        batch_size=cfg.batch_size,
+        seq_length=cfg.seq_length,
+        ratio=ratio,
+        surrogate_base_pair=cfg.surrogate_base_pair,
+        num_bases=TOTAL_BASES,
+    )
 
     with tf.name_scope("train"):
         train_model = Model(
-            InputFeederCfg(
-                batch_size=cfg.batch_size,
-                seq_length=cfg.seq_length,
-                ratio=ratio),
+            input_feeder_cfg,
             model=model,
             data_dir=cfg.train_data,
             trace=cfg.trace,
@@ -280,10 +304,7 @@ def run(cfg: TrainConfig):
 
     with tf.name_scope("test"):
         test_model = Model(
-            InputFeederCfg(
-                batch_size=cfg.batch_size,
-                seq_length=cfg.seq_length,
-                ratio=ratio),
+            input_feeder_cfg,
             model=model,
             data_dir=cfg.test_data,
             trace=cfg.trace,
@@ -292,7 +313,12 @@ def run(cfg: TrainConfig):
     global_step = tf.train.get_or_create_global_step()
     step = tf.assign_add(global_step, 1)
 
-    learning_rate = tf.train.exponential_decay(1e-4, global_step, 100000, 0.5)
+    learning_rate = tf.train.exponential_decay(
+        learning_rate=cfg.init_learning_rate,
+        global_step=global_step,
+        decay_steps=10000,
+        decay_rate=0.5,
+    )
     optimizer = tf.train.AdamOptimizer(learning_rate)
     grads_and_vars = optimizer.compute_gradients(train_model.total_loss)
 
