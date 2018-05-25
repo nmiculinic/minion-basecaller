@@ -9,3 +9,8 @@ train:
   seq_length: 40
   batch_size: 10
   logdir: "./logs"
+embed:
+  window: 2
+  stride: 10
+  receptive_field: 5
+  embedding_size: 10
