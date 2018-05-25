@@ -48,10 +48,11 @@ class EmbeddingCfg(NamedTuple):
 
     @classmethod
     def schema(cls, data):
-        return named_tuple_helper(cls, {
-            voluptuous.Optional('mode'): voluptuous.In({"SkipGram"}),
-            'files': voluptuous.IsDir(),
-        }, data)
+        return named_tuple_helper(
+            cls, {
+                voluptuous.Optional('mode'): voluptuous.In({"SkipGram"}),
+                'files': voluptuous.IsDir(),
+            }, data)
 
 
 def add_args(parser: argparse.ArgumentParser):
@@ -101,6 +102,7 @@ def run(cfg: EmbeddingCfg):
     model, loss = create_model(cfg)
     train_model(cfg, model, loss)
 
+
 ################
 # Input pipeline
 ################
@@ -114,11 +116,10 @@ def get_chunks(fname: str, cfg: EmbeddingCfg) -> List[np.ndarray]:
             as_numpy=True)
 
         chunks = []
-        for i in trange(
+        for i in range(
                 0,
                 raw_dat_processed.shape[0] - cfg.receptive_field,
                 cfg.stride,
-                desc="reading data",
         ):
             chunks.append(raw_dat_processed[i:i + cfg.receptive_field])
         return chunks
@@ -159,8 +160,9 @@ def real_chunks_gen(cfg: EmbeddingCfg):
     return tf.data.Dataset.from_generator(
         f,
         output_types=(tf.float32, tf.float32),
-        output_shapes=([cfg.receptive_field], [cfg.receptive_field])
-    ).shuffle(1024)
+        output_shapes=([cfg.receptive_field],
+                       [cfg.receptive_field])).shuffle(1024)
+
 
 ###########################
 # Model creation & training
@@ -168,8 +170,10 @@ def real_chunks_gen(cfg: EmbeddingCfg):
 
 
 def create_model(cfg: EmbeddingCfg) -> Tuple[models.Model, tf.Tensor]:
-    context, target = real_chunks_gen(cfg).batch(cfg.batch_size).make_one_shot_iterator().get_next()
-    noise = random_chunk_dataset(cfg).batch(cfg.batch_size).make_one_shot_iterator().get_next()
+    context, target = real_chunks_gen(cfg).batch(
+        cfg.batch_size).make_one_shot_iterator().get_next()
+    noise = random_chunk_dataset(cfg).batch(
+        cfg.batch_size).make_one_shot_iterator()
 
     model = models.Sequential([
         layers.InputLayer(input_shape=[cfg.receptive_field]),
@@ -177,12 +181,11 @@ def create_model(cfg: EmbeddingCfg) -> Tuple[models.Model, tf.Tensor]:
         layers.Dense(cfg.receptive_field),
     ])
 
-    up = tf.reduce_mean(
-        tf.nn.l2_loss(model(context) - target)
-    )
-    down = tf.reduce_mean(
-        tf.nn.l2_loss(model(context) - noise)
-    )
+    up = tf.reduce_mean(tf.nn.l2_loss(model(context) - target))
+    down = tf.add_n([
+        tf.reduce_mean(tf.nn.l2_loss(model(context) - noise.get_next()))
+        for _ in range(5)
+    ])
     loss = up - down
     return model, loss
 
@@ -246,7 +249,8 @@ def train_model(cfg: EmbeddingCfg, model: models.Model, loss: tf.Tensor):
             saver.restore(sess=sess, save_path=last_check)
 
         gs = sess.run(global_step)
-        for i in trange(gs, cfg.train_steps + 1):
+        pbar = trange(gs, cfg.train_steps)
+        for i in pbar:
             #  Train hook
             opts = {}
             if cfg.run_trace_every > 0 and i % cfg.run_trace_every == 0:
@@ -261,6 +265,7 @@ def train_model(cfg: EmbeddingCfg, model: models.Model, loss: tf.Tensor):
                 merged_summary,
             ], **opts)
             summary_writer.add_summary(summary, i)
+            pbar.set_postfix(loss=curr_loss)
 
             if cfg.run_trace_every > 0 and i % cfg.run_trace_every == 0:
                 opts['options'] = tf.RunOptions(
@@ -291,4 +296,3 @@ def train_model(cfg: EmbeddingCfg, model: models.Model, loss: tf.Tensor):
         p = os.path.join(cfg.logdir, f"full-model.save")
         model.save(p, overwrite=True, include_optimizer=False)
         logger.info(f"Finished training saved model to {p}")
-
