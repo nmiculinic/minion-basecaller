@@ -2,11 +2,13 @@ import edlib
 from minion_data import dataset_pb2
 from typing import *
 import tensorflow as tf
+import voluptuous
 
 __all__ = [
     "decode",
     "tensor_default_summaries",
     "squggle",
+    "named_tuple_helper",
 ]
 
 
@@ -65,3 +67,19 @@ def tensor_default_summaries(name, tensor) -> List[tf.Summary]:
         tf.summary.scalar(name + '/min', tf.reduce_min(tensor)),
         tf.summary.histogram(name + '/histogram', tensor),
     ]
+
+
+def named_tuple_helper(cls, known, data):
+    for k, v in cls.__annotations__.items():
+        if k not in known:
+            if k in cls._field_defaults:
+                known[voluptuous.Optional(k)] = voluptuous.Coerce(v)
+            else:
+                known[k] = voluptuous.Coerce(v)
+    schema = voluptuous.Schema(
+        {
+            **known,
+        },
+        required=True,
+    )
+    return cls(**schema(data))

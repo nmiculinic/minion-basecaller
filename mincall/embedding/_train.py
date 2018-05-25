@@ -1,5 +1,6 @@
 import tensorflow as tf
 import random
+from glob import glob
 import scrappy
 from tqdm import trange, tqdm
 import numpy as np
@@ -33,10 +34,11 @@ class EmbeddingCfg(NamedTuple):
     stride: int  # How many raw signal steps to take between adjacent "words"
     embedding_size: int
     train_steps: int
+    batch_size: int
+    logdir: str
     run_trace_every: int = 10000
     grad_clipping: float = 5.0
     mode: str = "SkipGram"
-    logdir: str = None
     init_learning_rate: float = 1e-3
     lr_decay_steps: int = 10000
     lr_decay_rate: float = 0.5
@@ -46,23 +48,10 @@ class EmbeddingCfg(NamedTuple):
 
     @classmethod
     def schema(cls, data):
-        known = {
+        return named_tuple_helper(cls, {
             voluptuous.Optional('mode'): voluptuous.In({"SkipGram"}),
-        }
-        for k, v in cls.__annotations__.items():
-            if k not in known:
-                if k in cls._field_defaults:
-                    known[voluptuous.Optional(k)] = voluptuous.Coerce(v)
-                else:
-                    known[k] = voluptuous.Coerce(v)
-        schema = voluptuous.Schema(
-            {
-                **known,
-            },
-            required=True,
-        )
-        print(schema)
-        return cls(**schema(data))
+            'files': voluptuous.IsDir(),
+        }, data)
 
 
 def add_args(parser: argparse.ArgumentParser):
@@ -108,20 +97,23 @@ def run_args(args):
         sys.exit(1)
 
 
+def run(cfg: EmbeddingCfg):
+    model, loss = create_model(cfg)
+    train_model(cfg, model, loss)
+
 ################
 # Input pipeline
 ################
 
 
 def get_chunks(fname: str, cfg: EmbeddingCfg) -> List[np.ndarray]:
-    with h5py.File(cfg.files, 'r') as f:
+    with h5py.File(fname, 'r') as f:
         raw_dat = list(f['/Raw/Reads/'].values())[0]
         raw_dat = np.array(raw_dat['Signal'].value)
         raw_dat_processed = scrappy.RawTable(raw_dat).trim().scale().data(
             as_numpy=True)
 
         chunks = []
-        logger.info(f"Shape {raw_dat_processed.shape[0]}")
         for i in trange(
                 0,
                 raw_dat_processed.shape[0] - cfg.receptive_field,
@@ -134,44 +126,75 @@ def get_chunks(fname: str, cfg: EmbeddingCfg) -> List[np.ndarray]:
 
 def random_chunk_dataset(cfg: EmbeddingCfg) -> tf.data.Dataset:
     def f():
-        for x in random.shuffle(cfg.files):
-            for y in random.shuffle(get_chunks(x, cfg)):
-                yield y
+        file_list = list(glob(cfg.files + "/*.fast5"))
+        while True:
+            random.shuffle(file_list)
+            for x in file_list:
+                chunks = get_chunks(x, cfg)
+                random.shuffle(chunks)
+                for y in chunks:
+                    yield y
 
     return tf.data.Dataset.from_generator(
-        f(),
+        f,
         output_types=(tf.float32, ),
         output_shapes=([cfg.receptive_field], ),
-    ).repeat()
+    ).shuffle(1024)
 
 
 def real_chunks_gen(cfg: EmbeddingCfg):
     def f():
-        for x in random.shuffle(cfg.files):
-            chunks = get_chunks(x, cfg)
-            for i in range(len(chunks)):
-                for j in range(
-                        max(0, i - cfg.window),
-                        min(i + cfg.window + 1, len(chunks))):
-                    if i != j:
-                        yield chunks[j], chunks[i]
+        file_list = list(glob(cfg.files + "/*.fast5"))
+        while True:
+            random.shuffle(file_list)
+            for x in file_list:
+                chunks = get_chunks(x, cfg)
+                for i in range(len(chunks)):
+                    for j in range(
+                            max(0, i - cfg.window),
+                            min(i + cfg.window + 1, len(chunks))):
+                        if i != j:
+                            yield chunks[j], chunks[i]
 
     return tf.data.Dataset.from_generator(
-        f(),
+        f,
         output_types=(tf.float32, tf.float32),
-        output_shapes=([cfg.receptive_field], [cfg.receptive_field])).repeat()
+        output_shapes=([cfg.receptive_field], [cfg.receptive_field])).shuffle(1024)
+
+###########################
+# Model creation & training
+###########################
 
 
-def run(cfg: EmbeddingCfg):
-    model = models.Model()
+def create_model(cfg: EmbeddingCfg) -> Tuple[models.Model, tf.Tensor]:
+    context, target = real_chunks_gen(cfg).batch(cfg.batch_size).make_one_shot_iterator().get_next()
+    noise = random_chunk_dataset(cfg).batch(cfg.batch_size).make_one_shot_iterator().get_next()
+
+    model = models.Sequential([
+        layers.InputLayer(input_shape=[cfg.receptive_field]),
+        layers.Dense(cfg.embedding_size),
+        layers.Dense(cfg.receptive_field),
+    ])
+
+    up = tf.reduce_mean(
+        tf.nn.l2_loss(model(context) - target)
+    )
+    down = tf.reduce_mean(
+        tf.nn.l2_loss(model(context) - noise)
+    )
+    loss = up - down
+    return model, loss
+
+
+def train_model(cfg: EmbeddingCfg, model: models.Model, loss: tf.Tensor):
     global_step = tf.train.get_or_create_global_step()
     step = tf.assign_add(global_step, 1)
 
     learning_rate = tf.train.exponential_decay(
         learning_rate=cfg.init_learning_rate,
         global_step=global_step,
-        decay_steps=10000,
-        decay_rate=0.5,
+        decay_steps=cfg.lr_decay_steps,
+        decay_rate=cfg.lr_decay_rate,
     )
     optimizer = tf.train.AdamOptimizer(learning_rate)
     grads_and_vars = optimizer.compute_gradients(loss)
@@ -264,8 +287,4 @@ def run(cfg: EmbeddingCfg):
             p = os.path.join(cfg.logdir, f"full-model.save")
             model.save(p, overwrite=True, include_optimizer=False)
             logger.info(f"Finished training saved model to {p}")
-        logger.info(f"Input queues exited ok")
 
-    # dx = tf.data.Dataset.zip((dx, dx))
-    # iterator = dx.make_one_shot_iterator()
-    # a, b = iterator.get_next()

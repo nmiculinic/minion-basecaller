@@ -18,3 +18,4 @@ embed:
   receptive_field: 5
   embedding_size: 10
   train_steps: 1000
+  batch_size: 64
