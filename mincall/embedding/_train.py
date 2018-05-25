@@ -177,17 +177,14 @@ def create_model(cfg: EmbeddingCfg) -> Tuple[models.Model, tf.Tensor]:
 
     model = models.Sequential([
         layers.InputLayer(input_shape=[cfg.receptive_field]),
-        layers.Dense(cfg.embedding_size),
-        layers.Dense(cfg.receptive_field),
+        layers.Dense(cfg.embedding_size, use_bias=False),
+        layers.Dense(cfg.receptive_field, use_bias=False),
     ])
 
     up = tf.reduce_mean(tf.nn.l2_loss(model(context) - target))
-    down = tf.add_n([
-        tf.reduce_mean(tf.nn.l2_loss(model(context) - noise.get_next()))
-        for _ in range(5)
-    ])
+    down = tf.reduce_mean(tf.nn.l2_loss(model(context) - noise.get_next()))
     loss = up - down
-    return model, loss
+    return model, up
 
 
 def train_model(cfg: EmbeddingCfg, model: models.Model, loss: tf.Tensor):
@@ -214,6 +211,7 @@ def train_model(cfg: EmbeddingCfg, model: models.Model, loss: tf.Tensor):
     # Basic only train summaries
     summaries = [
         tf.summary.scalar("learning_rate", learning_rate),
+        tf.summary.scalar("loss", loss),
     ]
 
     # Extended validation summaries
