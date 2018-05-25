@@ -19,6 +19,8 @@ class InputFeederCfg(NamedTuple):
     batch_size: int
     seq_length: int
     ratio: int
+    surrogate_base_pair: bool
+    num_bases: int
     min_signal_size: int = 10000
 
     @classmethod
@@ -27,7 +29,9 @@ class InputFeederCfg(NamedTuple):
             **voluptuous.Schema({
                 voluptuous.Optional('batch_size', 10): int,
                 'seq_length': int,
+                'surrogate_base_pair': bool,
                 voluptuous.Optional("min_signal_size"): int,
+                voluptuous.Optional("num_bases"): int,
             })(data))
 
 
@@ -157,6 +161,11 @@ class DataQueue():
 
     def push_to_queue(self, sess: tf.Session, signal: np.ndarray,
                       label: np.ndarray):
+        if self.cfg.surrogate_base_pair:
+            for i in range(1, len(label)):
+                if label[i - 1] == label[i]:
+                    label[i] += self.cfg.num_bases
+
         sess.run(
             self.enq,
             feed_dict={

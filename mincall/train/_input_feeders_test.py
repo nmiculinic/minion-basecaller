@@ -36,6 +36,8 @@ class TestInputFeeders(unittest.TestCase):
             batch_size=None,
             seq_length=50,
             ratio=1,
+            num_bases=4,
+            surrogate_base_pair=False,
         )
         _input_feeders.produce_datapoints(
             cfg,
@@ -70,6 +72,8 @@ class TestInputFeeders(unittest.TestCase):
                     batch_size=2,
                     seq_length=None,
                     ratio=1,
+                    num_bases=4,
+                    surrogate_base_pair=False,
                 ),
                 fnames=None,
                 min_after_deque=0,
@@ -112,6 +116,8 @@ class TestInputFeeders(unittest.TestCase):
                     batch_size=2,
                     seq_length=50,
                     ratio=1,
+                    num_bases=4,
+                    surrogate_base_pair=False,
                 ),
                 fnames=[ex_fname],
                 min_after_deque=40,

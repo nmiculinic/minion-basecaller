@@ -72,7 +72,7 @@ class GatedConvResidual1D(Layer):
 custom_layers = {ConstMultiplierLayer.__name__: ConstMultiplierLayer}
 
 
-def dummy_model(hparams: str = None):
+def dummy_model(n_classes: int, hparams: str = None):
     input = layers.Input(shape=(None, 1))
     net = input
     for _ in range(5):
@@ -85,11 +85,11 @@ def dummy_model(hparams: str = None):
             bias_regularizer=regularizers.l1(0.1))(net)
         net = layers.Activation('relu')(net)
 
-    net = layers.Conv1D(5, 3, padding="same")(net)
+    net = layers.Conv1D(n_classes, 3, padding="same")(net)
     return models.Model(inputs=[input], outputs=[net]), 1
 
 
-def big_01(hparams: str):
+def big_01(n_classes: int, hparams: str):
     input = layers.Input(shape=(None, 1))
     net = layers.BatchNormalization()(input)
     net = layers.Conv1D(
@@ -107,7 +107,7 @@ def big_01(hparams: str):
         net = layers.add([x, net])
         net = layers.MaxPool1D(padding='same', pool_size=2)(net)
 
-    net = layers.Conv1D(5, 3, padding="same")(net)
+    net = layers.Conv1D(n_classes, 3, padding="same")(net)
     net = layers.BatchNormalization()(net)
     return models.Model(inputs=[input], outputs=[net]), 2 * 2
 
