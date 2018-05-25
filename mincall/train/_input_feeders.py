@@ -269,17 +269,23 @@ def produce_datapoints(cfg: InputFeederCfg,
                 dp.ParseFromString(f.read())
                 signal = np.array(dp.signal, dtype=np.float32)
                 if len(signal) < cfg.min_signal_size:
-                    q.put(ValueError(f"Signal too short {len(dp.signal)} < {cfg.min_signal_size}"))
+                    q.put(
+                        ValueError(
+                            f"Signal too short {len(dp.signal)} < {cfg.min_signal_size}"
+                        ))
                     continue
 
                 buff = np.zeros(cfg.seq_length, dtype=np.int32)
 
                 label_idx = 0
                 for start in range(0, len(signal), cfg.seq_length):
-                    while label_idx < len(dp.labels) and dp.labels[label_idx].upper < start:
+                    while label_idx < len(
+                            dp.labels) and dp.labels[label_idx].upper < start:
                         label_idx += 1
                     buff_idx = 0
-                    while label_idx < len(dp.labels) and dp.labels[label_idx].lower < start + cfg.seq_length:
+                    while label_idx < len(
+                            dp.labels
+                    ) and dp.labels[label_idx].lower < start + cfg.seq_length:
                         buff[buff_idx] = dp.labels[label_idx].pair
                         buff_idx += 1
                         label_idx += 1

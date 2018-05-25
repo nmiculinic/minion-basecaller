@@ -1,4 +1,4 @@
-from keras import models, layers, regularizers, constraints,  backend as K
+from keras import models, layers, regularizers, constraints, backend as K
 from keras.engine.topology import Layer
 from typing import *
 import logging
@@ -18,7 +18,8 @@ class ConstMultiplierLayer(Layer):
             initializer='ones',
             dtype='float32',
             trainable=True,
-            constraint=constraints.MinMaxNorm(min_value=0.0, max_value=1.0, axis=[]),
+            constraint=constraints.MinMaxNorm(
+                min_value=0.0, max_value=1.0, axis=[]),
         )
         super(ConstMultiplierLayer, self).build(input_shape)
 

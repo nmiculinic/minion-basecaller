@@ -75,17 +75,15 @@ def squggle(query: str, target: str) -> Tuple[str, str, Dict]:
     return qq, tt, alignment
 
 
-def tensor_default_summaries(name, tensor)->List[tf.Summary]:
+def tensor_default_summaries(name, tensor) -> List[tf.Summary]:
     mean, var = tf.nn.moments(tensor, axes=list(range(len(tensor.shape))))
     return [
         tf.summary.scalar(name + '/mean', mean),
-        tf.summary.scalar(name + '/stddev',
-                          tf.sqrt(var)),
+        tf.summary.scalar(name + '/stddev', tf.sqrt(var)),
         tf.summary.scalar(name + '/max', tf.reduce_max(tensor)),
         tf.summary.scalar(name + '/min', tf.reduce_min(tensor)),
         tf.summary.histogram(name + '/histogram', tensor),
     ]
-
 
 
 class DataDir(NamedTuple):
@@ -150,7 +148,7 @@ class TrainConfig(NamedTuple):
                 voluptuous.Optional('model_hparams', default=''):
                 str,
                 voluptuous.Optional('grad_clipping', default=1.0):
-                    voluptuous.Coerce(float),
+                voluptuous.Coerce(float),
             },
             required=True)(data))
 
@@ -186,18 +184,23 @@ def add_args(parser: argparse.ArgumentParser):
     parser.add_argument("--model", dest='train.model_name', type=str)
     parser.add_argument("--hparams", dest='train.model_hparams', type=str)
     parser.add_argument("--logdir", dest='logdir', type=str)
-    parser.add_argument("--grad_clipping", dest='train.grad_clipping', type=float, help="max grad clipping norm")
+    parser.add_argument(
+        "--grad_clipping",
+        dest='train.grad_clipping',
+        type=float,
+        help="max grad clipping norm")
     parser.set_defaults(func=run_args)
     parser.set_defaults(name="mincall_train")
 
 
 class Model():
-    def __init__(self,
-                 cfg: InputFeederCfg,
-                 model: models.Model,
-                 data_dir: List[DataDir],
-                 trace=False,
-         ):
+    def __init__(
+            self,
+            cfg: InputFeederCfg,
+            model: models.Model,
+            data_dir: List[DataDir],
+            trace=False,
+    ):
         self.dataset = []
         for x in data_dir:
             dps = list(glob(f"{x.dir}/*.datapoint"))
@@ -221,7 +224,8 @@ class Model():
         self.logger.info(f"Logits shape: {self.logits.shape}")
 
         seq_len = tf.cast(
-            tf.floor_div(signal_len + cfg.ratio - 1, cfg.ratio), tf.int32)  # Round up
+            tf.floor_div(signal_len + cfg.ratio - 1, cfg.ratio),
+            tf.int32)  # Round up
 
         if trace:
             self.logits = tf.Print(
@@ -245,12 +249,13 @@ class Model():
         )
 
         # self.ctc_loss = tf.reduce_mean(self.losses)
-        self.ctc_loss = tf.reduce_mean(tf.boolean_mask(self.losses, tf.logical_not(
-            tf.logical_or(
-                tf.is_nan(self.losses),
-                tf.is_inf(self.losses),
-            )
-        )))
+        self.ctc_loss = tf.reduce_mean(
+            tf.boolean_mask(self.losses,
+                            tf.logical_not(
+                                tf.logical_or(
+                                    tf.is_nan(self.losses),
+                                    tf.is_inf(self.losses),
+                                ))))
         if model.losses:
             self.regularization_loss = tf.add_n(model.losses)
         else:
@@ -322,7 +327,9 @@ def run(cfg: TrainConfig):
     with tf.name_scope("train"):
         train_model = Model(
             InputFeederCfg(
-                batch_size=cfg.batch_size, seq_length=cfg.seq_length, ratio=ratio),
+                batch_size=cfg.batch_size,
+                seq_length=cfg.seq_length,
+                ratio=ratio),
             model=model,
             data_dir=cfg.train_data,
             trace=cfg.trace,
@@ -331,7 +338,9 @@ def run(cfg: TrainConfig):
     with tf.name_scope("test"):
         test_model = Model(
             InputFeederCfg(
-                batch_size=cfg.batch_size, seq_length=cfg.seq_length, ratio=ratio),
+                batch_size=cfg.batch_size,
+                seq_length=cfg.seq_length,
+                ratio=ratio),
             model=model,
             data_dir=cfg.test_data,
             trace=cfg.trace,
@@ -344,16 +353,16 @@ def run(cfg: TrainConfig):
     optimizer = tf.train.AdamOptimizer(learning_rate)
     grads_and_vars = optimizer.compute_gradients(train_model.total_loss)
 
-    train_op = optimizer.apply_gradients([
-        (tf.clip_by_norm(grad, cfg.grad_clipping), var) for grad, var in grads_and_vars
-    ], global_step=global_step)
+    train_op = optimizer.apply_gradients(
+        [(tf.clip_by_norm(grad, cfg.grad_clipping), var)
+         for grad, var in grads_and_vars],
+        global_step=global_step)
 
     saver = tf.train.Saver(max_to_keep=10)
     init_op = tf.global_variables_initializer()
 
     # Basic only train summaries
-    train_model.summary = tf.summary.merge(
-        train_model.summaries + [
+    train_model.summary = tf.summary.merge(train_model.summaries + [
         tf.summary.scalar("learning_rate", learning_rate),
     ])
 
@@ -366,7 +375,8 @@ def run(cfg: TrainConfig):
     for grad, var in grads_and_vars:
         if grad is not None:
             name = var.name.split(":")[0]
-            var_summaries.extend(tensor_default_summaries(name + "/grad", grad))
+            var_summaries.extend(
+                tensor_default_summaries(name + "/grad", grad))
 
     var_summaries.extend(tensor_default_summaries("logits", test_model.logits))
     test_model.summary = tf.summary.merge(test_model.summaries + var_summaries)
