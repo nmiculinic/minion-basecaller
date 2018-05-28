@@ -29,7 +29,8 @@ def next_num(prev, symbol):
 def read_fasta(fp):
     def rr(f):
         return "".join(
-            line.strip() for line in f.readlines() if ">" not in line)
+            line.strip() for line in f.readlines() if ">" not in line
+        )
 
     if not hasattr(fp, 'readlines'):
         with open(fp, 'r') as f:
@@ -66,10 +67,14 @@ def decode_sparse(arr, pad=None):
 def decode_example(Y, Y_len, num_blocks, block_size_y, pad=None):
     gg = []
     for blk in range(num_blocks):
-        gg.append("".join([
-            str(x) for x in decode(Y[blk * block_size_y:
-                                     blk * block_size_y + Y_len[blk]].ravel())
-        ]))
+        gg.append(
+            "".join([
+                str(x) for x in decode(
+                    Y[blk * block_size_y:blk * block_size_y + Y_len[blk]]
+                    .ravel()
+                )
+            ])
+        )
 
     if pad is None:
         pad = np.max(list(map(len, gg)))
@@ -96,7 +101,8 @@ def correct_basecalled(bucketed_basecall, reference, nedit_tol=0.2):
     nedit = result_set['editDistance'] / len(reference)
     if nedit > nedit_tol:
         raise TooLargeEditDistance(
-            "Normalized edit distance is large...%.3f" % nedit)
+            "Normalized edit distance is large...%.3f" % nedit
+        )
 
     result = ["" for _ in bucketed_basecall]
     idx_ref = 0
@@ -142,15 +148,18 @@ class TestCorrectedBasecalled(unittest.TestCase):
 
     def test_del(self):
         self.assertEqual(
-            correct_basecalled(["AA"], "AAC", nedit_tol=1.0), ["AAC"])
+            correct_basecalled(["AA"], "AAC", nedit_tol=1.0), ["AAC"]
+        )
 
     def test_ins(self):
         self.assertEqual(
-            correct_basecalled(["AAD"], "AA", nedit_tol=1.0), ["AA"])
+            correct_basecalled(["AAD"], "AA", nedit_tol=1.0), ["AA"]
+        )
 
     def test_mis(self):
         self.assertEqual(
-            correct_basecalled(["AAD"], "AAC", nedit_tol=1.0), ["AAC"])
+            correct_basecalled(["AAD"], "AAC", nedit_tol=1.0), ["AAC"]
+        )
 
 
 def sigopt_numeric(type, name, min, max):

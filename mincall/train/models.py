@@ -19,7 +19,8 @@ class ConstMultiplierLayer(Layer):
             dtype='float32',
             trainable=True,
             constraint=constraints.MinMaxNorm(
-                min_value=0.0, max_value=1.0, axis=[]),
+                min_value=0.0, max_value=1.0, axis=[]
+            ),
         )
         super(ConstMultiplierLayer, self).build(input_shape)
 
@@ -53,7 +54,8 @@ class GatedConvResidual1D(Layer):
                 channels_in,
                 kernel_size=self.kernel_size,
                 activation='linear',
-                batch_input_shape=input_shape),
+                batch_input_shape=input_shape
+            ),
             layers.BatchNormalization(),
             layers.Activation('relu'),
         ])
@@ -83,7 +85,8 @@ def dummy_model(n_classes: int, hparams: str = None):
             3,
             padding="same",
             dilation_rate=2,
-            bias_regularizer=regularizers.l1(0.1))(net)
+            bias_regularizer=regularizers.l1(0.1)
+        )(net)
         net = layers.Activation('relu')(net)
 
     net = layers.Conv1D(n_classes, 3, padding="same")(net)
@@ -94,7 +97,8 @@ def big_01(n_classes: int, hparams: str):
     input = layers.Input(shape=(None, 1))
     net = layers.BatchNormalization()(input)
     net = layers.Conv1D(
-        256, 3, padding="same", bias_regularizer=regularizers.l1(0.1))(net)
+        256, 3, padding="same", bias_regularizer=regularizers.l1(0.1)
+    )(net)
 
     for _ in range(2):
         x = net

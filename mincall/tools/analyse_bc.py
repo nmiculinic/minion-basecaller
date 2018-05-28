@@ -25,14 +25,17 @@ args.add_argument(
     "--min_length",
     type=int,
     default=500,
-    help="Minimum read lenght for further analysis")
+    help="Minimum read lenght for further analysis"
+)
 args.add_argument(
-    "-c", "--circular", help="Is genome circular", action="store_true")
+    "-c", "--circular", help="Is genome circular", action="store_true"
+)
 args.add_argument(
     "--coverage_threshold",
     help="Minimal coverage threshold for consensus",
     type=float,
-    default=0.0)
+    default=0.0
+)
 args = args.parse_args()
 
 
@@ -79,7 +82,8 @@ def albacore(name):
 
         with open(path, 'wb') as out:
             for fn in glob.glob(
-                    os.path.join(args.out_folder, 'workspace', '*.fastq')):
+                os.path.join(args.out_folder, 'workspace', '*.fastq')
+            ):
                 with open(fn, 'rb') as f:
                     out.write(f.read())
     return path
@@ -87,15 +91,19 @@ def albacore(name):
 
 basecallers = OrderedDict([
     # ("albacore", albacore),
-    ("mincall_m270",
-     cmd([
-         "nvidia-docker", "run", "--rm", "-v",
-         "%s:/data" % args.input_folder,
-         "-u=%d" % os.getuid(), "nmiculinic/mincall:m270_alba"
-     ])),
-    ('albacore',
-     cmd(["poretools", "fastq", "--type", "fwd", args.input_folder],
-         ext='fastq')),
+    (
+        "mincall_m270",
+        cmd([
+            "nvidia-docker", "run", "--rm", "-v",
+            "%s:/data" % args.input_folder,
+            "-u=%d" % os.getuid(), "nmiculinic/mincall:m270_alba"
+        ])
+    ),
+    (
+        'albacore',
+        cmd(["poretools", "fastq", "--type", "fwd", args.input_folder],
+            ext='fastq')
+    ),
     # ("nanonet", cmd(["nanonetcall", args.input_folder, "--chemistry", "r9", "--jobs", str(os.cpu_count())])),
 ])
 
@@ -111,20 +119,21 @@ for name, cmd in basecallers.items():
     if os.path.isfile(sam_path):
         logger.info("%s exists, skipping", sam_path)
     else:
-        logger.info("Aligning %s to reference %s with graphmap", path,
-                    args.ref)
-        align_utils.align_with_graphmap(path, args.ref, args.circular,
-                                        sam_path)
+        logger.info("Aligning %s to reference %s with graphmap", path, args.ref)
+        align_utils.align_with_graphmap(path, args.ref, args.circular, sam_path)
 
     filtered_sam = os.path.join(args.out_folder, name + "_filtered.sam")
     if os.path.isfile(filtered_sam):
         logger.info("%s exists, skipping", filtered_sam)
     else:
         filters = [read_len_filter(min_len=args.min_length, max_len=50000)]
-        n_kept, n_discarded = filter_aligments_in_sam(sam_path, filtered_sam,
-                                                      filters)
-        logger.info("Outputed filtered sam to %s\n%d kept, %d discarded",
-                    filtered_sam, n_kept, n_discarded)
+        n_kept, n_discarded = filter_aligments_in_sam(
+            sam_path, filtered_sam, filters
+        )
+        logger.info(
+            "Outputed filtered sam to %s\n%d kept, %d discarded", filtered_sam,
+            n_kept, n_discarded
+        )
 
     reads_pkl = os.path.join(args.out_folder, name + "_read_data.pkl")
     if os.path.isfile(reads_pkl):
@@ -139,14 +148,16 @@ for name, cmd in basecallers.items():
     logger.info("%s\n%s", name, desc)
     dfs[name] = df
 
-    consensus_report_path = os.path.join(args.out_folder,
-                                         name + "_consensus_report.pkl")
+    consensus_report_path = os.path.join(
+        args.out_folder, name + "_consensus_report.pkl"
+    )
     if os.path.isfile(consensus_report_path):
         consensus_report = pd.read_pickle(consensus_report_path)
         logger.info("%s exists, loading", consensus_report_path)
     else:
-        consensus_report = get_consensus_report(name, filtered_sam, args.ref,
-                                                args.coverage_threshold)
+        consensus_report = get_consensus_report(
+            name, filtered_sam, args.ref, args.coverage_threshold
+        )
         consensus_report.to_pickle(consensus_report_path)
     consensus_report[r'mean match'] = df['Match rate'].mean()
     consensus_report[r'10% match'] = df['Match rate'].quantile(0.1)

@@ -31,14 +31,16 @@ if __name__ == "__main__":
             h.setLevel(logging.INFO)
 
         formatter = logging.Formatter(
-            "%(asctime)s [%(levelname)5s]:%(name)20s: %(message)s")
+            "%(asctime)s [%(levelname)5s]:%(name)20s: %(message)s"
+        )
         h.setFormatter(formatter)
         root_logger.addHandler(h)
 
         if args.logdir:
             os.makedirs(args.logdir, exist_ok=True)
-            fn = os.path.join(args.logdir,
-                              f"{getattr(args, 'name', 'mincall')}.log")
+            fn = os.path.join(
+                args.logdir, f"{getattr(args, 'name', 'mincall')}.log"
+            )
             h = (logging.FileHandler(fn))
             h.setLevel(logging.DEBUG)
             h.setFormatter(formatter)

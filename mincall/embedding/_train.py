@@ -52,21 +52,26 @@ class EmbeddingCfg(NamedTuple):
             cls, {
                 voluptuous.Optional('mode'): voluptuous.In({"SkipGram"}),
                 'files': voluptuous.IsDir(),
-            }, data)
+            }, data
+        )
 
 
 def add_args(parser: argparse.ArgumentParser):
     parser.add_argument("--config", "-c", help="config file")
     parser.add_argument(
-        "--files", "-f", dest="embed.files", help="target files")
+        "--files", "-f", dest="embed.files", help="target files"
+    )
     parser.add_argument(
-        "--window", "-w", dest="embed.window", help="window size")
+        "--window", "-w", dest="embed.window", help="window size"
+    )
     parser.add_argument(
-        "--stride", "-s", dest="embed.stride", help="Stride size")
+        "--stride", "-s", dest="embed.stride", help="Stride size"
+    )
     parser.add_argument(
         "--embedding-size",
         dest="embed.embedding_size",
-        help="Size of resulting embedding")
+        help="Size of resulting embedding"
+    )
     parser.set_defaults(func=run_args)
     parser.set_defaults(name="mincall_embedding")
 
@@ -84,13 +89,12 @@ def run_args(args):
     if args.logdir is not None:
         config['embed']['logdir'] = args.logdir
     try:
-        cfg = voluptuous.Schema(
-            {
-                'embed': EmbeddingCfg.schema,
-                'version': str,
-            },
-            extra=voluptuous.REMOVE_EXTRA,
-            required=True)(config)
+        cfg = voluptuous.Schema({
+            'embed': EmbeddingCfg.schema,
+            'version': str,
+        },
+                                extra=voluptuous.REMOVE_EXTRA,
+                                required=True)(config)
         logger.info(f"Parsed config\n{pformat(cfg)}")
         run(cfg['embed'])
     except voluptuous.error.Error as e:
@@ -113,13 +117,14 @@ def get_chunks(fname: str, cfg: EmbeddingCfg) -> List[np.ndarray]:
         raw_dat = list(f['/Raw/Reads/'].values())[0]
         raw_dat = np.array(raw_dat['Signal'].value)
         raw_dat_processed = scrappy.RawTable(raw_dat).trim().scale().data(
-            as_numpy=True)
+            as_numpy=True
+        )
 
         chunks = []
         for i in range(
-                0,
-                raw_dat_processed.shape[0] - cfg.receptive_field,
-                cfg.stride,
+            0,
+            raw_dat_processed.shape[0] - cfg.receptive_field,
+            cfg.stride,
         ):
             chunks.append(raw_dat_processed[i:i + cfg.receptive_field])
         return chunks
@@ -152,16 +157,17 @@ def real_chunks_gen(cfg: EmbeddingCfg):
                 chunks = get_chunks(x, cfg)
                 for i in range(len(chunks)):
                     for j in range(
-                            max(0, i - cfg.window),
-                            min(i + cfg.window + 1, len(chunks))):
+                        max(0, i - cfg.window),
+                        min(i + cfg.window + 1, len(chunks))
+                    ):
                         if i != j:
                             yield chunks[j], chunks[i]
 
     return tf.data.Dataset.from_generator(
         f,
         output_types=(tf.float32, tf.float32),
-        output_shapes=([cfg.receptive_field],
-                       [cfg.receptive_field])).shuffle(1024)
+        output_shapes=([cfg.receptive_field], [cfg.receptive_field])
+    ).shuffle(1024)
 
 
 ###########################
@@ -171,9 +177,10 @@ def real_chunks_gen(cfg: EmbeddingCfg):
 
 def create_model(cfg: EmbeddingCfg) -> Tuple[models.Model, tf.Tensor]:
     context, target = real_chunks_gen(cfg).batch(
-        cfg.batch_size).make_one_shot_iterator().get_next()
-    noise = random_chunk_dataset(cfg).batch(
-        cfg.batch_size).make_one_shot_iterator()
+        cfg.batch_size
+    ).make_one_shot_iterator().get_next()
+    noise = random_chunk_dataset(cfg).batch(cfg.batch_size
+                                           ).make_one_shot_iterator()
 
     model = models.Sequential([
         layers.InputLayer(input_shape=[cfg.receptive_field]),
@@ -203,7 +210,8 @@ def train_model(cfg: EmbeddingCfg, model: models.Model, loss: tf.Tensor):
     train_op = optimizer.apply_gradients(
         [(tf.clip_by_norm(grad, cfg.grad_clipping), var)
          for grad, var in grads_and_vars],
-        global_step=global_step)
+        global_step=global_step
+    )
 
     saver = tf.train.Saver(max_to_keep=10)
     init_op = tf.global_variables_initializer()
@@ -234,9 +242,11 @@ def train_model(cfg: EmbeddingCfg, model: models.Model, loss: tf.Tensor):
                 sess = tf_debug.LocalCLIDebugWrapperSession(sess)
             else:
                 sess = tf_debug.TensorBoardDebugWrapperSession(
-                    sess, cfg.tensorboard_debug)
+                    sess, cfg.tensorboard_debug
+                )
         summary_writer = tf.summary.FileWriter(
-            os.path.join(cfg.logdir), sess.graph)
+            os.path.join(cfg.logdir), sess.graph
+        )
         K.set_session(sess)
         last_check = tf.train.latest_checkpoint(cfg.logdir)
         if last_check is None:
@@ -253,7 +263,8 @@ def train_model(cfg: EmbeddingCfg, model: models.Model, loss: tf.Tensor):
             opts = {}
             if cfg.run_trace_every > 0 and i % cfg.run_trace_every == 0:
                 opts['options'] = tf.RunOptions(
-                    trace_level=tf.RunOptions.FULL_TRACE)
+                    trace_level=tf.RunOptions.FULL_TRACE
+                )
                 opts['run_metadata'] = tf.RunMetadata()
 
             _, _, curr_loss, summary = sess.run([
@@ -267,17 +278,21 @@ def train_model(cfg: EmbeddingCfg, model: models.Model, loss: tf.Tensor):
 
             if cfg.run_trace_every > 0 and i % cfg.run_trace_every == 0:
                 opts['options'] = tf.RunOptions(
-                    trace_level=tf.RunOptions.FULL_TRACE)
+                    trace_level=tf.RunOptions.FULL_TRACE
+                )
                 fetched_timeline = timeline.Timeline(
-                    opts['run_metadata'].step_stats)
+                    opts['run_metadata'].step_stats
+                )
                 chrome_trace = fetched_timeline.generate_chrome_trace_format(
-                    show_memory=True)
+                    show_memory=True
+                )
                 with open(
-                        os.path.join(cfg.logdir, f'timeline_{i:05}.json'),
-                        'w') as f:
+                    os.path.join(cfg.logdir, f'timeline_{i:05}.json'), 'w'
+                ) as f:
                     f.write(chrome_trace)
                 summary_writer.add_run_metadata(
-                    opts['run_metadata'], f"step_{i:05}", global_step=i)
+                    opts['run_metadata'], f"step_{i:05}", global_step=i
+                )
                 logger.info(
                     f"Saved trace metadata both to timeline_{i:05}.json and step_{i:05} in tensorboard"
                 )
@@ -289,7 +304,8 @@ def train_model(cfg: EmbeddingCfg, model: models.Model, loss: tf.Tensor):
                 saver.save(
                     sess=sess,
                     save_path=os.path.join(cfg.logdir, 'model.ckpt'),
-                    global_step=global_step)
+                    global_step=global_step
+                )
                 logger.info(f"Saved new model checkpoint")
         p = os.path.join(cfg.logdir, f"full-model.save")
         model.save(p, overwrite=True, include_optimizer=False)
