@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-from tqdm import tqdm
 import argparse
 import subprocess
 import os
@@ -41,7 +40,7 @@ def main():
     if os.path.isabs(args.rel_data):
         raise ValueError("rel_data must be abs path!")
 
-    for params in tqdm(ParameterGrid(hyper_params)):
+    for params in ParameterGrid(hyper_params):
         fname = "__".join(f"{k}_{params[k]}" for k in sorted(params.keys()))
         folder = os.path.normpath(
             os.path.abspath(os.path.join(args.log_dir, fname))
@@ -53,7 +52,7 @@ def main():
             "docker",
             "run",
             "--rm",
-            # f"-u={os.getuid()}:{os.getgid()}",
+            f"-u={os.getuid()}:{os.getgid()}",
             "-v",
             f"{os.path.normpath(args.root_data)}:/data",
             "-v",
