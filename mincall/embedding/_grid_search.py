@@ -33,6 +33,8 @@ def main():
         default="/home/lpp/Desktop/resquigg",
         type=os.path.abspath
     )
+    parser.add_argument("--uid", default=os.getuid())
+    parser.add_argument("--gid", default=os.getgid())
     parser.add_argument("--rel_data", default=".")
     parser.add_argument(
         "--dry-run",
@@ -67,7 +69,7 @@ EOF"""
             "docker",
             "run",
             "--rm",
-            f"-u={os.getuid()}:{os.getgid()}",
+            f"-u={args.uid}:{args.gid}",
             "-v",
             f"{os.path.normpath(args.root_data)}:/data:ro",
             "-v",
