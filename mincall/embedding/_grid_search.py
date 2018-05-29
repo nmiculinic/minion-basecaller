@@ -34,6 +34,7 @@ def main():
         type=os.path.abspath
     )
     parser.add_argument("--rel_data", default=".")
+    parser.add_argument("--dry-run","-n", action="store_true")
     parser.add_argument("--image", default="nmiculinic/mincall:latest-py3")
     args = parser.parse_args()
 
@@ -68,8 +69,9 @@ def main():
             "-f",
             os.path.normpath(os.path.join("/data", args.rel_data)),
         ]
-        print(cmd)
-        subprocess.run(cmd, check=True)
+        print(" ".join(cmd))
+        if not args.dry_run:
+            subprocess.run(cmd, check=True)
 
 
 if __name__ == "__main__":
