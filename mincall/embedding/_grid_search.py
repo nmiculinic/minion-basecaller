@@ -34,7 +34,12 @@ def main():
         type=os.path.abspath
     )
     parser.add_argument("--rel_data", default=".")
-    parser.add_argument("--dry-run","-n", action="store_true")
+    parser.add_argument(
+        "--dry-run",
+        "-n",
+        action="store_true",
+        help="Does nothing but writing shell command which would execute"
+    )
     parser.add_argument("--image", default="nmiculinic/mincall:latest-py3")
     args = parser.parse_args()
 
@@ -46,16 +51,25 @@ def main():
         folder = os.path.normpath(
             os.path.abspath(os.path.join(args.log_dir, fname))
         )
-        os.makedirs(folder, exist_ok=True)
-        with open(os.path.join(folder, "config.yml"), "w") as f:
-            print(template.format(**params), file=f)
+        if args.dry_run:
+            print(f"mkdir -p {folder}")
+            print(
+                f"""cat > {os.path.join(folder, "config.yml")} <<EOF
+{template.format(**params)}
+EOF"""
+            )
+        else:
+            os.makedirs(folder, exist_ok=True)
+            with open(os.path.join(folder, "config.yml"), "w") as f:
+                print(template.format(**params), file=f)
+
         cmd = [
             "docker",
             "run",
             "--rm",
             f"-u={os.getuid()}:{os.getgid()}",
             "-v",
-            f"{os.path.normpath(args.root_data)}:/data",
+            f"{os.path.normpath(args.root_data)}:/data:ro",
             "-v",
             f"{folder}:/logs",
             "-w",
