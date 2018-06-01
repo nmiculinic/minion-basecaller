@@ -1,7 +1,7 @@
 import argparse
 from tqdm import tqdm
 import logging
-from mincall import train, basecall
+from mincall import train, basecall, embedding
 import os
 
 
@@ -18,6 +18,7 @@ if __name__ == "__main__":
 
     train.add_args(subparsers.add_parser("train"))
     basecall.add_args(subparsers.add_parser("basecall"))
+    embedding.add_args(subparsers.add_parser("embed"))
 
     args = parser.parse_args()
     if hasattr(args, 'func'):
@@ -30,14 +31,16 @@ if __name__ == "__main__":
             h.setLevel(logging.INFO)
 
         formatter = logging.Formatter(
-            "%(asctime)s [%(levelname)5s]:%(name)20s: %(message)s")
+            "%(asctime)s [%(levelname)5s]:%(name)20s: %(message)s"
+        )
         h.setFormatter(formatter)
         root_logger.addHandler(h)
 
         if args.logdir:
             os.makedirs(args.logdir, exist_ok=True)
-            fn = os.path.join(args.logdir,
-                              f"{getattr(args, 'name', 'mincall')}.log")
+            fn = os.path.join(
+                args.logdir, f"{getattr(args, 'name', 'mincall')}.log"
+            )
             h = (logging.FileHandler(fn))
             h.setLevel(logging.DEBUG)
             h.setFormatter(formatter)

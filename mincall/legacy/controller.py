@@ -42,19 +42,20 @@ def control(context):
 
 def eval_model(create_test_model, **kwargs):
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "model_dir", help="increase output verbosity", type=str)
+    parser.add_argument("model_dir", help="increase output verbosity", type=str)
     parser.add_argument(
         "-v",
         "--verbose",
         help="increase output verbosity",
-        action="store_true")
+        action="store_true"
+    )
     parser.add_argument(
         "-c",
         "--checkpoint",
         help="Checkpoint to restore",
         type=str,
-        default=None)
+        default=None
+    )
     parser.add_argument(
         "count",
         nargs='?',
@@ -68,18 +69,20 @@ def eval_model(create_test_model, **kwargs):
         "-o",
         type=str,
         default=None,
-        help='Directory for output fasta files from processed fast5 files')
+        help='Directory for output fasta files from processed fast5 files'
+    )
     parser.add_argument(
-        "--ref", type=str, default=None, help='Path to reference string')
+        "--ref", type=str, default=None, help='Path to reference string'
+    )
 
     args = parser.parse_args()
 
-    with open(os.path.join(args.model_dir, 'model_hyperparams.json'),
-              'r') as f:
+    with open(os.path.join(args.model_dir, 'model_hyperparams.json'), 'r') as f:
         hyper = json.load(f)
 
     model = create_test_model(
-        log_dir=args.model_dir, reuse=True, overwrite=False, hyper=hyper)
+        log_dir=args.model_dir, reuse=True, overwrite=False, hyper=hyper
+    )
 
     try:
         model.init_session(start_queues=False)
@@ -95,7 +98,8 @@ def eval_model(create_test_model, **kwargs):
             frac=count,
             verbose=args.verbose,
             fasta_out_dir=args.fasta_out,
-            ref=args.ref)
+            ref=args.ref
+        )
     finally:
         model.close_session()
 
@@ -114,26 +118,29 @@ def raw_signal_producer(file_q, out_q, prod_fn):
 
 def basecall(create_test_model, **kwargs):
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "model_dir", help="increase output verbosity", type=str)
+    parser.add_argument("model_dir", help="increase output verbosity", type=str)
     parser.add_argument(
         "fast5_in",
         help="Fast5 file to basecall or dir of fast5 files",
         default='.',
-        type=str)
+        type=str
+    )
     parser.add_argument(
         "-c",
         "--checkpoint",
         help="Checkpoint to restore",
         type=str,
-        default=None)
+        default=None
+    )
     parser.add_argument(
-        "--write_logits", help="Write logits to file", action="store_true")
+        "--write_logits", help="Write logits to file", action="store_true"
+    )
     parser.add_argument(
         "--parallel",
         help="Number of parallel basecalling",
         type=int,
-        default=4)
+        default=4
+    )
 
     args = parser.parse_args()
     if os.path.isfile(args.fast5_in):
@@ -148,19 +155,20 @@ def basecall(create_test_model, **kwargs):
         print("Not file not dir %s, exiting!!!" % args.fast5_in)
         sys.exit(1)
 
-    with open(os.path.join(args.model_dir, 'model_hyperparams.json'),
-              'r') as f:
+    with open(os.path.join(args.model_dir, 'model_hyperparams.json'), 'r') as f:
         hyper = json.load(f)
 
     model = create_test_model(
-        log_dir=args.model_dir, reuse=True, overwrite=False, hyper=hyper)
+        log_dir=args.model_dir, reuse=True, overwrite=False, hyper=hyper
+    )
 
     try:
         model.init_session(start_queues=False)
         model.restore(checkpoint=args.checkpoint)
 
         pbar = tqdm(
-            file_list, unit='reads', unit_scale=True, dynamic_ncols=True)
+            file_list, unit='reads', unit_scale=True, dynamic_ncols=True
+        )
         t0 = perf_counter()
         global total_bases
         total_bases = 0
@@ -171,12 +179,15 @@ def basecall(create_test_model, **kwargs):
                 global total_bases
                 f, basecalled = x
                 total_bases += len(basecalled)
-                pbar.set_postfix(speed="{:.3f} b/s".format(
-                    total_bases / (perf_counter() - t0)))
+                pbar.set_postfix(
+                    speed="{:.3f} b/s".
+                    format(total_bases / (perf_counter() - t0))
+                )
                 pbar.update()
                 util.dump_fasta(
                     os.path.splitext(f)[0].split(os.sep)[-1], basecalled,
-                    sys.stdout)
+                    sys.stdout
+                )
 
             def exc_callback(ex):
                 try:
@@ -186,14 +197,16 @@ def basecall(create_test_model, **kwargs):
 
             def func(fast5_path):
                 return fast5_path, model.basecall_sample(
-                    fast5_path, write_logits=args.write_logits)
+                    fast5_path, write_logits=args.write_logits
+                )
 
             results = [
                 pool.apply_async(
                     func,
-                    args=(fn, ),
+                    args=(fn,),
                     error_callback=exc_callback,
-                    callback=callback) for fn in file_list
+                    callback=callback
+                ) for fn in file_list
             ]
 
             for r in results:
@@ -210,31 +223,37 @@ def simple_train(create_train_model, default_params, default_name, **kwargs):
         nargs='?',
         type=int,
         default=50000,
-        help='Number of training steps')
+        help='Number of training steps'
+    )
     parser.add_argument(
         '--num_workers',
         type=int,
         default=3,
-        help='Number of worker threads for feeding queues')
+        help='Number of worker threads for feeding queues'
+    )
     parser.add_argument(
         "-s",
         "--summarize",
         help="Summarize gradient during training",
-        action="store_true")
+        action="store_true"
+    )
     parser.add_argument(
         '--name',
         type=str,
         default=default_name,
         help="Model name [run_id]",
-        dest="model_name")
+        dest="model_name"
+    )
     parser.add_argument(
         '--reuse',
         action="store_true",
-        help="Should you reuse existing model dir")
+        help="Should you reuse existing model dir"
+    )
     parser.add_argument(
         '--overwrite',
         action="store_true",
-        help="Should you overwrite existing logdir if found")
+        help="Should you overwrite existing logdir if found"
+    )
     parser.add_argument(
         '--trace_every',
         '-t',
@@ -244,7 +263,8 @@ def simple_train(create_train_model, default_params, default_name, **kwargs):
         "Each x steps to run profile trace. Negative number (e.g. -1) to disable"
     )
     parser.add_argument(
-        "--ref", type=str, default=None, help='Path to reference string')
+        "--ref", type=str, default=None, help='Path to reference string'
+    )
     args = parser.parse_args()
 
     start_timestamp = monotonic()
@@ -252,13 +272,15 @@ def simple_train(create_train_model, default_params, default_name, **kwargs):
         default_params,
         reuse=args.reuse,
         overwrite=args.overwrite,
-        run_id=args.model_name)
+        run_id=args.model_name
+    )
     result = model.simple_managed_train_model(
         args.train_steps,
         summarize=args.summarize,
         num_workers=args.num_workers,
         trace_every=args.trace_every,
-        ref=args.ref)
+        ref=args.ref
+    )
     result['time[h]'] = (monotonic() - start_timestamp) / 3600.0,
     result['logdir'] = model.log_dir
     for key in sorted(result.keys()):
@@ -270,14 +292,17 @@ def simple_train(create_train_model, default_params, default_name, **kwargs):
             model.logger.info("%s: %s", key, str(result[key]))
 
 
-def sigopt_runner(create_train_model,
-                  sigopt_params,
-                  default_params,
-                  default_name,
-                  verify_hyper=lambda x: True,
-                  **other):
-    recovery_file = os.path.join(model_utils.repo_root, 'log',
-                                 'recovery_%s.json' % model_utils.hostname)
+def sigopt_runner(
+    create_train_model,
+    sigopt_params,
+    default_params,
+    default_name,
+    verify_hyper=lambda x: True,
+    **other
+):
+    recovery_file = os.path.join(
+        model_utils.repo_root, 'log', 'recovery_%s.json' % model_utils.hostname
+    )
     print(recovery_file)
 
     parser = argparse.ArgumentParser()
@@ -286,20 +311,24 @@ def sigopt_runner(create_train_model,
         nargs='?',
         type=int,
         default=50000,
-        help='Number of training steps')
+        help='Number of training steps'
+    )
     parser.add_argument('--budget', type=int, default=20)
     parser.add_argument(
-        '--batch_size', '-b', type=int, default=-1, help="batch_size")
+        '--batch_size', '-b', type=int, default=-1, help="batch_size"
+    )
     parser.add_argument(
         '--num_workers',
         type=int,
         default=3,
-        help='Number of worker threads for feeding queues')
+        help='Number of worker threads for feeding queues'
+    )
     parser.add_argument(
         "-s",
         "--summarize",
         help="Summarize gradient during training",
-        action="store_true")
+        action="store_true"
+    )
     parser.add_argument(
         '--trace_every',
         '-t',
@@ -309,33 +338,41 @@ def sigopt_runner(create_train_model,
         "Each x steps to run profile trace. Negative number (e.g. -1) to disable"
     )
     parser.add_argument(
-        "--ref", type=str, default=None, help='Path to reference string')
+        "--ref", type=str, default=None, help='Path to reference string'
+    )
     args = parser.parse_args()
 
     if args.ref is None:
-        suggested_ref = os.path.join(input_readers.root_dir_default,
-                                     'reference2.fasta')
+        suggested_ref = os.path.join(
+            input_readers.root_dir_default, 'reference2.fasta'
+        )
 
         if os.path.isfile(suggested_ref):
             args.ref = suggested_ref
             print("Using %s for reference" % args.ref)
         else:
-            print("Cannot find default reference at %s, ignoring Graphmap etc."
-                  % suggested_ref)
+            print(
+                "Cannot find default reference at %s, ignoring Graphmap etc." %
+                suggested_ref
+            )
 
     conn = Connection(client_token=os.environ["SIGOPT_KEY"])
     if os.environ["EXPERIMENT_ID"] == "NEW":
         experiment = conn.experiments().create(
             name='MinION basecaller residual',
             parameters=sigopt_params,
-            observation_budget=args.budget)
-        print("Created experiment: https://sigopt.com/experiment/" +
-              experiment.id, "Budget %d" % args.budget)
+            observation_budget=args.budget
+        )
+        print(
+            "Created experiment: https://sigopt.com/experiment/" +
+            experiment.id, "Budget %d" % args.budget
+        )
         experiment_id = experiment.id
     else:
         experiment_id = os.environ["EXPERIMENT_ID"]
         print(
-            "Using experiment: https://sigopt.com/experiment/" + experiment_id)
+            "Using experiment: https://sigopt.com/experiment/" + experiment_id
+        )
 
     while True:
         if os.path.exists(recovery_file):
@@ -356,10 +393,11 @@ def sigopt_runner(create_train_model,
                     print("%-20s: %7s" % (k, str(hyper[k])))
                 conn.experiments(experiment_id).observations().create(
                     suggestion=suggestion.id,
-                    metadata=dict(hostname=model_utils.hostname, ),
-                    failed=True)
-                suggestion = conn.experiments(
-                    experiment_id).suggestions().create()
+                    metadata=dict(hostname=model_utils.hostname,),
+                    failed=True
+                )
+                suggestion = conn.experiments(experiment_id
+                                             ).suggestions().create()
                 hyper = dict(suggestion.assignments)
             suggestion_id = suggestion.id
             reuse = False
@@ -380,14 +418,13 @@ def sigopt_runner(create_train_model,
         model_extra_params['reuse'] = reuse
 
         with open(recovery_file, 'w') as f:
-            json.dump(
-                {
-                    'hyper': hyper,
-                    'suggestion_id': suggestion_id,
-                },
-                f,
-                sort_keys=True,
-                indent=4)
+            json.dump({
+                'hyper': hyper,
+                'suggestion_id': suggestion_id,
+            },
+                      f,
+                      sort_keys=True,
+                      indent=4)
         start_timestamp = monotonic()
         model = create_train_model(hyper, **model_extra_params)
         if reuse:
@@ -397,7 +434,8 @@ def sigopt_runner(create_train_model,
             summarize=args.summarize,
             num_workers=args.num_workers,
             trace_every=args.trace_every,
-            ref=args.ref)
+            ref=args.ref
+        )
 
         avg_acc = result['accuracy']['mu']
         se = result['accuracy']['se']
@@ -415,5 +453,6 @@ def sigopt_runner(create_train_model,
                     'logdir': model.log_dir,
                 },
             ),
-            value_stddev=se)
+            value_stddev=se
+        )
         os.remove(recovery_file)

@@ -24,7 +24,8 @@ ex_fname = os.path.join(
 class TestInputFeeders(unittest.TestCase):
     def test_simple(self):
         golden_fn = os.path.join(
-            os.path.dirname(__file__), "test_simple.golden")
+            os.path.dirname(__file__), "test_simple.golden"
+        )
 
         with gzip.open(ex_fname, "r") as f:
             dp = dataset_pb2.DataPoint()
@@ -95,17 +96,21 @@ class TestInputFeeders(unittest.TestCase):
                 dq.batch_labels, dq.batch_dense_labels, dq.batch_signal,
                 dq.batch_signal_len
             ])
-            np.testing.assert_allclose(batch_labels.indices,
-                                       np.array([[0, 0], [0, 1], [0, 2],
-                                                 [1, 0], [1, 1]]))
-            np.testing.assert_allclose(batch_labels.values,
-                                       np.array([1, 2, 3, 10, 20]))
-            np.testing.assert_allclose(batch_labels.dense_shape,
-                                       np.array([2, 3]))
-            np.testing.assert_allclose(signal,
-                                       np.array([[1, 2, 3, 4, 5, 0, 0],
-                                                 [10, 20, 30, 40, 50, 60,
-                                                  70]]).reshape(2, 7, 1))
+            np.testing.assert_allclose(
+                batch_labels.indices,
+                np.array([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1]])
+            )
+            np.testing.assert_allclose(
+                batch_labels.values, np.array([1, 2, 3, 10, 20])
+            )
+            np.testing.assert_allclose(
+                batch_labels.dense_shape, np.array([2, 3])
+            )
+            np.testing.assert_allclose(
+                signal,
+                np.array([[1, 2, 3, 4, 5, 0, 0], [10, 20, 30, 40, 50, 60,
+                                                  70]]).reshape(2, 7, 1)
+            )
             np.testing.assert_allclose(signal_len, np.array([5, 7]))
 
     def test_end2end(self):

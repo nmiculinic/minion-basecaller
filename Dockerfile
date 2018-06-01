@@ -47,5 +47,6 @@ RUN cat requirements.txt.bak | grep -v tensorflow > requirements.txt && rm requi
 RUN python3.6 -m pip --no-cache-dir install -r requirements.txt && rm requirements.txt
 WORKDIR /code
 ENV PYTHONPATH=/code
-ENTRYPOINT ["python3.6", "-m", "mincall"]
 COPY . .
+RUN ["python3.6", "setup.py", "install"]
+ENTRYPOINT ["python3.6", "-m", "mincall"]

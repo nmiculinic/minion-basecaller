@@ -242,8 +242,8 @@ def error_rates_from_cigar(cigar_full_str):
     cigar_len = len(cigar_full_str)
     n_deletions = get_cnt(CIGAR_DELETION)
     n_all_insertions = get_cnt(CIGAR_INSERTION)
-    n_insertions = n_all_insertions - get_cnt(CIGAR_SOFTCLIP) - get_cnt(
-        CIGAR_HARDCLIP)
+    n_insertions = n_all_insertions - get_cnt(CIGAR_SOFTCLIP
+                                             ) - get_cnt(CIGAR_HARDCLIP)
     n_missmatches = get_cnt(CIGAR_MISSMATCH)
     n_matches = get_cnt(CIGAR_MATCH)
 
@@ -253,7 +253,8 @@ def error_rates_from_cigar(cigar_full_str):
     if cigar_len != n_deletions + n_all_insertions + n_missmatches + n_matches:
         raise ValueError(
             "cigar_len != n_deletions + n_all_insertions + n_missmatches + n_matches"
-            ";Expected extended cigar format")
+            ";Expected extended cigar format"
+        )
     if not read_len:
         logging.warning("Clipped read len == 0")
         return None
@@ -323,11 +324,13 @@ def error_positions_report(sam_path, n_buckets=1000):
             _update_positions(full_cigar, positions)
             n_reads += 1
 
-    data = [[pos, op, cnt] for pos, count in positions.items()
+    data = [[pos, op, cnt]
+            for pos, count in positions.items()
             for op, cnt in count.items()]
 
     df = pd.DataFrame(
-        data, columns=['relative_position', 'operation', 'op_count'])
+        data, columns=['relative_position', 'operation', 'op_count']
+    )
     df.sort_values(by='relative_position', inplace=True)
     df.reset_index(inplace=True, drop=True)
     return df
@@ -336,7 +339,8 @@ def error_positions_report(sam_path, n_buckets=1000):
 def read_fasta(fp):
     def rr(f):
         return "".join(
-            line.strip() for line in f.readlines() if ">" not in line)
+            line.strip() for line in f.readlines() if ">" not in line
+        )
 
     if not hasattr(fp, 'readlines'):
         with open(fp, 'r') as f:
