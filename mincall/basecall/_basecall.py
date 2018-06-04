@@ -27,6 +27,8 @@ from tqdm import tqdm
 logger = logging.getLogger("mincall.basecall")
 TOTAL_BASES = 4  # Total number of bases (A, C, T, G)  # Total number of bases (A, C, T, G)
 
+#TODO: ADD scrappie support!!!
+
 
 class BasecallCfg(NamedTuple):
     input_dir: List[str]

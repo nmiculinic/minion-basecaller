@@ -12,6 +12,7 @@ import numpy as np
 from multiprocessing import Queue, Manager, Process
 import queue
 from threading import Thread
+import scrappy
 import sys
 
 
@@ -304,6 +305,9 @@ def produce_datapoints(
                 dp = dataset_pb2.DataPoint()
                 dp.ParseFromString(f.read())
                 signal = np.array(dp.signal, dtype=np.float32)
+                signal = scrappy.RawTable(signal).trim().scale().data(
+                    as_numpy=True
+                )
                 if len(signal) < cfg.min_signal_size:
                     q.put(
                         ValueError(
