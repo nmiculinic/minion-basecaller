@@ -336,11 +336,14 @@ def produce_datapoints(
                         return
                     except queue.Empty:
                         pass
+                    signal_segment = signal[start:start + cfg.seq_length]
                     if buff_idx == 0:
                         q.put(ValueError("Empty labels"))
+                    elif len(signal_segment) / cfg.ratio < buff_idx:
+                        q.put(ValueError(f"max possible labels {signal_segment/cfg.ratio}, have {buff_idx} labels"))
                     else:
                         q.put([
-                            signal[start:start + cfg.seq_length],
+                            signal_segment,
                             np.copy(buff[:buff_idx]),
                         ])
         if not repeat:
