@@ -190,6 +190,8 @@ class Model():
         labels: tf.SparseTensor = self.dq.batch_labels
         signal_len: tf.Tensor = self.dq.batch_signal_len
 
+        self.labels = labels
+
         self.logits = tf.transpose(model(input_signal), [1, 0, 2]
                                   )  # [max_time, batch_size, class_num]
         self.logger.info(f"Logits shape: {self.logits.shape}")
@@ -268,23 +270,28 @@ class Model():
             beam_width=50
         )[0][0]
 
-        stats = tf.py_func(
-            ops.alignment_stats,
-            [labels.indices, labels.values, self.predict.indices, self.predict.values, labels.dense_shape[0]],
-            4 * [tf.float32],
-            stateful=False,
-        )
-
-        for stat_type, stat in zip(ops.aligment_stats_ordering, stats):
-            stat.set_shape((None, ))
-            self.summaries.append(tensor_default_summaries(
-                dataset_pb2.Cigar.Name(stat_type) + "_rate",
-                stat,
-                family="losses")
-            )
 
     def input_wrapper(self, sess: tf.Session, coord: tf.train.Coordinator):
         return self.dq.start_input_processes(sess, coord)
+
+
+def extended_summaries(m: Model):
+    sums = []
+    for stat_type, stat in zip(ops.aligment_stats_ordering, tf.py_func(
+            ops.alignment_stats,
+            [m.labels.indices, m.labels.values, m.predict.indices, m.predict.values, m.labels.dense_shape[0]],
+            4 * [tf.float32],
+            stateful=False,
+    )):
+        stat.set_shape((None, ))
+        sums.append(tensor_default_summaries(
+            dataset_pb2.Cigar.Name(stat_type) + "_rate",
+            stat,
+            family="losses")
+        )
+
+    sums.extend(tensor_default_summaries("logits", m.logits))
+    return sums
 
 
 def run_args(args):
@@ -311,9 +318,6 @@ def run_args(args):
 
 
 def run(cfg: TrainConfig):
-    config = tf.ConfigProto(allow_soft_placement=True)
-    config.gpu_options.allow_growth = True
-
     os.makedirs(cfg.logdir, exist_ok=True)
     num_bases = TOTAL_BASE_PAIRS
     if cfg.surrogate_base_pair:
@@ -330,6 +334,15 @@ def run(cfg: TrainConfig):
         num_bases=TOTAL_BASE_PAIRS,
     )
 
+    global_step = tf.train.get_or_create_global_step()
+    step = tf.assign_add(global_step, 1)
+    learning_rate = tf.train.exponential_decay(
+        learning_rate=cfg.init_learning_rate,
+        global_step=global_step,
+        decay_steps=10000,
+        decay_rate=0.5,
+    )
+
     with tf.name_scope("train"):
         train_model = Model(
             input_feeder_cfg,
@@ -337,6 +350,25 @@ def run(cfg: TrainConfig):
             data_dir=cfg.train_data,
             trace=cfg.trace,
         )
+        # Basic only train summaries
+        train_model.summaries.append(
+            tf.summary.scalar("learning_rate", learning_rate),
+        )
+
+        train_model.summary = tf.summary.merge(
+            train_model.summaries
+        )
+        train_model.ext_summary = tf.summary.merge(
+            train_model.summaries + extended_summaries(train_model)
+        )
+
+    optimizer = tf.train.AdamOptimizer(learning_rate)
+    grads_and_vars = optimizer.compute_gradients(train_model.total_loss)
+    train_op = optimizer.apply_gradients(
+        [(tf.clip_by_norm(grad, cfg.grad_clipping), var)
+         for grad, var in grads_and_vars],
+        global_step=global_step
+    )
 
     with tf.name_scope("test"):
         test_model = Model(
@@ -345,51 +377,25 @@ def run(cfg: TrainConfig):
             data_dir=cfg.test_data,
             trace=cfg.trace,
         )
-
-    global_step = tf.train.get_or_create_global_step()
-    step = tf.assign_add(global_step, 1)
-
-    learning_rate = tf.train.exponential_decay(
-        learning_rate=cfg.init_learning_rate,
-        global_step=global_step,
-        decay_steps=10000,
-        decay_rate=0.5,
-    )
-    optimizer = tf.train.AdamOptimizer(learning_rate)
-    grads_and_vars = optimizer.compute_gradients(train_model.total_loss)
-
-    train_op = optimizer.apply_gradients(
-        [(tf.clip_by_norm(grad, cfg.grad_clipping), var)
-         for grad, var in grads_and_vars],
-        global_step=global_step
-    )
-
-    saver = tf.train.Saver(max_to_keep=10)
-    init_op = tf.global_variables_initializer()
-
-    # Basic only train summaries
-    train_model.summary = tf.summary.merge(
-        train_model.summaries + [
-            tf.summary.scalar("learning_rate", learning_rate),
-        ]
-    )
-
-    # Extended validation summaries
-    var_summaries = []
-    for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
-        name = var.name.split(":")[0]
-        var_summaries.extend(tensor_default_summaries(name, var))
-
-    for grad, var in grads_and_vars:
-        if grad is not None:
+        var_summaries = []
+        for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
             name = var.name.split(":")[0]
-            var_summaries.extend(tensor_default_summaries(name + "/grad", grad))
+            var_summaries.extend(tensor_default_summaries(name, var))
 
-    var_summaries.extend(tensor_default_summaries("logits", test_model.logits))
-    test_model.summary = tf.summary.merge(test_model.summaries + var_summaries)
+        for grad, var in grads_and_vars:
+            if grad is not None:
+                name = var.name.split(":")[0]
+                var_summaries.extend(tensor_default_summaries(name + "/grad", grad))
 
+        var_summaries.extend(extended_summaries(test_model))
+        test_model.summary = tf.summary.merge(test_model.summaries + var_summaries)
+
+    # Session stuff
+    init_op = tf.global_variables_initializer()
+    saver = tf.train.Saver(max_to_keep=10)
+    config = tf.ConfigProto(allow_soft_placement=True)
+    config.gpu_options.allow_growth = True
     beholder = Beholder(cfg.logdir)
-
     with tf.Session(config=config) as sess:
         if cfg.debug:
             if cfg.tensorboard_debug is None:
@@ -429,11 +435,15 @@ def run(cfg: TrainConfig):
                         )
                         opts['run_metadata'] = tf.RunMetadata()
 
+                    summary_op = train_model.summary
+                    if i % cfg.validate_every == 0:
+                        summary_op = train_model.ext_summary
+
                     _, _, loss, summary = sess.run([
                         step,
                         train_op,
                         train_model.ctc_loss,
-                        train_model.summary,
+                        summary_op,
                     ], **opts)
                     summary_writer.add_summary(summary, i)
 
