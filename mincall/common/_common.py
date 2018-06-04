@@ -1,19 +1,43 @@
 import edlib
+import re
 from minion_data import dataset_pb2
 from typing import *
+from collections import defaultdict
 import tensorflow as tf
 import voluptuous
+from mincall import bioinf_utils
 
 __all__ = [
     "decode",
     "tensor_default_summaries",
     "squggle",
     "named_tuple_helper",
+    "ext_cigar_stats",
 ]
 
 
 def decode(x):
-    return "".join(map(dataset_pb2.BasePair.Name, x))
+    return "".join([dataset_pb2.BasePair.Name(int(yy)) for yy in x])
+
+
+cigar_type = {}
+for x in bioinf_utils.CIGAR_DELETION:
+    cigar_type[x] = dataset_pb2.DELETION
+for x in bioinf_utils.CIGAR_INSERTION:
+    cigar_type[x] = dataset_pb2.INSERTION
+for x in bioinf_utils.CIGAR_MATCH:
+    cigar_type[x] = dataset_pb2.MATCH
+for x in bioinf_utils.CIGAR_MISSMATCH:
+    cigar_type[x] = dataset_pb2.MISMATCH
+
+
+def ext_cigar_stats(ext_cigar: str) -> Dict[int, int]:
+    sol = defaultdict(int)
+    for x in re.findall(r"\d+[=XIDSHM]", ext_cigar):
+        cnt = int(x[:-1])
+        op = x[-1]
+        sol[cigar_type[op]] += cnt
+    return sol
 
 
 def squggle(query: str, target: str) -> Tuple[str, str, Dict]:
@@ -58,14 +82,14 @@ def squggle(query: str, target: str) -> Tuple[str, str, Dict]:
     return qq, tt, alignment
 
 
-def tensor_default_summaries(name, tensor) -> List[tf.Summary]:
+def tensor_default_summaries(name, tensor, family=None) -> List[tf.Summary]:
     mean, var = tf.nn.moments(tensor, axes=list(range(len(tensor.shape))))
     return [
-        tf.summary.scalar(name + '/mean', mean),
-        tf.summary.scalar(name + '/stddev', tf.sqrt(var)),
-        tf.summary.scalar(name + '/max', tf.reduce_max(tensor)),
-        tf.summary.scalar(name + '/min', tf.reduce_min(tensor)),
-        tf.summary.histogram(name + '/histogram', tensor),
+        tf.summary.scalar(name + '/mean', mean, family=family),
+        tf.summary.scalar(name + '/stddev', tf.sqrt(var), family=family),
+        tf.summary.scalar(name + '/max', tf.reduce_max(tensor), family=family),
+        tf.summary.scalar(name + '/min', tf.reduce_min(tensor), family=family),
+        tf.summary.histogram(name + '/histogram', tensor, family=family),
     ]
 
 

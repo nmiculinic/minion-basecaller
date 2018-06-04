@@ -21,6 +21,8 @@ from keras import backend as K
 from keras import models
 from .models import all_models
 from mincall.common import *
+from mincall.train import ops
+from minion_data import dataset_pb2
 
 import toolz
 from tqdm import tqdm
@@ -267,6 +269,21 @@ class Model():
             top_paths=1,
             beam_width=50
         )[0][0]
+
+        stats = tf.py_func(
+            ops.alignment_stats,
+            [labels.indices, labels.values, self.predict.indices, self.predict.values, labels.dense_shape[0]],
+            4 * [tf.float32],
+            stateful=False,
+        )
+
+        for stat_type, stat in zip(ops.aligment_stats_ordering, stats):
+            stat.set_shape((None, ))
+            self.summaries.append(tensor_default_summaries(
+                dataset_pb2.Cigar.Name(stat_type) + "_rate",
+                stat,
+                family="losses")
+            )
 
     def input_wrapper(self, sess: tf.Session, coord: tf.train.Coordinator):
         return self.dq.start_input_processes(sess, coord)
