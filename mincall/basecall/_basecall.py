@@ -20,14 +20,13 @@ from minion_data import dataset_pb2
 from keras import models
 import h5py
 from mincall.train.models import custom_layers
+import scrappy
 
 import toolz
 from tqdm import tqdm
 
 logger = logging.getLogger("mincall.basecall")
 TOTAL_BASES = 4  # Total number of bases (A, C, T, G)  # Total number of bases (A, C, T, G)
-
-#TODO: ADD scrappie support!!!
 
 
 class BasecallCfg(NamedTuple):
@@ -197,6 +196,9 @@ class SignalFeeder:
                     raw_attr = input_data['Raw/Reads/']
                     read_name = list(raw_attr.keys())[0]
                     raw_signal = np.array(raw_attr[read_name + "/Signal"].value)
+                    raw_signal = scrappy.RawTable(raw_signal).trim().scale().data(
+                        as_numpy=True
+                    )
                     for i in trange(
                         0, len(raw_signal), self.jump, desc="stripes inserted"
                     ):
