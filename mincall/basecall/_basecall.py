@@ -20,13 +20,13 @@ from minion_data import dataset_pb2
 from keras import models
 import h5py
 from mincall.train.models import custom_layers
+from mincall.common import TOTAL_BASE_PAIRS, decode
 import scrappy
 
 import toolz
 from tqdm import tqdm
 
 logger = logging.getLogger("mincall.basecall")
-TOTAL_BASES = 4  # Total number of bases (A, C, T, G)  # Total number of bases (A, C, T, G)
 
 
 class BasecallCfg(NamedTuple):
@@ -304,9 +304,9 @@ class Basecall:
         self.signal_length = self.logit_processing.logit_dequeue
 
         self.n_classes = self.logits.shape[-1]
-        if self.n_classes == TOTAL_BASES + 1:
+        if self.n_classes == TOTAL_BASE_PAIRS + 1:
             self.surrogate_base_pair = False
-        elif self.n_classes == 2 * TOTAL_BASES + 1:
+        elif self.n_classes == 2 * TOTAL_BASE_PAIRS + 1:
             self.surrogate_base_pair = True
         else:
             raise ValueError(f"Not sure what to do with {self.n_classes}")
@@ -369,10 +369,7 @@ class Basecall:
                     predicted, log_prob = self.construct_stripes(
                         sess, assembly, raw_signal_len
                     )
-                    fasta = "".join([
-                        dataset_pb2.BasePair.Name(x % TOTAL_BASES)
-                        for x in predicted[0].values
-                    ])
+                    fasta = decode(predicted[0].values)
 
                     fasta_out.write(f">{fn}\n".encode("ASCII"))
                     for i in range(0, len(fasta), 80):
