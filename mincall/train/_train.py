@@ -29,8 +29,6 @@ from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
-TOTAL_BASES = 4  # Total number of bases (A, C, T, G)
-
 
 class DataDir(NamedTuple):
     name: str
@@ -317,9 +315,9 @@ def run(cfg: TrainConfig):
     config.gpu_options.allow_growth = True
 
     os.makedirs(cfg.logdir, exist_ok=True)
-    num_bases = TOTAL_BASES
+    num_bases = TOTAL_BASE_PAIRS
     if cfg.surrogate_base_pair:
-        num_bases += TOTAL_BASES
+        num_bases += TOTAL_BASE_PAIRS
     model, ratio = all_models[cfg.model_name](
         n_classes=num_bases + 1, hparams=cfg.model_hparams
     )
@@ -329,7 +327,7 @@ def run(cfg: TrainConfig):
         seq_length=cfg.seq_length,
         ratio=ratio,
         surrogate_base_pair=cfg.surrogate_base_pair,
-        num_bases=TOTAL_BASES,
+        num_bases=TOTAL_BASE_PAIRS,
     )
 
     with tf.name_scope("train"):
