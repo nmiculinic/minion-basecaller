@@ -42,7 +42,7 @@ class DataQueue():
         self,
         cfg: InputFeederCfg,
         fnames,
-        capacity=-1,
+        capacity=10000,
         min_after_deque=10,
         shuffle=True,
         trace=False,
@@ -209,8 +209,8 @@ class DataQueue():
 
             def __enter__(iself):
                 m = Manager()
-                q: Queue = m.Queue()
-                iself.poison_queue: Queue = m.Queue()
+                q: Queue = m.Queue(maxsize=256)
+                iself.poison_queue: Queue = m.Queue(maxsize=256)
 
                 iself.processes: List[Process] = []
                 for _ in range(cnt):
