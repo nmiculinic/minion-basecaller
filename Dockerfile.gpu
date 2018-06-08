@@ -59,4 +59,7 @@ WORKDIR /code
 ENV PYTHONPATH=/code
 COPY . .
 RUN ["python3.6", "setup.py", "install"]
-ENTRYPOINT ["python3.6", "-m", "mincall"]
+# ENTRYPOINT ["python3.6", "-m", "mincall"]
+
+EXPOSE 6060
+ENTRYPOINT ["profiling", "remote-profile",  "-m", "mincall", "--bind", "0.0.0.0:6060",  "--"]
