@@ -74,7 +74,6 @@ class GatedConvResidual1D(Layer):
 
 custom_layers = {ConstMultiplierLayer.__name__: ConstMultiplierLayer}
 
-
 def dummy_model(n_classes: int, hparams: str = None):
     input = layers.Input(shape=(None, 1))
     net = input
@@ -117,7 +116,37 @@ def big_01(n_classes: int, hparams: str):
     return models.Model(inputs=[input], outputs=[net]), 2 * 2
 
 
+
+
+def m270(n_classes: int, hparams: str):
+    input = layers.Input(shape=(None, 1))
+    net = input
+    block_channels = [16, 32]
+
+    for block_channel in block_channels:
+        net = layers.Conv1D(
+            block_channel, 3, padding="same", bias_regularizer=regularizers.l1(0.1)
+        )(net)
+        for _ in range(20):
+            x = net
+            net = layers.Conv1D(block_channel, 5, padding='same')(net)
+            net = layers.BatchNormalization()(net)
+            net = layers.Activation('relu')(net)
+            net = layers.Conv1D(block_channel, 5, padding='same')(net)
+            net = layers.BatchNormalization()(net)
+            net = layers.Activation('relu')(net)
+            net = ConstMultiplierLayer()(net)
+            net = layers.add([x, net])
+        net = layers.MaxPool1D(padding='same', pool_size=2)(net)
+
+    net = layers.Conv1D(n_classes, 3, padding="same")(net)
+    net = layers.BatchNormalization()(net)
+    return models.Model(inputs=[input], outputs=[net]), 2**len(block_channels)
+
+
 all_models: Dict[str, Callable[[str], models.Model]] = {
     'dummy': dummy_model,
     'big_01': big_01,
+    'm270': m270,
 }
+
