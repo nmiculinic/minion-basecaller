@@ -152,12 +152,12 @@ def chiron_like(n_classes: int, hparams: str):
         with tf.name_scope(f"block_{i}"):
             net = layers.BatchNormalization()(net)
             with tf.variable_scope('branch1'):
-                b1 = layers.Conv1D(filters=out_chan, kernel_size=1, padding='same', use_bias=False)(net)
+                b1 = layers.Conv1D(filters=out_chan, kernel_size=1, activation='linear', padding='same', use_bias=False)(net)
             with tf.variable_scope('branch2'):
                 b2 = net
-                b2 = layers.Conv1D(filters=out_chan, kernel_size=1, padding='same', use_bias=False)(b2)
-                b2 = layers.Conv1D(filters=out_chan, kernel_size=3, padding='same', use_bias=False)(b2)
-                b2 = layers.Conv1D(filters=out_chan, kernel_size=1, padding='same', use_bias=False)(b2)
+                b2 = layers.Conv1D(filters=out_chan, kernel_size=1, activation='relu', padding='same', use_bias=False)(b2)
+                b2 = layers.Conv1D(filters=out_chan, kernel_size=3, activation='relu', padding='same', use_bias=False)(b2)
+                b2 = layers.Conv1D(filters=out_chan, kernel_size=1, activation='linear', padding='same', use_bias=False)(b2)
             with tf.variable_scope('plus'):
                 net = layers.Add()([b1, b2])
                 net = layers.Activation('relu')(net)
