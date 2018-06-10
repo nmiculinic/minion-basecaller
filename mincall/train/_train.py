@@ -310,6 +310,20 @@ def run_args(args):
         },
                                 extra=voluptuous.REMOVE_EXTRA,
                                 required=True)(config)
+        if args.logdir is None:
+            formatter = logging.Formatter(
+                "%(asctime)s [%(levelname)5s]:%(name)20s: %(message)s"
+            )
+            train_cfg: TrainConfig = cfg['train']
+            os.makedirs(train_cfg.logdir, exist_ok=True)
+            fn = os.path.join(
+                train_cfg.logdir, f"{getattr(args, 'name', 'mincall')}.log"
+            )
+            h = (logging.FileHandler(fn))
+            h.setLevel(logging.DEBUG)
+            h.setFormatter(formatter)
+            logging.getLogger().addHandler(h)
+            logging.info(f"Added handler to {fn}")
         logger.info(f"Parsed config\n{pformat(cfg)}")
         run(cfg['train'])
     except voluptuous.error.Error as e:
