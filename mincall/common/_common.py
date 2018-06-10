@@ -86,15 +86,19 @@ def squggle(query: str, target: str) -> Tuple[str, str, Dict]:
     return qq, tt, alignment
 
 
-def tensor_default_summaries(name, tensor, family=None) -> List[tf.Summary]:
+def tensor_default_summaries(name, tensor, family=None, full=False) -> List[tf.Summary]:
     mean, var = tf.nn.moments(tensor, axes=list(range(len(tensor.shape))))
-    return [
+    ret = [
         tf.summary.scalar(name + '/mean', mean, family=family),
-        tf.summary.scalar(name + '/stddev', tf.sqrt(var), family=family),
-        tf.summary.scalar(name + '/max', tf.reduce_max(tensor), family=family),
-        tf.summary.scalar(name + '/min', tf.reduce_min(tensor), family=family),
         tf.summary.histogram(name + '/histogram', tensor, family=family),
     ]
+    if full:
+        ret += [
+            tf.summary.scalar(name + '/stddev', tf.sqrt(var), family=family),
+            tf.summary.scalar(name + '/max', tf.reduce_max(tensor), family=family),
+            tf.summary.scalar(name + '/min', tf.reduce_min(tensor), family=family),
+        ]
+    return ret
 
 
 def named_tuple_helper(cls, known, data):
