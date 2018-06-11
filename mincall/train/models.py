@@ -74,6 +74,7 @@ class GatedConvResidual1D(Layer):
 
 custom_layers = {ConstMultiplierLayer.__name__: ConstMultiplierLayer}
 
+
 def dummy_model(n_classes: int, hparams: str = None):
     input = layers.Input(shape=(None, 1))
     net = input
@@ -116,8 +117,6 @@ def big_01(n_classes: int, hparams: str):
     return models.Model(inputs=[input], outputs=[net]), 2 * 2
 
 
-
-
 def m270(n_classes: int, hparams: str):
     input = layers.Input(shape=(None, 1))
     net = input
@@ -125,7 +124,10 @@ def m270(n_classes: int, hparams: str):
 
     for block_channel in block_channels:
         net = layers.Conv1D(
-            block_channel, 3, padding="same", bias_regularizer=regularizers.l1(0.1)
+            block_channel,
+            3,
+            padding="same",
+            bias_regularizer=regularizers.l1(0.1)
         )(net)
         for _ in range(20):
             x = net
@@ -146,18 +148,42 @@ def m270(n_classes: int, hparams: str):
 
 def chiron_like(n_classes: int, hparams: str):
     input = layers.Input(shape=(None, 1))
-    net = input # (batch_size, sequence_len, channels)
+    net = input  # (batch_size, sequence_len, channels)
     out_chan = 256
     for i in range(3):
         with tf.name_scope(f"block_{i}"):
             net = layers.BatchNormalization()(net)
             with tf.variable_scope('branch1'):
-                b1 = layers.Conv1D(filters=out_chan, kernel_size=1, activation='linear', padding='same', use_bias=False)(net)
+                b1 = layers.Conv1D(
+                    filters=out_chan,
+                    kernel_size=1,
+                    activation='linear',
+                    padding='same',
+                    use_bias=False
+                )(net)
             with tf.variable_scope('branch2'):
                 b2 = net
-                b2 = layers.Conv1D(filters=out_chan, kernel_size=1, activation='relu', padding='same', use_bias=False)(b2)
-                b2 = layers.Conv1D(filters=out_chan, kernel_size=3, activation='relu', padding='same', use_bias=False)(b2)
-                b2 = layers.Conv1D(filters=out_chan, kernel_size=1, activation='linear', padding='same', use_bias=False)(b2)
+                b2 = layers.Conv1D(
+                    filters=out_chan,
+                    kernel_size=1,
+                    activation='relu',
+                    padding='same',
+                    use_bias=False
+                )(b2)
+                b2 = layers.Conv1D(
+                    filters=out_chan,
+                    kernel_size=3,
+                    activation='relu',
+                    padding='same',
+                    use_bias=False
+                )(b2)
+                b2 = layers.Conv1D(
+                    filters=out_chan,
+                    kernel_size=1,
+                    activation='linear',
+                    padding='same',
+                    use_bias=False
+                )(b2)
             with tf.variable_scope('plus'):
                 net = layers.Add()([b1, b2])
                 net = layers.Activation('relu')(net)
@@ -181,4 +207,3 @@ all_models: Dict[str, Callable[[str], models.Model]] = {
     'm270': m270,
     'chiron': chiron_like,
 }
-

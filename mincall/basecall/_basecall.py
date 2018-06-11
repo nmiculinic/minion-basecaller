@@ -196,9 +196,8 @@ class SignalFeeder:
                     raw_attr = input_data['Raw/Reads/']
                     read_name = list(raw_attr.keys())[0]
                     raw_signal = np.array(raw_attr[read_name + "/Signal"].value)
-                    raw_signal = scrappy.RawTable(raw_signal).trim().scale().data(
-                        as_numpy=True
-                    )
+                    raw_signal = scrappy.RawTable(raw_signal).trim().scale(
+                    ).data(as_numpy=True)
                     for i in trange(
                         0, len(raw_signal), self.jump, desc="stripes inserted"
                     ):
