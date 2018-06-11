@@ -305,9 +305,8 @@ def produce_datapoints(
                 dp = dataset_pb2.DataPoint()
                 dp.ParseFromString(f.read())
                 signal = np.array(dp.signal, dtype=np.float32)
-                signal = scrappy.RawTable(signal).scale().data(
-                    as_numpy=True
-                )
+                signal = scrappy.RawTable(signal).scale().data(as_numpy=True)
+                assert len(signal) == len(dp.signal), "Trimming occured"
                 if len(signal) < cfg.min_signal_size:
                     q.put(
                         ValueError(
@@ -316,20 +315,24 @@ def produce_datapoints(
                     )
                     continue
 
-                buff = np.zeros(cfg.seq_length, dtype=np.int32)
-
                 label_idx = 0
                 for start in range(0, len(signal), cfg.seq_length):
+                    buff = []
                     while label_idx < len(
                         dp.labels
                     ) and dp.labels[label_idx].upper < start:
                         label_idx += 1
-                    buff_idx = 0
                     while label_idx < len(
                         dp.labels
                     ) and dp.labels[label_idx].lower < start + cfg.seq_length:
-                        buff[buff_idx] = dp.labels[label_idx].pair
-                        buff_idx += 1
+                        buff.append(dp.labels[label_idx].pair)
+
+                        # Sanity check
+                        assert start <= dp.labels[label_idx].lower
+                        assert start <= dp.labels[label_idx].upper
+                        assert dp.labels[label_idx
+                                        ].lower <= start + cfg.seq_length
+
                         label_idx += 1
                     try:
                         poison.get_nowait()
@@ -337,14 +340,18 @@ def produce_datapoints(
                     except queue.Empty:
                         pass
                     signal_segment = signal[start:start + cfg.seq_length]
-                    if buff_idx == 0:
+                    if len(buff) == 0:
                         q.put(ValueError("Empty labels"))
-                    elif len(signal_segment) / cfg.ratio < buff_idx:
-                        q.put(ValueError(f"max possible labels {signal_segment/cfg.ratio}, have {buff_idx} labels"))
+                    elif len(signal_segment) / cfg.ratio < len(buff):
+                        q.put(
+                            ValueError(
+                                f"max possible labels {signal_segment/cfg.ratio}, have {len(buff)} labels"
+                            )
+                        )
                     else:
                         q.put([
                             signal_segment,
-                            np.copy(buff[:buff_idx]),
+                            np.array(buff, dtype=np.int32),
                         ])
         if not repeat:
             break

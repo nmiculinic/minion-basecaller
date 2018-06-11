@@ -270,24 +270,31 @@ class Model():
             beam_width=50
         )[0][0]
 
-
     def input_wrapper(self, sess: tf.Session, coord: tf.train.Coordinator):
         return self.dq.start_input_processes(sess, coord)
 
 
 def extended_summaries(m: Model):
     sums = []
-    for stat_type, stat in zip(ops.aligment_stats_ordering, tf.py_func(
+    for stat_type, stat in zip(
+        ops.aligment_stats_ordering,
+        tf.py_func(
             ops.alignment_stats,
-            [m.labels.indices, m.labels.values, m.predict.indices, m.predict.values, m.labels.dense_shape[0]],
+            [
+                m.labels.indices, m.labels.values, m.predict.indices,
+                m.predict.values, m.labels.dense_shape[0]
+            ],
             4 * [tf.float32],
             stateful=False,
-    )):
-        stat.set_shape((None, ))
-        sums.append(tensor_default_summaries(
-            dataset_pb2.Cigar.Name(stat_type) + "_rate",
-            stat,
-            family="losses")
+        )
+    ):
+        stat.set_shape((None,))
+        sums.append(
+            tensor_default_summaries(
+                dataset_pb2.Cigar.Name(stat_type) + "_rate",
+                stat,
+                family="losses"
+            )
         )
 
     sums.extend(tensor_default_summaries("logits", m.logits))
@@ -369,9 +376,7 @@ def run(cfg: TrainConfig):
             tf.summary.scalar("learning_rate", learning_rate),
         )
 
-        train_model.summary = tf.summary.merge(
-            train_model.summaries
-        )
+        train_model.summary = tf.summary.merge(train_model.summaries)
         train_model.ext_summary = tf.summary.merge(
             train_model.summaries + extended_summaries(train_model)
         )
@@ -399,10 +404,14 @@ def run(cfg: TrainConfig):
         for grad, var in grads_and_vars:
             if grad is not None:
                 name = var.name.split(":")[0]
-                var_summaries.extend(tensor_default_summaries(name + "/grad", grad))
+                var_summaries.extend(
+                    tensor_default_summaries(name + "/grad", grad)
+                )
 
         var_summaries.extend(extended_summaries(test_model))
-        test_model.summary = tf.summary.merge(test_model.summaries + var_summaries)
+        test_model.summary = tf.summary.merge(
+            test_model.summaries + var_summaries
+        )
 
     # Session stuff
     init_op = tf.global_variables_initializer()

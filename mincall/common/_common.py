@@ -8,20 +8,17 @@ import voluptuous
 from mincall import bioinf_utils
 
 __all__ = [
-    "decode",
-    "tensor_default_summaries",
-    "squggle",
-    "named_tuple_helper",
-    "ext_cigar_stats",
-    "TOTAL_BASE_PAIRS"
+    "decode", "tensor_default_summaries", "squggle", "named_tuple_helper",
+    "ext_cigar_stats", "TOTAL_BASE_PAIRS"
 ]
-
 
 TOTAL_BASE_PAIRS = 4  # Total number of bases (A, C, T, G)  # Total number of bases (A, C, T, G)
 
 
 def decode(x):
-    return "".join([dataset_pb2.BasePair.Name(int(yy) % TOTAL_BASE_PAIRS) for yy in x])
+    return "".join([
+        dataset_pb2.BasePair.Name(int(yy) % TOTAL_BASE_PAIRS) for yy in x
+    ])
 
 
 cigar_type = {}
@@ -86,7 +83,8 @@ def squggle(query: str, target: str) -> Tuple[str, str, Dict]:
     return qq, tt, alignment
 
 
-def tensor_default_summaries(name, tensor, family=None, full=False) -> List[tf.Summary]:
+def tensor_default_summaries(name, tensor, family=None,
+                             full=False) -> List[tf.Summary]:
     mean, var = tf.nn.moments(tensor, axes=list(range(len(tensor.shape))))
     ret = [
         tf.summary.scalar(name + '/mean', mean, family=family),
@@ -95,8 +93,12 @@ def tensor_default_summaries(name, tensor, family=None, full=False) -> List[tf.S
     if full:
         ret += [
             tf.summary.scalar(name + '/stddev', tf.sqrt(var), family=family),
-            tf.summary.scalar(name + '/max', tf.reduce_max(tensor), family=family),
-            tf.summary.scalar(name + '/min', tf.reduce_min(tensor), family=family),
+            tf.summary.scalar(
+                name + '/max', tf.reduce_max(tensor), family=family
+            ),
+            tf.summary.scalar(
+                name + '/min', tf.reduce_min(tensor), family=family
+            ),
         ]
     return ret
 
