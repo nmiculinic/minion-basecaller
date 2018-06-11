@@ -120,7 +120,7 @@ def big_01(n_classes: int, hparams: str):
 def m270(n_classes: int, hparams: str):
     input = layers.Input(shape=(None, 1))
     net = input
-    block_channels = [16, 32]
+    block_channels = [32, 64]
 
     for block_channel in block_channels:
         net = layers.Conv1D(
@@ -131,10 +131,10 @@ def m270(n_classes: int, hparams: str):
         )(net)
         for _ in range(20):
             x = net
-            net = layers.Conv1D(block_channel, 5, padding='same')(net)
+            net = layers.Conv1D(block_channel, 3, padding='same')(net)
             net = layers.BatchNormalization()(net)
             net = layers.Activation('relu')(net)
-            net = layers.Conv1D(block_channel, 5, padding='same')(net)
+            net = layers.Conv1D(block_channel, 3, padding='same')(net)
             net = layers.BatchNormalization()(net)
             net = layers.Activation('relu')(net)
             net = ConstMultiplierLayer()(net)
