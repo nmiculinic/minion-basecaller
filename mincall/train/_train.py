@@ -226,9 +226,9 @@ class Model():
         self.predict = tf.nn.ctc_beam_search_decoder(
             inputs=self.logits,
             sequence_length=seq_len,
-            merge_repeated=False,
+            merge_repeated=cfg.surrogate_base_pair,  # Gotta merge if we have surrogate_base_pairs
             top_paths=1,
-            beam_width=50
+            beam_width=100,
         )[0][0]
 
         # self.ctc_loss = tf.reduce_mean(self.losses)
