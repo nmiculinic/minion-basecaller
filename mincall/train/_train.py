@@ -223,6 +223,14 @@ class Model():
             time_major=True,
         )
 
+        self.predict = tf.nn.ctc_beam_search_decoder(
+            inputs=self.logits,
+            sequence_length=seq_len,
+            merge_repeated=False,
+            top_paths=1,
+            beam_width=50
+        )[0][0]
+
         # self.ctc_loss = tf.reduce_mean(self.losses)
         self.ctc_loss = tf.reduce_mean(
             tf.boolean_mask(
@@ -262,13 +270,6 @@ class Model():
             *self.dq.summaries,
         ]
 
-        self.predict = tf.nn.ctc_beam_search_decoder(
-            inputs=self.logits,
-            sequence_length=seq_len,
-            merge_repeated=False,
-            top_paths=1,
-            beam_width=50
-        )[0][0]
 
     def input_wrapper(self, sess: tf.Session, coord: tf.train.Coordinator):
         return self.dq.start_input_processes(sess, coord)
