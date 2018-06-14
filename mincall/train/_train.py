@@ -341,6 +341,7 @@ def run(cfg: TrainConfig):
     model, ratio = all_models[cfg.model_name](
         n_classes=num_bases + 1, hparams=cfg.model_hparams
     )
+    logger.info(f"Compression ratio: {ratio}")
 
     input_feeder_cfg = InputFeederCfg(
         batch_size=cfg.batch_size,

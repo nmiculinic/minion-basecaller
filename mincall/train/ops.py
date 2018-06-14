@@ -51,11 +51,13 @@ def alignment_stats(
             msg += "readl:  " + str(read_len) + "\n"
             msg += "==================\n"
             logging.info(msg)
-
-    sol=[
+    sol = [
         np.array(sol[op], dtype=np.float32) for op in aligment_stats_ordering
     ]
-    logging.info(f"sol: {pformat(sol)}")
+    sol_data = {
+        dataset_pb2.Cigar.Name(k): v for k, v in zip(aligment_stats_ordering, sol)
+    }
+    logging.info(f"sol: \n{pd.DataFrame(sol_data)}")
     return sol
 
 
