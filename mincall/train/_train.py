@@ -187,6 +187,8 @@ class Model():
                 cfg, self.dataset, capacity=10 * cfg.batch_size, trace=trace
             )
         input_signal: tf.Tensor = self.dq.batch_signal
+        input_signal = tf.Print(input_signal, [tf.shape(input_signal)], first_n=1, summarize=10, message="input signal shape, [batch_size,max_time, 1]")
+
         labels: tf.SparseTensor = self.dq.batch_labels
         signal_len: tf.Tensor = self.dq.batch_signal_len
 
@@ -195,24 +197,12 @@ class Model():
         self.logits = tf.transpose(model(input_signal), [1, 0, 2]
                                   )  # [max_time, batch_size, class_num]
         self.logger.info(f"Logits shape: {self.logits.shape}")
+        self.logits = tf.Print(self.logits, [tf.shape(self.logits)], first_n=1, summarize=10, message="logits shape [max_time, batch_size, class_num]")
 
         seq_len = tf.cast(
             tf.floor_div(signal_len + cfg.ratio - 1, cfg.ratio), tf.int32
         )  # Round up
-
-        if trace:
-            self.logits = tf.Print(
-                self.logits, [
-                    self.logits,
-                    tf.shape(self.logits),
-                    tf.shape(input_signal), labels.indices, labels.values,
-                    labels.dense_shape
-                ],
-                message="various debug out"
-            )
-            seq_len = tf.Print(
-                seq_len, [tf.shape(seq_len), seq_len], message="seq len"
-            )
+        seq_len = tf.Print(seq_len, [tf.shape(seq_len), seq_len], first_n=5, summarize=15, message="seq_len [expected around max_time]")
 
         self.losses = tf.nn.ctc_loss(
             labels=labels,
@@ -231,16 +221,20 @@ class Model():
             beam_width=100,
         )[0][0]
 
+        self.finite_mask = tf.logical_not(
+            tf.logical_or(
+                tf.is_nan(self.losses),
+                tf.is_inf(self.losses),
+            )
+        )
+        self.p = tf.reduce_mean(tf.cast(self.finite_mask, tf.int32))
+        self.p = tf.Print(self.p, [self.p], first_n=10, message="%finite")
+
         # self.ctc_loss = tf.reduce_mean(self.losses)
         self.ctc_loss = tf.reduce_mean(
             tf.boolean_mask(
                 self.losses,
-                tf.logical_not(
-                    tf.logical_or(
-                        tf.is_nan(self.losses),
-                        tf.is_inf(self.losses),
-                    )
-                )
+                self.finite_mask,
             )
         )
         if model.losses:
@@ -260,13 +254,14 @@ class Model():
         self.total_loss = self.ctc_loss + self.regularization_loss
 
         self.summaries = [
-            tf.summary.scalar(f'total_loss', self.total_loss, family="losses"),
-            tf.summary.scalar(f'ctc_loss', self.ctc_loss, family="losses"),
+            tf.summary.scalar(f'total_loss', self.total_loss),
+            tf.summary.scalar(f'ctc_loss', self.ctc_loss),
             tf.summary.scalar(
                 f'regularization_loss',
                 self.regularization_loss,
                 family="losses"
             ),
+            tf.summary.scalar("finite_percent", self.p),
             *self.dq.summaries,
         ]
 
@@ -294,7 +289,6 @@ def extended_summaries(m: Model):
             tensor_default_summaries(
                 dataset_pb2.Cigar.Name(stat_type) + "_rate",
                 stat,
-                family="losses"
             )
         )
 
@@ -347,6 +341,7 @@ def run(cfg: TrainConfig):
     model, ratio = all_models[cfg.model_name](
         n_classes=num_bases + 1, hparams=cfg.model_hparams
     )
+    logger.info(f"Compression ratio: {ratio}")
 
     input_feeder_cfg = InputFeederCfg(
         batch_size=cfg.batch_size,
