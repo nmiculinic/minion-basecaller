@@ -5,6 +5,9 @@ import numpy as np
 from minion_data import dataset_pb2
 from mincall.common import *
 import edlib
+import logging
+from pprint import pformat
+import random
 
 aligment_stats_ordering = [
     dataset_pb2.MATCH, dataset_pb2.MISMATCH, dataset_pb2.INSERTION,
@@ -35,23 +38,25 @@ def alignment_stats(
         read_len = stats[dataset_pb2.MISMATCH
                         ] + stats[dataset_pb2.MATCH
                                  ] + stats[dataset_pb2.DELETION]
-        if debug:
-            print("query: ", query)
-            print("target:", target)
-            print("cigar: ", edlib_res['cigar'])
-            print(
-                "stats: ",
-                {dataset_pb2.Cigar.Name(k): v
-                 for k, v in stats.items()}
-            )
-            print("readl: ", read_len)
-            print("==================")
 
         for op in aligment_stats_ordering:
             sol[op].append(stats[op] / read_len)
-    return [
+        if x < 5:
+            msg = "edlib results\n"
+            msg += "query:  " + query + "\n"
+            msg += "target: " + target + "\n"
+            msg += "cigar:  " + edlib_res['cigar'] + "\n"
+            msg += pformat({dataset_pb2.Cigar.Name(k): v
+                            for k, v in stats.items()}) + "\n"
+            msg += "readl:  " + str(read_len) + "\n"
+            msg += "==================\n"
+            logging.info(msg)
+
+    sol=[
         np.array(sol[op], dtype=np.float32) for op in aligment_stats_ordering
     ]
+    logging.info(f"sol: {pformat(sol)}")
+    return sol
 
 
 if __name__ == "__main__":
