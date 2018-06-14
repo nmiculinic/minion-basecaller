@@ -221,20 +221,20 @@ class Model():
             beam_width=100,
         )[0][0]
 
-        self.non_finite_mask = tf.logical_not(
+        self.finite_mask = tf.logical_not(
             tf.logical_or(
                 tf.is_nan(self.losses),
                 tf.is_inf(self.losses),
             )
         )
-        self.p = tf.reduce_mean(tf.cast(self.non_finite_mask, tf.int32))
+        self.p = tf.reduce_mean(tf.cast(self.finite_mask, tf.int32))
         self.p = tf.Print(self.p, [self.p], first_n=10, message="%finite")
 
         # self.ctc_loss = tf.reduce_mean(self.losses)
         self.ctc_loss = tf.reduce_mean(
             tf.boolean_mask(
                 self.losses,
-                self.non_finite_mask,
+                self.finite_mask,
             )
         )
         if model.losses:
