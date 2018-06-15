@@ -35,6 +35,9 @@ RUN python3.6 -m pip --no-cache-dir install \
         && \
     python3.6 -m ipykernel.kernelspec
 
+RUN curl -L https://github.com/Yelp/dumb-init/releases/download/v1.2.1/dumb-init_1.2.1_amd64.deb --output dump-init.deb && \
+    dpkg -i dump-init.deb && \
+    rm -Rf dump-init.deb
 # TensorBoard
 EXPOSE 6006
 
@@ -49,4 +52,4 @@ WORKDIR /code
 ENV PYTHONPATH=/code
 COPY . .
 RUN ["python3.6", "setup.py", "install"]
-ENTRYPOINT ["python3.6", "-m", "mincall"]
+ENTRYPOINT ["/usr/bin/dumb-init", "--", "python3.6", "-m", "mincall"]
