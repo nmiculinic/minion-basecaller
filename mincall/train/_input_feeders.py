@@ -339,6 +339,10 @@ def produce_datapoints(
                         return
                     except queue.Empty:
                         pass
+                    except BrokenPipeError:
+                        logging.warning("Got BrokenPipeError error while polling poison queue, quiting")
+                        return
+
                     signal_segment = signal[start:start + cfg.seq_length]
                     if len(buff) == 0:
                         q.put(ValueError("Empty labels"))
@@ -349,9 +353,13 @@ def produce_datapoints(
                             )
                         )
                     else:
-                        q.put([
-                            signal_segment,
-                            np.array(buff, dtype=np.int32),
-                        ])
+                        try:
+                            q.put([
+                                signal_segment,
+                                np.array(buff, dtype=np.int32),
+                            ])
+                        except EOFError:
+                            logging.warning("Got EOF error while pushing new signal into queue, ignoring")
+
         if not repeat:
             break
