@@ -9,7 +9,7 @@ from mincall import bioinf_utils
 
 __all__ = [
     "decode", "tensor_default_summaries", "squggle", "named_tuple_helper",
-    "ext_cigar_stats", "TOTAL_BASE_PAIRS"
+    "ext_cigar_stats", "TOTAL_BASE_PAIRS", "expand_cigar"
 ]
 
 TOTAL_BASE_PAIRS = 4  # Total number of bases (A, C, T, G)  # Total number of bases (A, C, T, G)
@@ -38,6 +38,19 @@ def ext_cigar_stats(ext_cigar: str) -> Dict[int, int]:
         cnt = int(x[:-1])
         op = x[-1]
         sol[cigar_type[op]] += cnt
+    return sol
+
+
+def expand_cigar(ext_cigar):
+    """Expands compressed cigar (e.g. 10D2=) into expanded form (e.g. DDDDDDDDDD==)
+    :param ext_cigar:
+    :return:
+    """
+    sol = ""
+    for x in re.findall(r"\d+[=XIDSHM]", ext_cigar):
+        cnt = int(x[:-1])
+        op = x[-1]
+        sol += op * cnt
     return sol
 
 

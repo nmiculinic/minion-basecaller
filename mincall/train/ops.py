@@ -44,9 +44,15 @@ def alignment_stats(
             sol[op].append(stats[op] / read_len)
         if x < 5:
             msg = "edlib results\n"
-            msg += "query:  " + query + "\n"
-            msg += "target: " + target + "\n"
-            msg += "cigar:  " + edlib_res['cigar'] + "\n"
+            s_query, s_target, _ = squggle(query, target)
+            exp_cigar = expand_cigar(edlib_res['cigar'])
+
+            for i in range(0, len(s_query), 80):
+                msg += "query:  " + s_query[i:i+80] + "\n"
+                msg += "target: " + s_target[i:i + 80] + "\n"
+                msg += "cigar : " + exp_cigar[i:i + 80] + "\n"
+
+            msg += "full cigar:  " + edlib_res['cigar'] + "\n"
             msg += pformat({dataset_pb2.Cigar.Name(k): v
                             for k, v in stats.items()}) + "\n"
             msg += "readl:  " + str(read_len) + "\n"
