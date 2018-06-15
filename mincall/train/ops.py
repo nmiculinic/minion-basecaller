@@ -7,6 +7,7 @@ from mincall.common import *
 import edlib
 import logging
 from pprint import pformat
+import cytoolz as toolz
 import random
 
 aligment_stats_ordering = [
@@ -49,6 +50,16 @@ def alignment_stats(
             msg += pformat({dataset_pb2.Cigar.Name(k): v
                             for k, v in stats.items()}) + "\n"
             msg += "readl:  " + str(read_len) + "\n"
+            msg += "Stats\n" + str(pd.DataFrame({
+                "query": toolz.merge(
+                    toolz.frequencies(query),
+                    toolz.keymap(lambda x: "".join(x), toolz.frequencies(toolz.sliding_window(2, query))),
+                ),
+                "target": toolz.merge(
+                    toolz.frequencies(target),
+                    toolz.keymap(lambda x: "".join(x), toolz.frequencies(toolz.sliding_window(2, target))),
+                ),
+            })) + "\n"
             msg += "==================\n"
             logging.info(msg)
     sol = [
