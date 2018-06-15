@@ -51,7 +51,10 @@ def alignment_stats(
                 msg += "query:  " + s_query[i:i+80] + "\n"
                 msg += "target: " + s_target[i:i + 80] + "\n"
                 msg += "cigar : " + exp_cigar[i:i + 80] + "\n"
+                msg += "--------" + 80 * "-" + "\n"
 
+            msg += "query:  " + query + "\n"
+            msg += "target: " + target + "\n"
             msg += "full cigar:  " + edlib_res['cigar'] + "\n"
             msg += pformat({dataset_pb2.Cigar.Name(k): v
                             for k, v in stats.items()}) + "\n"
