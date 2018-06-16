@@ -36,10 +36,18 @@ class ConstMultiplierLayer(Layer):
 custom_layers = {ConstMultiplierLayer.__name__: ConstMultiplierLayer}
 
 
-def dummy_model(n_classes: int, hparams: str = None):
+class DummyCfg(NamedTuple):
+    num_layers: int
+
+    @classmethod
+    def scheme(cls, data):
+        return named_tuple_helper(cls, {}, data)
+
+def dummy_model(n_classes: int, hparams: Dict):
+    cfg: DummyCfg = DummyCfg.scheme(hparams)
     input = layers.Input(shape=(None, 1))
     net = input
-    for _ in range(5):
+    for _ in range(cfg.num_layers):
         net = layers.BatchNormalization()(net)
         net = layers.Conv1D(
             10,
@@ -54,14 +62,23 @@ def dummy_model(n_classes: int, hparams: str = None):
     return models.Model(inputs=[input], outputs=[net]), 1
 
 
-def big_01(n_classes: int, hparams: str):
+class Big01Cfg(NamedTuple):
+    num_blocks: int
+
+    @classmethod
+    def scheme(cls, data):
+        return named_tuple_helper(cls, {}, data)
+
+
+def big_01(n_classes: int, hparams: Dict):
+    cfg: Big01Cfg = Big01Cfg.scheme(hparams)
     input = layers.Input(shape=(None, 1))
     net = layers.BatchNormalization()(input)
     net = layers.Conv1D(
         256, 3, padding="same", bias_regularizer=regularizers.l1(0.1)
     )(net)
 
-    for _ in range(2):
+    for _ in range(cfg.num_blocks):
         x = net
         net = layers.Conv1D(256, 5, padding='same')(net)
         net = layers.BatchNormalization()(net)
@@ -75,9 +92,7 @@ def big_01(n_classes: int, hparams: str):
 
     net = layers.Conv1D(n_classes, 3, padding="same")(net)
     net = layers.BatchNormalization()(net)
-    return models.Model(inputs=[input], outputs=[net]), 2 * 2
-
-
+    return models.Model(inputs=[input], outputs=[net]), 2 ** cfg.num_blocks
 
 
 all_models: Dict[str, Callable[[str], models.Model]] = {

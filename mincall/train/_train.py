@@ -46,70 +46,37 @@ class DataDir(NamedTuple):
 
 
 class TrainConfig(NamedTuple):
+    model_name: str
     train_data: List[DataDir]
     test_data: List[DataDir]
-    batch_size: int
-    seq_length: int
-    train_steps: int
-    trace: bool
     logdir: str
-    validate_every: int
-    save_every: int
-    debug: bool
-    tensorboard_debug: str
-    run_trace_every: int
-    model_name: str
-    model_hparams: Dict
-    grad_clipping: float
+    seq_length: int
+    batch_size: int
     surrogate_base_pair: bool
+
+    train_steps: int
     init_learning_rate: float
     lr_decay_steps: int
     lr_decay_rate: float
 
+    model_hparams: dict = {}
+    grad_clipping: float = 10.0
+    validate_every: int = 50
+    run_trace_every: int = 5000
+    save_every: int = 10000
+
+    tensorboard_debug: str = None
+    debug: bool = False
+    trace: bool = False
+
     @classmethod
     def schema(cls, data):
-        return cls(
-            **voluptuous.Schema({
-                'train_data': [DataDir.schema],
-                'test_data': [DataDir.schema],
-                'batch_size':
-                    int,
-                'seq_length':
-                    int,
-                voluptuous.Optional('train_steps', default=1000):
-                    int,
-                voluptuous.Optional('trace', default=False):
-                    bool,
-                'logdir':
-                    str,
-                voluptuous.Optional('save_every', default=2000):
-                    int,
-                voluptuous.Optional('run_trace_every', default=5000):
-                    int,
-                voluptuous.Optional('validate_every', default=50):
-                    int,
-                voluptuous.Optional('debug', default=False):
-                    bool,
-                voluptuous.Optional('tensorboard_debug', default=None):
-                    voluptuous.Any(str, None),
-                voluptuous.Optional('model_name', default='dummy'):
-                    str,
-                voluptuous.Optional('model_hparams', default={}):
-                    dict,
-                voluptuous.Optional('grad_clipping', default=10.0):
-                    voluptuous.Coerce(float),
-                voluptuous.Optional('surrogate_base_pair', default=False):
-                    bool,
-                "init_learning_rate":
-                    voluptuous.Coerce(float),
-                "lr_decay_steps":
-                    voluptuous.Coerce(int),
-                "lr_decay_rate":
-                    voluptuous.Coerce(float),
-            },
-                                required=True)(data)
-        )
-
+        return named_tuple_helper(cls, {
+            'train_data': [DataDir.schema],
+            'test_data': [DataDir.schema],
+            voluptuous.Optional('tensorboard_debug', default=None):
+                voluptuous.Any(str, None),
+        }, data)
 
 def add_args(parser: argparse.ArgumentParser):
     parser.add_argument("--config", "-c", help="config file", required=True)
