@@ -43,7 +43,7 @@ ENV TENSORFLOW_SRC_PATH=/opt/tensorflow-1.8.0
 RUN ls $TENSORFLOW_SRC_PATH
 
 WORKDIR /opt
-RUN wget --quiet http://github.com/baidu-research/warp-ctc/archive/master.zip -O warp_ctc.zip && \
+RUN wget --quiet http://github.com/nmiculinic/warp-ctc/archive/master.zip -O warp_ctc.zip && \
     unzip -q warp_ctc.zip -d /opt && \
     mv warp-ctc-master warp-ctc && \
     rm warp_ctc.zip && \
