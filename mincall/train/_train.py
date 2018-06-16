@@ -395,8 +395,8 @@ def run(cfg: TrainConfig):
     learning_rate = tf.train.exponential_decay(
         learning_rate=cfg.init_learning_rate,
         global_step=global_step,
-        decay_steps=10000,
-        decay_rate=0.5,
+        decay_steps=cfg.lr_decay_steps,
+        decay_rate=cfg.lr_decay_rate,
     )
 
     with tf.name_scope("train"):
