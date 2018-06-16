@@ -180,7 +180,7 @@ class Model():
                 f"Added {len(dps)} datapoint from {x.name} to train set; dir: {x.dir}"
             )
 
-        self.logger = logging.getLogger(__name__)
+        self._logger = logging.getLogger(__name__)
         self.learning_phase = K.learning_phase()
         with K.name_scope("data_in"):
             self.dq = DataQueue(
@@ -205,7 +205,7 @@ class Model():
 
         self.logits = tf.transpose(model(input_signal), [1, 0, 2]
                                   )  # [max_time, batch_size, class_num]
-        self.logger.info(f"Logits shape: {self.logits.shape}")
+        self._logger.info(f"Logits shape: {self.logits.shape}")
         self.logits = tf.Print(
             self.logits, [tf.shape(self.logits)],
             first_n=1,
@@ -241,20 +241,18 @@ class Model():
             beam_width=100,
         )[0][0]
 
-        self.finite_mask = tf.logical_not(
+        finite_mask = tf.logical_not(
             tf.logical_or(
                 tf.is_nan(self.losses),
                 tf.is_inf(self.losses),
             )
         )
-        self.p = tf.reduce_mean(tf.cast(self.finite_mask, tf.int32))
-        self.p = tf.Print(self.p, [self.p], first_n=10, message="%finite")
 
         # self.ctc_loss = tf.reduce_mean(self.losses)
         self.ctc_loss = tf.reduce_mean(
             tf.boolean_mask(
                 self.losses,
-                self.finite_mask,
+                finite_mask,
             )
         )
         if model.losses:
@@ -273,6 +271,8 @@ class Model():
 
         self.total_loss = self.ctc_loss + self.regularization_loss
 
+        percent_finite = tf.reduce_mean(tf.cast(finite_mask, tf.int32))
+        percent_finite = tf.Print(percent_finite, [percent_finite], first_n=10, message="%finite")
         self.summaries = [
             tf.summary.scalar(f'total_loss', self.total_loss),
             tf.summary.scalar(f'ctc_loss', self.ctc_loss),
@@ -281,7 +281,7 @@ class Model():
                 self.regularization_loss,
                 family="losses"
             ),
-            tf.summary.scalar("finite_percent", self.p),
+            tf.summary.scalar("finite_percent", percent_finite),
             *self.dq.summaries,
         ]
 
