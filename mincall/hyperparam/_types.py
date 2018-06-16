@@ -19,3 +19,7 @@ class Param(NamedTuple):
                 "double",
             ])}, data
         )
+
+
+class Observation(NamedTuple):
+    metric: float

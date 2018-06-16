@@ -30,6 +30,7 @@ hyperparam:
       min: 2
       max: 5
       type: "int"
+  work_dir: "logs"
   surrogate_base_pair: false
   init_learning_rate: !!float 1e-4
   train_steps: 60

@@ -13,8 +13,10 @@ from mincall.common import *
 from mincall.train._train import DataDir, TrainConfig
 from voluptuous.humanize import humanize_error
 from ._solvers import AbstractSolver, RandomSolver
-from ._types import Param
+from ._types import Param, Observation
 import sys
+
+hyperparam_logger = logging.getLogger(".".join(__name__.split(".")[:-1]))
 
 
 class HyperParamCfg(NamedTuple):
@@ -32,7 +34,7 @@ class HyperParamCfg(NamedTuple):
 
     model_hparams: Dict[str, Param]
 
-    work_dir: str = "."
+    work_dir: str
     grad_clipping: float = 10.0
     validate_every: int = 50
     run_trace_every: int = 5000
@@ -52,13 +54,13 @@ class HyperParamCfg(NamedTuple):
 
 
 def run_args(args: argparse.Namespace):
+    logger = hyperparam_logger
     with open(args.config) as f:
         config = yaml.load(f)
     for k, v in vars(args).items():
         if v is not None and "." in k:
             config = toolz.assoc_in(config, k.split("."), v)
             print(k, v)
-    logger = logging.getLogger(__name__)
     try:
         cfg = voluptuous.Schema({
             'hyperparam': HyperParamCfg.schema,
@@ -81,7 +83,7 @@ def run_args(args: argparse.Namespace):
     h = (logging.FileHandler(fn))
     h.setLevel(logging.DEBUG)
     h.setFormatter(formatter)
-    logging.getLogger().addHandler(h)
+    hyperparam_logger.addHandler(h)
     logging.info(f"Added handler to {fn}")
     logger.info(f"Parsed config\n{pformat(cfg)}")
     run(cfg)
@@ -138,6 +140,7 @@ def subs_dict(x, subs: Dict) -> Dict:
 
 
 def run(cfg: HyperParamCfg):
+    logger = hyperparam_logger
     train_cfg, params = make_dict(cfg, {})
     train_cfg = toolz.keyfilter(
         lambda x: x in TrainConfig.__annotations__.keys(), train_cfg
@@ -148,10 +151,9 @@ def run(cfg: HyperParamCfg):
         assigement = solver.new_assignment()
         concrete_params = assigement.params
         folder = os.path.normpath(
-            os.path.abspath(
-                os.path.join(cfg.work_dir, "%02d-%s" % (i, assigement.name))
-            )
+            os.path.abspath(os.path.join(cfg.work_dir, assigement.name))
         )
+        logger.info(f"Starting {assigement.name}")
         cfg_path = os.path.join(folder, "config.yml")
         os.makedirs(folder, exist_ok=False)
 
@@ -165,9 +167,13 @@ def run(cfg: HyperParamCfg):
             },
                            stream=f,
                            default_flow_style=False)
-        _train.run_args(argparse.Namespace(
-            config=cfg_path,
-            logdir=None,
-        ))
+        obs = Observation(
+            metric=_train.
+            run_args(argparse.Namespace(
+                config=cfg_path,
+                logdir=None,
+            ))
+        )
+        solver.report(assigement, obs)
         if i > 20:
             break

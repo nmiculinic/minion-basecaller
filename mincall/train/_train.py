@@ -502,11 +502,16 @@ def run(cfg: TrainConfig):
                             global_step=global_step
                         )
                         logger.info(f"Saved new model checkpoint")
+                mean_val_loss = np.mean([
+                    log_validation(cfg, sess, None, None, test_model)
+                    for _ in range(5)
+                ])
                 coord.request_stop()
                 p = os.path.join(cfg.logdir, f"full-model.save")
                 model.save(p, overwrite=True, include_optimizer=False)
                 logger.info(f"Finished training saved model to {p}")
             logger.info(f"Input queues exited ok")
+            return mean_val_loss
         finally:
             coord.request_stop()
             coord.join(stop_grace_period_secs=5)
@@ -532,7 +537,8 @@ def log_validation(
     logger.info(
         f"Logits[{logits.shape}]: describe:{pformat(stats.describe(logits, axis=None))}"
     )
-    summary_writer.add_summary(test_summary, step)
+    if summary_writer is not None:
+        summary_writer.add_summary(test_summary, step)
     return val_loss
 
 

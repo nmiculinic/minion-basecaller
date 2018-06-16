@@ -1,4 +1,5 @@
 import edlib
+import logging
 import re
 from minion_data import dataset_pb2
 from typing import *
