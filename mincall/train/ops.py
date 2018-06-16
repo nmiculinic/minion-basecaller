@@ -121,13 +121,13 @@ def alignment_stats(
 if __name__ == "__main__":
     labels = tf.sparse_placeholder(tf.float32, name="labels")
     pred = tf.sparse_placeholder(tf.float32, name="pred")
-    stats, _ = tf.py_func(
+    *stats, _ = tf.py_func(
         alignment_stats,
         [
             labels.indices, labels.values, pred.indices, pred.values,
             tf.constant(5)
         ],
-        4 * [tf.float32],
+        5 * [tf.float32],
         stateful=False,
     )
     match, mismatch, insertion, deletion = stats
