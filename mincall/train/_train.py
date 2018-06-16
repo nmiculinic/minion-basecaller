@@ -369,6 +369,7 @@ def run_args(args):
 def run(cfg: TrainConfig):
     if cfg.use_warp_ctc:
         import warpctc_tensorflow
+        logger.info("Using warpctc_tensorflow GPU kernel")
         # https://github.com/baidu-research/warp-ctc/tree/master/tensorflow_binding
     os.makedirs(cfg.logdir, exist_ok=True)
     num_bases = TOTAL_BASE_PAIRS
