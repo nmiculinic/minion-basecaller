@@ -184,7 +184,7 @@ class Model():
         self.learning_phase = K.learning_phase()
         with K.name_scope("data_in"):
             self.dq = DataQueue(
-                cfg, self.dataset, capacity=10 * cfg.batch_size, trace=trace
+                cfg, self.dataset, capacity=10 * cfg.batch_size, trace=trace, min_after_deque=2 * cfg.batch_size
             )
         input_signal: tf.Tensor = self.dq.batch_signal
         input_signal = tf.Print(

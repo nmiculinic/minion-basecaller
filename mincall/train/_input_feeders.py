@@ -43,7 +43,7 @@ class DataQueue():
         cfg: InputFeederCfg,
         fnames,
         capacity=10000,
-        min_after_deque=100,
+        min_after_deque=10,
         shuffle=True,
         trace=False,
     ):
