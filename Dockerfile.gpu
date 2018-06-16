@@ -42,19 +42,6 @@ RUN wget --quiet http://github.com/tensorflow/tensorflow/archive/v1.8.0.zip -O t
 ENV TENSORFLOW_SRC_PATH=/opt/tensorflow-1.8.0
 RUN ls $TENSORFLOW_SRC_PATH
 
-WORKDIR /opt
-RUN wget --quiet http://github.com/nmiculinic/warp-ctc/archive/master.zip -O warp_ctc.zip && \
-    unzip -q warp_ctc.zip -d /opt && \
-    mv warp-ctc-master warp-ctc && \
-    rm warp_ctc.zip && \
-    ls
-
-WORKDIR /opt/warp-ctc
-RUN mkdir build
-WORKDIR /opt/warp-ctc/build
-RUN cmake .. && make
-ENV WARP_CTC_PATH=/opt/warp-ctc/build
-
 RUN curl https://bootstrap.pypa.io/get-pip.py | python3.6
 
 RUN python3.6 -m pip --no-cache-dir install \
@@ -71,12 +58,26 @@ RUN python3.6 -m pip --no-cache-dir install \
         && \
     python3.6 -m ipykernel.kernelspec
 
-# TensorBoard
-EXPOSE 6006
-
 RUN curl -L https://github.com/Yelp/dumb-init/releases/download/v1.2.1/dumb-init_1.2.1_amd64.deb --output dump-init.deb && \
     dpkg -i dump-init.deb && \
     rm -Rf dump-init.deb
+
+WORKDIR /opt
+RUN wget --quiet http://github.com/nmiculinic/warp-ctc/archive/master.zip -O warp_ctc.zip && \
+    unzip -q warp_ctc.zip -d /opt && \
+    mv warp-ctc-master warp-ctc && \
+    rm warp_ctc.zip && \
+    ls
+
+WORKDIR /opt/warp-ctc
+RUN mkdir build
+WORKDIR /opt/warp-ctc/build
+RUN cmake .. && make
+ENV WARP_CTC_PATH=/opt/warp-ctc/build
+
+# TensorBoard
+EXPOSE 6006
+
 
 # For CUDA profiling, TensorFlow requires CUPTI.
 ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
