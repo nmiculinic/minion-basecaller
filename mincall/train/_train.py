@@ -184,7 +184,11 @@ class Model():
         self.learning_phase = K.learning_phase()
         with K.name_scope("data_in"):
             self.dq = DataQueue(
-                cfg, self.dataset, capacity=10 * cfg.batch_size, trace=trace, min_after_deque=2 * cfg.batch_size
+                cfg,
+                self.dataset,
+                capacity=10 * cfg.batch_size,
+                trace=trace,
+                min_after_deque=2 * cfg.batch_size
             )
         input_signal: tf.Tensor = self.dq.batch_signal
         input_signal = tf.Print(
@@ -294,14 +298,11 @@ def extended_summaries(m: Model):
             m.labels.indices, m.labels.values, m.predict.indices,
             m.predict.values, m.labels.dense_shape[0]
         ],
-        (len(ops.aligment_stats_ordering) + 1)* [tf.float32],
+        (len(ops.aligment_stats_ordering) + 1) * [tf.float32],
         stateful=False,
     )
 
-    for stat_type, stat in zip(
-        ops.aligment_stats_ordering,
-        alignment_stats
-    ):
+    for stat_type, stat in zip(ops.aligment_stats_ordering, alignment_stats):
         stat.set_shape((None,))
         sums.append(
             tensor_default_summaries(
@@ -317,12 +318,15 @@ def extended_summaries(m: Model):
     ))
     sums.extend(tensor_default_summaries("logits", m.logits))
 
-    sums.append( tf.summary.image(
-            "logits", tf.expand_dims(
+    sums.append(
+        tf.summary.image(
+            "logits",
+            tf.expand_dims(
                 tf.nn.softmax(tf.transpose(m.logits, [1, 2, 0])),
                 -1,
             )
-        ))
+        )
+    )
     return sums
 
 
@@ -503,7 +507,9 @@ def run(cfg: TrainConfig):
                     #  Validate hook
                     if step % cfg.validate_every == 0:
                         beholder.update(session=sess)
-                        val_loss = log_validation(cfg, sess, step, summary_writer, test_model)
+                        val_loss = log_validation(
+                            cfg, sess, step, summary_writer, test_model
+                        )
 
                     pbar.set_postfix(
                         loss=loss, val_loss=val_loss, refresh=False
@@ -526,7 +532,10 @@ def run(cfg: TrainConfig):
             coord.join(stop_grace_period_secs=5)
 
 
-def log_validation(cfg: TrainConfig, sess: tf.Session, step: int, summary_writer: tf.summary.FileWriter, test_model: Model):
+def log_validation(
+    cfg: TrainConfig, sess: tf.Session, step: int,
+    summary_writer: tf.summary.FileWriter, test_model: Model
+):
     logits, predict, lb, val_loss, losses, test_summary = sess.run(
         [
             test_model.logits,
@@ -547,20 +556,15 @@ def log_validation(cfg: TrainConfig, sess: tf.Session, step: int, summary_writer
     return val_loss
 
 
-def log_trace(cfg: TrainConfig, step:int, opts, summary_writer: tf.summary.FileWriter):
-    opts['options'] = tf.RunOptions(
-        trace_level=tf.RunOptions.FULL_TRACE
-    )
-    fetched_timeline = timeline.Timeline(
-        opts['run_metadata'].step_stats
-    )
+def log_trace(
+    cfg: TrainConfig, step: int, opts, summary_writer: tf.summary.FileWriter
+):
+    opts['options'] = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+    fetched_timeline = timeline.Timeline(opts['run_metadata'].step_stats)
     chrome_trace = fetched_timeline.generate_chrome_trace_format(
         show_memory=True
     )
-    with open(
-            os.path.join(cfg.logdir, f'timeline_{step:05}.json'),
-            'w'
-    ) as f:
+    with open(os.path.join(cfg.logdir, f'timeline_{step:05}.json'), 'w') as f:
         f.write(chrome_trace)
     summary_writer.add_run_metadata(
         opts['run_metadata'], f"step_{step:05}", global_step=step

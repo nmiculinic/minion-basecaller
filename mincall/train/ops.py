@@ -85,9 +85,7 @@ def alignment_stats(
                         toolz.frequencies(query),
                         toolz.keymap(
                             "".join,
-                            toolz.frequencies(
-                                toolz.sliding_window(2, query)
-                            )
+                            toolz.frequencies(toolz.sliding_window(2, query))
                         ),
                     ),
                 "target":
@@ -95,14 +93,12 @@ def alignment_stats(
                         toolz.frequencies(target),
                         toolz.keymap(
                             "".join,
-                            toolz.frequencies(
-                                toolz.sliding_window(2, target)
-                            )
+                            toolz.frequencies(toolz.sliding_window(2, target))
                         ),
                     ),
             })
             df["delta"] = 100 * (df['target'] / df['query'] - 1)
-            df=df[['query', 'target', 'delta']]
+            df = df[['query', 'target', 'delta']]
             msg += "Stats\n" + str(df) + "\n"
             msg += "==================\n"
             logging.info(msg)
