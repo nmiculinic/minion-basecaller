@@ -19,7 +19,11 @@ aligment_stats_ordering = [
 def alignment_stats(
     lable_ind, label_val, pred_ind, pred_val, batch_size, debug=False
 ):
-    """TODO
+    """Returns a list of numpy array representing alignemnt stats. First N elements are
+    in aligment_stats_ordering and the last one in identity.
+
+    The return is like this due to tf.py_func requirements --> this function is made for
+    embedding as tf operation via tf.py_func
 
     :param lable_ind:
     :param label_val:
@@ -75,30 +79,31 @@ def alignment_stats(
                 for k, v in stats.items()
             }) + "\n"
             msg += "readl:  " + str(read_len) + "\n"
-            msg += "Stats\n" + str(
-                pd.DataFrame({
-                    "query":
-                        toolz.merge(
-                            toolz.frequencies(query),
-                            toolz.keymap(
-                                lambda x: "".join(x),
-                                toolz.frequencies(
-                                    toolz.sliding_window(2, query)
-                                )
-                            ),
+            df = pd.DataFrame({
+                "query":
+                    toolz.merge(
+                        toolz.frequencies(query),
+                        toolz.keymap(
+                            "".join,
+                            toolz.frequencies(
+                                toolz.sliding_window(2, query)
+                            )
                         ),
-                    "target":
-                        toolz.merge(
-                            toolz.frequencies(target),
-                            toolz.keymap(
-                                lambda x: "".join(x),
-                                toolz.frequencies(
-                                    toolz.sliding_window(2, target)
-                                )
-                            ),
+                    ),
+                "target":
+                    toolz.merge(
+                        toolz.frequencies(target),
+                        toolz.keymap(
+                            "".join,
+                            toolz.frequencies(
+                                toolz.sliding_window(2, target)
+                            )
                         ),
-                })
-            ) + "\n"
+                    ),
+            })
+            df["delta"] = 100 * (df['target'] / df['query'] - 1)
+            df=df[['query', 'target', 'delta']]
+            msg += "Stats\n" + str(df) + "\n"
             msg += "==================\n"
             logging.info(msg)
     sol = [
