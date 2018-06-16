@@ -117,12 +117,15 @@ def tensor_default_summaries(name, tensor, family=None,
 
 
 def named_tuple_helper(cls, known, data):
+    print(data)
     for k, v in cls.__annotations__.items():
+        print("##", k, v)
         if k not in known:
+            ctr = getattr(v, 'scheme', voluptuous.Coerce(v))
             if k in cls._field_defaults:
-                known[voluptuous.Optional(k)] = voluptuous.Coerce(v)
+                known[voluptuous.Optional(k)] = ctr
             else:
-                known[k] = voluptuous.Coerce(v)
+                known[k] = ctr
     schema = voluptuous.Schema(
         {
             **known,

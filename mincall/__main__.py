@@ -2,7 +2,7 @@ import argparse
 from tqdm import tqdm
 import logging
 from mincall import train, basecall, embedding
-from mincall.train import hyper_param_opt
+from mincall.hyperparam import _hyperparam
 import os
 
 
@@ -20,7 +20,7 @@ if __name__ == "__main__":
     train.add_args(subparsers.add_parser("train"))
     basecall.add_args(subparsers.add_parser("basecall"))
     embedding.add_args(subparsers.add_parser("embed"))
-    hyper_param_opt.add_args(subparsers.add_parser("hyperparam"))
+    _hyperparam.add_args(subparsers.add_parser("hyperparam"))
 
     args = parser.parse_args()
     if hasattr(args, 'func'):

@@ -64,6 +64,9 @@ def dummy_model(n_classes: int, hparams: Dict):
 
 class Big01Cfg(NamedTuple):
     num_blocks: int
+    block_elem: int
+    block_init_channels: int = 32
+    receptive_width: int = 5
 
     @classmethod
     def scheme(cls, data):
@@ -73,29 +76,35 @@ class Big01Cfg(NamedTuple):
 def big_01(n_classes: int, hparams: Dict):
     cfg: Big01Cfg = Big01Cfg.scheme(hparams)
     input = layers.Input(shape=(None, 1))
-    net = layers.BatchNormalization()(input)
-    net = layers.Conv1D(
-        256, 3, padding="same", bias_regularizer=regularizers.l1(0.1)
-    )(net)
-
-    for _ in range(cfg.num_blocks):
-        x = net
-        net = layers.Conv1D(256, 5, padding='same')(net)
-        net = layers.BatchNormalization()(net)
-        net = layers.Activation('relu')(net)
-        net = layers.Conv1D(256, 5, padding='same')(net)
-        net = layers.BatchNormalization()(net)
-        net = layers.Activation('relu')(net)
-        net = ConstMultiplierLayer()(net)
-        net = layers.add([x, net])
+    net = input
+    for i in range(cfg.num_blocks):
+        channels = 2**i
+        net = layers.Conv1D(
+            channels, cfg.receptive_width, padding="same", bias_regularizer=regularizers.l1(0.1)
+        )(net)
+        with tf.name_scope(f"block_{i}"):
+            for _ in range(cfg.block_elem):
+                x = net
+                net = layers.Conv1D(channels, cfg.receptive_width, padding='same')(net)
+                net = layers.BatchNormalization()(net)
+                net = layers.Activation('relu')(net)
+                net = layers.Conv1D(channels, cfg.receptive_width, padding='same')(net)
+                net = layers.BatchNormalization()(net)
+                net = layers.Activation('relu')(net)
+                net = ConstMultiplierLayer()(net)
+                net = layers.add([x, net])
         net = layers.MaxPool1D(padding='same', pool_size=2)(net)
 
-    net = layers.Conv1D(n_classes, 3, padding="same")(net)
-    net = layers.BatchNormalization()(net)
+    net = layers.Conv1D(n_classes, cfg.receptive_width, padding="same")(net)
     return models.Model(inputs=[input], outputs=[net]), 2 ** cfg.num_blocks
 
 
 all_models: Dict[str, Callable[[str], models.Model]] = {
     'dummy': dummy_model,
     'big_01': big_01,
+}
+
+hparam_cfg: Dict[str, NamedTuple] = {
+    'big_01': Big01Cfg,
+    'dummy': DummyCfg,
 }
