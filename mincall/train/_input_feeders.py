@@ -297,8 +297,8 @@ def produce_datapoints(
     :param q:
     :return:
     """
+    random.seed(os.urandom(20))
     for cnt in itertools.count(1):
-        random.seed(os.urandom(20))
         random.shuffle(fnames)
         for x in fnames:
             with gzip.open(x, "r") as f:
