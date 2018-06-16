@@ -79,7 +79,7 @@ def big_01(n_classes: int, hparams: Dict):
     input = layers.Input(shape=(None, 1))
     net = input
     for i in range(cfg.num_blocks):
-        channels = 2**i
+        channels = 2**i * cfg.block_init_channels
         net = layers.Conv1D(
             channels,
             cfg.receptive_width,
