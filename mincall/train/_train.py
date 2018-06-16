@@ -287,17 +287,20 @@ class Model():
 
 def extended_summaries(m: Model):
     sums = []
+
+    *alignment_stats, identity = tf.py_func(
+        ops.alignment_stats,
+        [
+            m.labels.indices, m.labels.values, m.predict.indices,
+            m.predict.values, m.labels.dense_shape[0]
+        ],
+        (len(ops.aligment_stats_ordering) + 1)* [tf.float32],
+        stateful=False,
+    )
+
     for stat_type, stat in zip(
         ops.aligment_stats_ordering,
-        tf.py_func(
-            ops.alignment_stats,
-            [
-                m.labels.indices, m.labels.values, m.predict.indices,
-                m.predict.values, m.labels.dense_shape[0]
-            ],
-            4 * [tf.float32],
-            stateful=False,
-        )
+        alignment_stats
     ):
         stat.set_shape((None,))
         sums.append(
@@ -306,6 +309,12 @@ def extended_summaries(m: Model):
                 stat,
             )
         )
+
+    identity.set_shape((None,))
+    sums.append(tensor_default_summaries(
+        "IDENTITY",
+        identity,
+    ))
 
     sums.extend(tensor_default_summaries("logits", m.logits))
     return sums
