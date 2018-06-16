@@ -156,10 +156,8 @@ def run(cfg: HyperParamCfg):
         os.makedirs(folder, exist_ok=False)
 
         concrete_cfg = subs_dict(train_cfg, concrete_params)
-        print(pformat(concrete_cfg))
         concrete_cfg['logdir'] = folder
         concrete_cfg = subs_dict(TrainConfig.schema(concrete_cfg), {})
-        print(pformat(concrete_cfg))
         with open(cfg_path, "w") as f:
             yaml.safe_dump({
                 'train': concrete_cfg,

@@ -341,6 +341,7 @@ def run_args(args):
 
 
 def run(cfg: TrainConfig):
+    tf.reset_default_graph()
     os.makedirs(cfg.logdir, exist_ok=True)
     num_bases = TOTAL_BASE_PAIRS
     if cfg.surrogate_base_pair:
