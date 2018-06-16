@@ -315,8 +315,14 @@ def extended_summaries(m: Model):
         "IDENTITY",
         identity,
     ))
-
     sums.extend(tensor_default_summaries("logits", m.logits))
+
+    sums.append( tf.summary.image(
+            "logits", tf.expand_dims(
+                tf.nn.softmax(tf.transpose(m.logits, [1, 2, 0])),
+                -1,
+            )
+        ))
     return sums
 
 
@@ -535,27 +541,9 @@ def log_validation(cfg: TrainConfig, sess: tf.Session, step: int, summary_writer
         }
     )
     logger.info(
-        f"Logits[{logits.shape}]:\n describe:{pformat(stats.describe(logits, axis=None))}"
+        f"Logits[{logits.shape}]: describe:{pformat(stats.describe(logits, axis=None))}"
     )
     summary_writer.add_summary(test_summary, step)
-    yt = defaultdict(list)
-    yp = defaultdict(list)
-    for ind, val in zip(lb.indices, lb.values):
-        yt[ind[0]].append(val)
-    for ind, val in zip(predict.indices, predict.values):
-        yp[ind[0]].append(val)
-    for x in range(cfg.batch_size):
-        q, t, alignment = squggle(
-            decode(yp[x]),
-            decode(yt[x]),
-        )
-        logger.debug(
-            f"{x}: \n"
-            f"Basecalled: {q}\n"
-            f"Target    : {t}\n"
-            f"Loss      : {losses[x]}\n"
-            f"Edit dist : {alignment['editDistance'] * 'x'}\n"
-        )
     return val_loss
 
 
