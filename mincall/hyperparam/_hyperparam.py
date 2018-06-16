@@ -1,4 +1,5 @@
 from typing import *
+from itertools import count
 import os
 from pprint import pformat
 import logging
@@ -11,21 +12,9 @@ from mincall.train import _train
 from mincall.common import *
 from mincall.train._train import DataDir, TrainConfig
 from voluptuous.humanize import humanize_error
+from ._solvers import AbstractSolver, RandomSolver
+from ._types import Param
 import sys
-
-
-class Param(NamedTuple):
-    min: float
-    max: float
-    type: str
-
-    @classmethod
-    def scheme(cls, data):
-        if isinstance(data, (int, float, np.int, np.float, bool)):
-            return data
-        return named_tuple_helper(cls, {"type": voluptuous.validators.In([
-            "int", "double",
-        ])}, data)
 
 
 class HyperParamCfg(NamedTuple):
@@ -49,19 +38,17 @@ class HyperParamCfg(NamedTuple):
     run_trace_every: int = 5000
     save_every: int = 10000
 
-    tensorboard_debug: str = None
-    debug: bool = False
-    trace: bool = False
-
     @classmethod
     def schema(cls, data):
-        return named_tuple_helper(cls, {
-            'train_data': [DataDir.schema],
-            'test_data': [DataDir.schema],
-            voluptuous.Optional('tensorboard_debug', default=None):
-                voluptuous.Any(str, None),
-            'model_hparams': {str: Param.scheme},
-        }, data)
+        return named_tuple_helper(
+            cls, {
+                'train_data': [DataDir.schema],
+                'test_data': [DataDir.schema],
+                'model_hparams': {
+                    str: Param.scheme
+                },
+            }, data
+        )
 
 
 def run_args(args: argparse.Namespace):
@@ -77,8 +64,8 @@ def run_args(args: argparse.Namespace):
             'hyperparam': HyperParamCfg.schema,
             'version': str,
         },
-            extra=voluptuous.REMOVE_EXTRA,
-            required=True)(config)
+                                extra=voluptuous.REMOVE_EXTRA,
+                                required=True)(config)
     except voluptuous.error.Error as e:
         logger.error(humanize_error(config, e))
         sys.exit(1)
@@ -87,7 +74,6 @@ def run_args(args: argparse.Namespace):
         "%(asctime)s [%(levelname)5s]:%(name)20s: %(message)s"
     )
     cfg: HyperParamCfg = cfg['hyperparam']
-    print("##", cfg, type(cfg))
     os.makedirs(cfg.work_dir, exist_ok=True)
     fn = os.path.join(
         cfg.work_dir, f"{getattr(args, 'name', 'mincall_hyper')}.log"
@@ -103,7 +89,12 @@ def run_args(args: argparse.Namespace):
 
 def add_args(parser: argparse.ArgumentParser):
     parser.add_argument("--config", "-c", help="config file", required=True)
-    parser.add_argument("--work_dir", "-w", dest="hyperparam.work_dir", help="working directory")
+    parser.add_argument(
+        "--work_dir",
+        "-w",
+        dest="hyperparam.work_dir",
+        help="working directory"
+    )
     parser.set_defaults(func=run_args)
     parser.set_defaults(name="mincall_hyperparam_search")
 
@@ -111,7 +102,7 @@ def add_args(parser: argparse.ArgumentParser):
 def make_dict(x, subs: Dict) -> Tuple[Dict, Dict]:
     if x is None:
         return {}, {}
-    if isinstance(x, (int, str, float, bool)): # scalar
+    if isinstance(x, (int, str, float, bool)):  # scalar
         return x, {}
     if isinstance(x, Param):
         return x, x
@@ -120,7 +111,7 @@ def make_dict(x, subs: Dict) -> Tuple[Dict, Dict]:
         params = {}
         for k, v in x.items():
             if k in subs:
-                d, p = v, {}
+                d, p = subs[k], {}
             else:
                 d, p = make_dict(v, subs.get(k, {}))
             sol[k] = d
@@ -130,28 +121,55 @@ def make_dict(x, subs: Dict) -> Tuple[Dict, Dict]:
     if isinstance(x, list):
         sol = []
         for d, p in map(lambda k: make_dict(k, subs), x):
-            if len(p)>0:
-                raise ValueError(f"Cannot have params in list!{x}\nparams: {p}\ndata:{d}")
+            if len(p) > 0:
+                raise ValueError(
+                    f"Cannot have params in list!{x}\nparams: {p}\ndata:{d}"
+                )
             sol.append(d)
         return sol, {}
     if hasattr(x, '_asdict'):
         return make_dict(dict(x._asdict()), subs)
     raise ValueError(f"Unknown type {type(x).__name__}: {x}")
 
-def extract_parama(x) -> Dict[str, Param]:
-    if isinstance(x, Param):
-        return {"": x}
-    if isinstance(x, dict):
-        sol = {}
-        for k, v in x.items():
-            for kk, vv in extract_parama(v).items():
-                sol[f"{k}.{kk}"] = vv
-        return sol
-    raise ValueError(f"Unknown type {type(x).__name__}: {x}")
+
+def subs_dict(x, subs: Dict) -> Dict:
+    sol, _ = make_dict(x, subs)
+    return sol
+
 
 def run(cfg: HyperParamCfg):
-    print(pformat(cfg._asdict()))
-    print("---")
-    dd, params = make_dict(cfg, {})
-    dd = toolz.keyfilter(lambda x: x in TrainConfig.__annotations__.keys(), dd)
-    print(yaml.dump(dd))
+    train_cfg, params = make_dict(cfg, {})
+    train_cfg = toolz.keyfilter(
+        lambda x: x in TrainConfig.__annotations__.keys(), train_cfg
+    )
+    solver = RandomSolver(params)
+
+    for i in count():
+        assigement = solver.new_assignment()
+        concrete_params = assigement.params
+        folder = os.path.normpath(
+            os.path.abspath(
+                os.path.join(cfg.work_dir, "%02d-%s" % (i, assigement.name))
+            )
+        )
+        cfg_path = os.path.join(folder, "config.yml")
+        os.makedirs(folder, exist_ok=False)
+
+        concrete_cfg = subs_dict(train_cfg, concrete_params)
+        print(pformat(concrete_cfg))
+        concrete_cfg['logdir'] = folder
+        concrete_cfg = subs_dict(TrainConfig.schema(concrete_cfg), {})
+        print(pformat(concrete_cfg))
+        with open(cfg_path, "w") as f:
+            yaml.safe_dump({
+                'train': concrete_cfg,
+                'version': "v0.1",
+            },
+                           stream=f,
+                           default_flow_style=False)
+        _train.run_args(argparse.Namespace(
+            config=cfg_path,
+            logdir=None,
+        ))
+        if i > 20:
+            break

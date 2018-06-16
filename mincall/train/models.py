@@ -43,6 +43,7 @@ class DummyCfg(NamedTuple):
     def scheme(cls, data):
         return named_tuple_helper(cls, {}, data)
 
+
 def dummy_model(n_classes: int, hparams: Dict):
     cfg: DummyCfg = DummyCfg.scheme(hparams)
     input = layers.Input(shape=(None, 1))
@@ -80,15 +81,22 @@ def big_01(n_classes: int, hparams: Dict):
     for i in range(cfg.num_blocks):
         channels = 2**i
         net = layers.Conv1D(
-            channels, cfg.receptive_width, padding="same", bias_regularizer=regularizers.l1(0.1)
+            channels,
+            cfg.receptive_width,
+            padding="same",
+            bias_regularizer=regularizers.l1(0.1)
         )(net)
         with tf.name_scope(f"block_{i}"):
             for _ in range(cfg.block_elem):
                 x = net
-                net = layers.Conv1D(channels, cfg.receptive_width, padding='same')(net)
+                net = layers.Conv1D(
+                    channels, cfg.receptive_width, padding='same'
+                )(net)
                 net = layers.BatchNormalization()(net)
                 net = layers.Activation('relu')(net)
-                net = layers.Conv1D(channels, cfg.receptive_width, padding='same')(net)
+                net = layers.Conv1D(
+                    channels, cfg.receptive_width, padding='same'
+                )(net)
                 net = layers.BatchNormalization()(net)
                 net = layers.Activation('relu')(net)
                 net = ConstMultiplierLayer()(net)
@@ -96,7 +104,7 @@ def big_01(n_classes: int, hparams: Dict):
         net = layers.MaxPool1D(padding='same', pool_size=2)(net)
 
     net = layers.Conv1D(n_classes, cfg.receptive_width, padding="same")(net)
-    return models.Model(inputs=[input], outputs=[net]), 2 ** cfg.num_blocks
+    return models.Model(inputs=[input], outputs=[net]), 2**cfg.num_blocks
 
 
 all_models: Dict[str, Callable[[str], models.Model]] = {

@@ -65,18 +65,19 @@ class TrainConfig(NamedTuple):
     run_trace_every: int = 5000
     save_every: int = 10000
 
-    tensorboard_debug: str = None
+    tensorboard_debug: str = ""  # Empty string is use CLI debug
     debug: bool = False
     trace: bool = False
 
     @classmethod
     def schema(cls, data):
-        return named_tuple_helper(cls, {
-            'train_data': [DataDir.schema],
-            'test_data': [DataDir.schema],
-            voluptuous.Optional('tensorboard_debug', default=None):
-                voluptuous.Any(str, None),
-        }, data)
+        return named_tuple_helper(
+            cls, {
+                'train_data': [DataDir.schema],
+                'test_data': [DataDir.schema],
+            }, data
+        )
+
 
 def add_args(parser: argparse.ArgumentParser):
     parser.add_argument("--config", "-c", help="config file", required=True)
@@ -239,7 +240,9 @@ class Model():
         self.total_loss = self.ctc_loss + self.regularization_loss
 
         percent_finite = tf.reduce_mean(tf.cast(finite_mask, tf.int32))
-        percent_finite = tf.Print(percent_finite, [percent_finite], first_n=10, message="%finite")
+        percent_finite = tf.Print(
+            percent_finite, [percent_finite], first_n=10, message="%finite"
+        )
         self.summaries = [
             tf.summary.scalar(f'total_loss', self.total_loss),
             tf.summary.scalar(f'ctc_loss', self.ctc_loss),
@@ -331,8 +334,10 @@ def run_args(args):
     logging.getLogger().addHandler(h)
     logging.info(f"Added handler to {fn}")
     logger.info(f"Parsed config\n{pformat(cfg)}")
-    run(cfg['train'])
-    logging.getLogger().removeHandler(h)
+    try:
+        return run(cfg['train'])
+    finally:
+        logging.getLogger().removeHandler(h)
 
 
 def run(cfg: TrainConfig):
@@ -346,7 +351,9 @@ def run(cfg: TrainConfig):
         )
         logger.info(f"Compression ratio: {ratio}")
     except voluptuous.error.Error as e:
-        logger.error(f"Invalid hyper params, check your config {humanize_error(cfg.model_hparams, e)}")
+        logger.error(
+            f"Invalid hyper params, check your config {humanize_error(cfg.model_hparams, e)}"
+        )
         raise
 
     input_feeder_cfg = InputFeederCfg(
@@ -423,7 +430,7 @@ def run(cfg: TrainConfig):
     beholder = Beholder(cfg.logdir)
     with tf.Session(config=config) as sess:
         if cfg.debug:
-            if cfg.tensorboard_debug is None:
+            if cfg.tensorboard_debug:
                 sess = tf_debug.LocalCLIDebugWrapperSession(sess)
             else:
                 sess = tf_debug.TensorBoardDebugWrapperSession(
