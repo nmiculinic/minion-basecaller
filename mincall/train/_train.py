@@ -187,7 +187,12 @@ class Model():
                 cfg, self.dataset, capacity=10 * cfg.batch_size, trace=trace
             )
         input_signal: tf.Tensor = self.dq.batch_signal
-        input_signal = tf.Print(input_signal, [tf.shape(input_signal)], first_n=1, summarize=10, message="input signal shape, [batch_size,max_time, 1]")
+        input_signal = tf.Print(
+            input_signal, [tf.shape(input_signal)],
+            first_n=1,
+            summarize=10,
+            message="input signal shape, [batch_size,max_time, 1]"
+        )
 
         labels: tf.SparseTensor = self.dq.batch_labels
         signal_len: tf.Tensor = self.dq.batch_signal_len
@@ -197,12 +202,22 @@ class Model():
         self.logits = tf.transpose(model(input_signal), [1, 0, 2]
                                   )  # [max_time, batch_size, class_num]
         self.logger.info(f"Logits shape: {self.logits.shape}")
-        self.logits = tf.Print(self.logits, [tf.shape(self.logits)], first_n=1, summarize=10, message="logits shape [max_time, batch_size, class_num]")
+        self.logits = tf.Print(
+            self.logits, [tf.shape(self.logits)],
+            first_n=1,
+            summarize=10,
+            message="logits shape [max_time, batch_size, class_num]"
+        )
 
         seq_len = tf.cast(
             tf.floor_div(signal_len + cfg.ratio - 1, cfg.ratio), tf.int32
         )  # Round up
-        seq_len = tf.Print(seq_len, [tf.shape(seq_len), seq_len], first_n=5, summarize=15, message="seq_len [expected around max_time]")
+        seq_len = tf.Print(
+            seq_len, [tf.shape(seq_len), seq_len],
+            first_n=5,
+            summarize=15,
+            message="seq_len [expected around max_time]"
+        )
 
         self.losses = tf.nn.ctc_loss(
             labels=labels,
@@ -216,7 +231,8 @@ class Model():
         self.predict = tf.nn.ctc_beam_search_decoder(
             inputs=self.logits,
             sequence_length=seq_len,
-            merge_repeated=cfg.surrogate_base_pair,  # Gotta merge if we have surrogate_base_pairs
+            merge_repeated=cfg.
+            surrogate_base_pair,  # Gotta merge if we have surrogate_base_pairs
             top_paths=1,
             beam_width=100,
         )[0][0]
@@ -264,7 +280,6 @@ class Model():
             tf.summary.scalar("finite_percent", self.p),
             *self.dq.summaries,
         ]
-
 
     def input_wrapper(self, sess: tf.Session, coord: tf.train.Coordinator):
         return self.dq.start_input_processes(sess, coord)

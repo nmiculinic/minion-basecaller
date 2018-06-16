@@ -340,7 +340,9 @@ def produce_datapoints(
                     except queue.Empty:
                         pass
                     except BrokenPipeError:
-                        logging.warning("Got BrokenPipeError error while polling poison queue, quiting")
+                        logging.warning(
+                            "Got BrokenPipeError error while polling poison queue, quiting"
+                        )
                         return
 
                     signal_segment = signal[start:start + cfg.seq_length]
@@ -359,7 +361,9 @@ def produce_datapoints(
                                 np.array(buff, dtype=np.int32),
                             ])
                         except EOFError:
-                            logging.warning("Got EOF error while pushing new signal into queue, ignoring")
+                            logging.warning(
+                                "Got EOF error while pushing new signal into queue, ignoring"
+                            )
 
         if not repeat:
             break
