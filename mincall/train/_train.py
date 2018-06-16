@@ -59,7 +59,7 @@ class TrainConfig(NamedTuple):
     tensorboard_debug: str
     run_trace_every: int
     model_name: str
-    model_hparams: str
+    model_hparams: Dict
     grad_clipping: float
     surrogate_base_pair: bool
     init_learning_rate: float
@@ -94,9 +94,9 @@ class TrainConfig(NamedTuple):
                     voluptuous.Any(str, None),
                 voluptuous.Optional('model_name', default='dummy'):
                     str,
-                voluptuous.Optional('model_hparams', default=''):
-                    str,
-                voluptuous.Optional('grad_clipping', default=1.0):
+                voluptuous.Optional('model_hparams', default={}):
+                    dict,
+                voluptuous.Optional('grad_clipping', default=10.0):
                     voluptuous.Coerce(float),
                 voluptuous.Optional('surrogate_base_pair', default=False):
                     bool,
@@ -346,25 +346,26 @@ def run_args(args):
         },
                                 extra=voluptuous.REMOVE_EXTRA,
                                 required=True)(config)
-        if args.logdir is None:
-            formatter = logging.Formatter(
-                "%(asctime)s [%(levelname)5s]:%(name)20s: %(message)s"
-            )
-            train_cfg: TrainConfig = cfg['train']
-            os.makedirs(train_cfg.logdir, exist_ok=True)
-            fn = os.path.join(
-                train_cfg.logdir, f"{getattr(args, 'name', 'mincall')}.log"
-            )
-            h = (logging.FileHandler(fn))
-            h.setLevel(logging.DEBUG)
-            h.setFormatter(formatter)
-            logging.getLogger().addHandler(h)
-            logging.info(f"Added handler to {fn}")
-        logger.info(f"Parsed config\n{pformat(cfg)}")
-        run(cfg['train'])
     except voluptuous.error.Error as e:
         logger.error(humanize_error(config, e))
         sys.exit(1)
+
+    formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)5s]:%(name)20s: %(message)s"
+    )
+    train_cfg: TrainConfig = cfg['train']
+    os.makedirs(train_cfg.logdir, exist_ok=True)
+    fn = os.path.join(
+        train_cfg.logdir, f"{getattr(args, 'name', 'mincall')}.log"
+    )
+    h = (logging.FileHandler(fn))
+    h.setLevel(logging.DEBUG)
+    h.setFormatter(formatter)
+    logging.getLogger().addHandler(h)
+    logging.info(f"Added handler to {fn}")
+    logger.info(f"Parsed config\n{pformat(cfg)}")
+    run(cfg['train'])
+    logging.getLogger().removeHandler(h)
 
 
 def run(cfg: TrainConfig):
