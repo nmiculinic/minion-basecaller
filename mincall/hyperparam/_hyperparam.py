@@ -112,7 +112,7 @@ def make_dict(x, subs: Dict) -> Tuple[Dict, Dict]:
         sol = {}
         params = {}
         for k, v in x.items():
-            if k in subs:
+            if k in subs and not isinstance(subs[k], dict):
                 d, p = subs[k], {}
             else:
                 d, p = make_dict(v, subs.get(k, {}))
