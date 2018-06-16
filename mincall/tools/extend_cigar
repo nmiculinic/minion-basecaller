@@ -10,5 +10,6 @@ parser.add_argument("ref_file")
 parser.add_argument("--output", "-o", type=str, default=None, dest='sam_out')
 args = parser.parse_args()
 
-extend_cigars_in_sam(args.sam_file, args.ref_file, args.fastx_file,
-                     args.sam_out)
+extend_cigars_in_sam(
+    args.sam_file, args.ref_file, args.fastx_file, args.sam_out
+)

@@ -1,4 +1,5 @@
 import argparse
+import gzip
 from collections import defaultdict
 import tensorflow as tf
 import string
@@ -19,6 +20,8 @@ from minion_data import dataset_pb2
 from keras import models
 import h5py
 from mincall.train.models import custom_layers
+from mincall.common import TOTAL_BASE_PAIRS, decode
+import scrappy
 
 import toolz
 from tqdm import tqdm
@@ -36,34 +39,41 @@ class BasecallCfg(NamedTuple):
     beam_width: int
     logdir: str
     jump: int
+    gzip: bool
 
     @classmethod
     def schema(cls, data):
-        return cls(**voluptuous.Schema(
-            {
+        return cls(
+            **voluptuous.Schema({
                 'input_dir':
-                voluptuous.All(
-                    voluptuous.validators.Length(min=1),
-                    [voluptuous.Any(voluptuous.IsDir(), voluptuous.IsFile())],
-                ),
+                    voluptuous.All(
+                        voluptuous.validators.Length(min=1),
+                        [
+                            voluptuous.
+                            Any(voluptuous.IsDir(), voluptuous.IsFile())
+                        ],
+                    ),
                 voluptuous.Optional('recursive', default=False):
-                bool,
+                    bool,
                 'output_fasta':
-                str,
+                    str,
                 'model':
-                voluptuous.validators.IsFile(),
+                    voluptuous.validators.IsFile(),
                 voluptuous.Optional('batch_size', default=1100):
-                int,
+                    int,
                 voluptuous.Optional('seq_length', default=300):
-                int,
+                    int,
                 voluptuous.Optional('beam_width', default=50):
-                int,
+                    int,
                 voluptuous.Optional('jump', default=30):
-                int,
+                    int,
                 voluptuous.Optional('logdir', default=None):
-                voluptuous.Any(str, None),
+                    voluptuous.Any(str, None),
+                voluptuous.Optional('gzip', default=False):
+                    bool,
             },
-            required=True)(data))
+                                required=True)(data)
+        )
 
 
 def add_args(parser: argparse.ArgumentParser):
@@ -71,15 +81,18 @@ def add_args(parser: argparse.ArgumentParser):
     parser.add_argument("--in", "-i", nargs="*", dest='basecall.input_dir')
     parser.add_argument("--out", "-o", dest='basecall.output_fasta')
     parser.add_argument(
-        "--model", "-m", dest='basecall.model', help="model savepoint")
+        "--model", "-m", dest='basecall.model', help="model savepoint"
+    )
     parser.add_argument(
-        "--batch_size", "-b", dest='basecall.batch_size', type=int)
+        "--batch_size", "-b", dest='basecall.batch_size', type=int
+    )
     parser.add_argument(
         "--seq_length",
         "-l",
         dest='basecall.seq_length',
         type=int,
-        help="segment length")
+        help="segment length"
+    )
     parser.add_argument("--jump", "-j", dest='basecall.jump', type=int)
     parser.add_argument(
         '--beam',
@@ -88,6 +101,14 @@ def add_args(parser: argparse.ArgumentParser):
         default=50,
         help=
         "Beam width used in beam search decoder, default is 50, set to 0 to use a greedy decoder. Large beam width give better decoding result but require longer decoding time."
+    )
+    parser.add_argument(
+        "--gzip",
+        "-z",
+        default=None,
+        action="store_true",
+        dest="basecall.gzip",
+        help="gzip the output"
     )
     parser.set_defaults(func=run_args)
     parser.set_defaults(name="mincall_basecall")
@@ -110,13 +131,12 @@ def run_args(args):
     if args.logdir is not None:
         config['basecall']['logdir'] = args.logdir
     try:
-        cfg = voluptuous.Schema(
-            {
-                'basecall': BasecallCfg.schema,
-                'version': str,
-            },
-            extra=voluptuous.REMOVE_EXTRA,
-            required=True)(config)
+        cfg = voluptuous.Schema({
+            'basecall': BasecallCfg.schema,
+            'version': str,
+        },
+                                extra=voluptuous.REMOVE_EXTRA,
+                                required=True)(config)
         logger.info(f"Parsed config\n{pformat(cfg)}")
         run(cfg['basecall'])
     except voluptuous.error.Error as e:
@@ -137,13 +157,17 @@ class SignalFeeder:
         self.logger = logging.getLogger(__name__ + ".SignalFeeder")
 
         self.signal_fname_ph = tf.placeholder(
-            tf.string, shape=(), name="signal_fname")
+            tf.string, shape=(), name="signal_fname"
+        )
         self.signal_start_ph = tf.placeholder(
-            tf.int32, shape=(), name="signal_start")
+            tf.int32, shape=(), name="signal_start"
+        )
         self.signal_ph = tf.placeholder(
-            tf.float32, shape=(max_seq_len, 1), name="signal")
+            tf.float32, shape=(max_seq_len, 1), name="signal"
+        )
         self.signal_length_ph = tf.placeholder(
-            tf.int32, shape=(), name="signal_length")
+            tf.int32, shape=(), name="signal_length"
+        )
 
         vs = [
             self.signal_fname_ph,
@@ -155,24 +179,28 @@ class SignalFeeder:
             name="signal_queue",
             capacity=capacity,
             dtypes=[x.dtype for x in vs],
-            shapes=[x.shape for x in vs])
+            shapes=[x.shape for x in vs]
+        )
         self.signal_queue_size = self.signal_queue.size()
         self.signal_queue_close = self.signal_queue.close(
-            cancel_pending_enqueues=True)
+            cancel_pending_enqueues=True
+        )
         self.signal_enqueue = self.signal_queue.enqueue(vs)
 
-    def feed_all(self, sess: tf.Session, coord: tf.train.Coordinator,
-                 fnames: List[str]):
+    def feed_all(
+        self, sess: tf.Session, coord: tf.train.Coordinator, fnames: List[str]
+    ):
         with tqdm(total=len(fnames), desc="loading files into memory") as pbar:
             for fn in fnames:
                 with h5py.File(fn, 'r') as input_data:
                     raw_attr = input_data['Raw/Reads/']
                     read_name = list(raw_attr.keys())[0]
-                    raw_signal = np.array(
-                        raw_attr[read_name + "/Signal"].value)
+                    raw_signal = np.array(raw_attr[read_name + "/Signal"].value)
+                    raw_signal = scrappy.RawTable(raw_signal).trim().scale(
+                    ).data(as_numpy=True)
                     for i in trange(
-                            0, len(raw_signal), self.jump,
-                            desc="stripes inserted"):
+                        0, len(raw_signal), self.jump, desc="stripes inserted"
+                    ):
                         if coord.should_stop():
                             self.logger.warning(f"Coord should stop killing")
                             sess.run(self.signal_queue_close)
@@ -184,7 +212,8 @@ class SignalFeeder:
                             signal = np.pad(
                                 signal, (0, self.max_seq_len - signal_len),
                                 'constant',
-                                constant_values=0)
+                                constant_values=0
+                            )
                         try:
                             _, size = sess.run(
                                 [
@@ -196,7 +225,8 @@ class SignalFeeder:
                                     self.signal_start_ph: i,
                                     self.signal_ph: signal.reshape([-1, 1]),
                                     self.signal_length_ph: signal_len,
-                                })
+                                }
+                            )
                             pbar.set_postfix(q_len=size)
                         except tf.errors.CancelledError:
                             if coord.should_stop():
@@ -206,16 +236,19 @@ class SignalFeeder:
 
 
 class LogitProcessing:
-    def __init__(self,
-                 signal: SignalFeeder,
-                 batch_size: int,
-                 model: models.Model,
-                 capacity: int = 3000,
-                 num_threads=4):
+    def __init__(
+        self,
+        signal: SignalFeeder,
+        batch_size: int,
+        model: models.Model,
+        capacity: int = 3000,
+        num_threads=4
+    ):
         self.logger = logging.getLogger(__name__ + ".LogitProcessing")
         assert batch_size <= capacity, f"Batch size {batch_size} is bigger than capacity {capacity}"
         signal_fname, signal_start, signal, signal_length = signal.signal_queue.dequeue_up_to(
-            batch_size)
+            batch_size
+        )
 
         logits = model(signal)
         ratio, rem = divmod(int(signal.shape[1]), int(logits.shape[1]))
@@ -233,27 +266,34 @@ class LogitProcessing:
             capacity=capacity,
             dtypes=[x.dtype for x in self.vs],
             shapes=[x.shape[1:] for x in self.vs],
-            name="logits_queue")
+            name="logits_queue"
+        )
         self.logit_queue_size = self.logits_queue.size()
         self.logit_queue_close = self.logits_queue.close()
 
         self.logit_enqueue = self.logits_queue.enqueue_many(
-            self.vs, "enqueue_logits")
+            self.vs, "enqueue_logits"
+        )
         self.logit_dequeue = self.logits_queue.dequeue_up_to(batch_size)
         self.logit_qr = tf.train.QueueRunner(
-            self.logits_queue, [self.logit_enqueue] * num_threads)
+            self.logits_queue, [self.logit_enqueue] * num_threads
+        )
         tf.train.add_queue_runner(self.logit_qr)
 
 
 class Basecall:
-    def __init__(self,
-                 max_seq_len: int,
-                 jump: int,
-                 logit_processing: LogitProcessing,
-                 output_file: str = None):
+    def __init__(
+        self,
+        max_seq_len: int,
+        jump: int,
+        logit_processing: LogitProcessing,
+        output_file: str = None,
+        gzip=False,
+    ):
         self.max_seq_len = max_seq_len
         self.jump = jump
         self.output_file = output_file
+        self.gzip = gzip
         self.logger = logging.getLogger(__name__ + ".Basecall")
         self.logit_processing = logit_processing
 
@@ -261,28 +301,45 @@ class Basecall:
         self.read_start,\
         self.logits,\
         self.signal_length = self.logit_processing.logit_dequeue
+
+        self.n_classes = self.logits.shape[-1]
+        if self.n_classes == TOTAL_BASE_PAIRS + 1:
+            self.surrogate_base_pair = False
+        elif self.n_classes == 2 * TOTAL_BASE_PAIRS + 1:
+            self.surrogate_base_pair = True
+        else:
+            raise ValueError(f"Not sure what to do with {self.n_classes}")
+
         self._construct_graph()
 
-    def basecall_all(self, sess: tf.Session, coord: tf.train.Coordinator,
-                     fnames: List[str]):
+    def basecall_all(
+        self, sess: tf.Session, coord: tf.train.Coordinator, fnames: List[str]
+    ):
+        if self.gzip:
+            file = gzip.open(self.output_file, "wb")
+        else:
+            file = open(self.output_file, 'wb')
+
         with tqdm(
-                total=len(fnames), desc="basecalling all") as pbar, open(
-                    self.output_file, 'w') as fasta_out:
+            total=len(fnames), desc="basecalling all"
+        ) as pbar, file as fasta_out:
             cache = defaultdict(dict)
             for fn in fnames:
                 with h5py.File(fn, 'r') as input_data:
                     raw_attr = input_data['Raw/Reads/']
                     read_name = list(raw_attr.keys())[0]
                     raw_signal_len = len(
-                        np.array(raw_attr[read_name + "/Signal"].value))
+                        np.array(raw_attr[read_name + "/Signal"].value)
+                    )
 
                     for i in trange(
-                            0, raw_signal_len, self.jump,
-                            desc="stripes inserted"):
+                        0, raw_signal_len, self.jump, desc="stripes inserted"
+                    ):
                         while i not in cache[fn]:
                             if coord.should_stop():
                                 self.logger.warning(
-                                    f"Coord should stop killing")
+                                    f"Coord should stop killing"
+                                )
                                 return
                             try:
                                 bread_fname, bread_start, blogits, signal_len, size = sess.run(
@@ -292,12 +349,14 @@ class Basecall:
                                         self.logits,
                                         self.signal_length,
                                         self.logit_processing.logit_queue_size,
-                                    ])
+                                    ]
+                                )
                                 for j in range(bread_fname.shape[0]):
                                     read_start = bread_start[j]
                                     read_fname = bread_fname[j].decode("UTF-8")
                                     cache[read_fname][read_start] = blogits[
-                                        j, :signal_len[j], :]
+                                        j, :signal_len[j], :
+                                    ]
                                     self.logger.debug(
                                         f"Inserted {read_fname}:{read_start}, wants {fn}:{i}"
                                     )
@@ -307,33 +366,38 @@ class Basecall:
                                     return
                     assembly = cache.pop(fn)
                     predicted, log_prob = self.construct_stripes(
-                        sess, assembly, raw_signal_len)
-                    fasta = "".join([
-                        dataset_pb2.BasePair.Name(x)
-                        for x in predicted[0].values
-                    ])
+                        sess, assembly, raw_signal_len
+                    )
+                    fasta = decode(predicted[0].values)
 
-                    print(f">{fn}", file=fasta_out)
+                    fasta_out.write(f">{fn}\n".encode("ASCII"))
                     for i in range(0, len(fasta), 80):
-                        print(fasta[i:i + 80], file=fasta_out)
+                        fasta_out.write(f"{fasta[i: i+80]}\n".encode("ASCII"))
                     self.logger.info(
-                        f"Decoded: {fn} to file {self.output_file}")
+                        f"Decoded: {fn} to file {self.output_file}"
+                    )
                 pbar.update()
 
     def _construct_graph(self):
-        self.logits_ph = tf.placeholder(tf.float32, shape=(None, 1, 5))
-        self.seq_len = tf.placeholder(tf.int32, shape=(1, ))
+        self.logits_ph = tf.placeholder(
+            tf.float32, shape=(None, 1, self.n_classes)
+        )
+        self.seq_len = tf.placeholder(tf.int32, shape=(1,))
 
         self.predict = tf.nn.ctc_beam_search_decoder(
             inputs=self.logits_ph,
             sequence_length=self.seq_len,
-            merge_repeated=False,
+            merge_repeated=self.surrogate_base_pair,
             top_paths=1,
-            beam_width=50)
+            beam_width=50
+        )
 
-    def construct_stripes(self, sess: tf.Session,
-                          assembly: Dict[int, np.ndarray], raw_signal_len):
-        logits = np.zeros(shape=(raw_signal_len, 5), dtype=np.float32)
+    def construct_stripes(
+        self, sess: tf.Session, assembly: Dict[int, np.ndarray], raw_signal_len
+    ):
+        logits = np.zeros(
+            shape=(raw_signal_len, self.n_classes), dtype=np.float32
+        )
         for i in reversed(range(0, raw_signal_len, self.jump)):
             l = assembly[i]
             logits[i:i + l.shape[0], :] = l
@@ -341,9 +405,10 @@ class Basecall:
         return sess.run(
             self.predict,
             feed_dict={
-                self.logits_ph: logits.reshape(-1, 1, 5),
+                self.logits_ph: logits.reshape(-1, 1, self.n_classes),
                 self.seq_len: np.array([raw_signal_len])
-            })
+            }
+        )
 
 
 def run(cfg: BasecallCfg):
@@ -359,7 +424,8 @@ def run(cfg: BasecallCfg):
 
     with tf.Session() as sess:
         model: models.Model = models.load_model(
-            cfg.model, custom_objects=custom_layers)
+            cfg.model, custom_objects=custom_layers
+        )
         sum = []
         model.summary(print_fn=lambda x: sum.append(x))
         sum = "\n".join(sum)
@@ -381,6 +447,7 @@ def run(cfg: BasecallCfg):
             jump=cfg.jump,
             logit_processing=logit_processing,
             output_file=cfg.output_fasta,
+            gzip=cfg.gzip,
         )
 
         coord = tf.train.Coordinator()
@@ -397,7 +464,8 @@ def run(cfg: BasecallCfg):
                     'coord': coord,
                     'fnames': fnames,
                 },
-                daemon=False)
+                daemon=False
+            )
             threads.append(t)
             t.start()
 
@@ -408,12 +476,12 @@ def run(cfg: BasecallCfg):
                     'coord': coord,
                     'fnames': fnames,
                 },
-                daemon=False)
+                daemon=False
+            )
             threads.append(t)
             t.start()
 
-            close_fns.append(
-                lambda: sess.run(signal_feeder.signal_queue_close))
+            close_fns.append(lambda: sess.run(signal_feeder.signal_queue_close))
 
             for t in threads:
                 t.join()

@@ -17,7 +17,8 @@ def save():
             sess,
             gdef, ["mul"],
             variable_names_whitelist=None,
-            variable_names_blacklist=None)
+            variable_names_blacklist=None
+        )
         tf.train.write_graph(gdef, logdir="/tmp/k", name="test")
 
 
@@ -38,7 +39,8 @@ def load():
                 return_elements=["mul:0"],
                 name=None,
                 op_dict=None,
-                producer_op_list=None)
+                producer_op_list=None
+            )
             print(sess.run(y, feed_dict={
                 x: 15,
             }))
@@ -52,7 +54,8 @@ def main():
 
         with tf.Session() as sess:
             meta_graph_def = tf.saved_model.loader.load(
-                sess, [tf.saved_model.tag_constants.SERVING], "/tmp/lll")
+                sess, [tf.saved_model.tag_constants.SERVING], "/tmp/lll"
+            )
 
             signature = meta_graph_def.signature_def
             signature_key = tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY

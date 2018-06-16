@@ -66,28 +66,30 @@ def load_model_parms(module_name, model_dir):
 
 
 class Model():
-    def __init__(self,
-                 g,
-                 num_blocks,
-                 batch_size,
-                 max_reach,
-                 model_fn,
-                 block_size_x,
-                 block_size_y,
-                 lr_fn=default_lr_fn,
-                 n_samples_per_ref=1,
-                 log_dir=None,
-                 run_id=None,
-                 overwrite=False,
-                 reuse=False,
-                 queue_cap=None,
-                 shrink_factor=1,
-                 per_process_gpu_memory_fraction=None,
-                 test_queue_cap=None,
-                 in_data=input_readers.HMMAlignedRaw(),
-                 dtype=tf.float32,
-                 hyper={},
-                 clip_grad=2.0):
+    def __init__(
+        self,
+        g,
+        num_blocks,
+        batch_size,
+        max_reach,
+        model_fn,
+        block_size_x,
+        block_size_y,
+        lr_fn=default_lr_fn,
+        n_samples_per_ref=1,
+        log_dir=None,
+        run_id=None,
+        overwrite=False,
+        reuse=False,
+        queue_cap=None,
+        shrink_factor=1,
+        per_process_gpu_memory_fraction=None,
+        test_queue_cap=None,
+        in_data=input_readers.HMMAlignedRaw(),
+        dtype=tf.float32,
+        hyper={},
+        clip_grad=2.0
+    ):
         """
             Args:
                 max_reach: int, size of contextual window for convolutions etc.
@@ -104,7 +106,8 @@ class Model():
 
         if overwrite and reuse:
             raise ValueError(
-                "Cannot overwrite and reuse logdit and checkpoints")
+                "Cannot overwrite and reuse logdit and checkpoints"
+            )
 
         self._handle_logdir(log_dir, run_id, overwrite, reuse)
 
@@ -157,7 +160,7 @@ class Model():
             self._setup_saver()
 
     def _setup_saver(self):
-        self.saver = tf.train.Saver(keep_checkpoint_every_n_hours=1, )
+        self.saver = tf.train.Saver(keep_checkpoint_every_n_hours=1,)
 
     def _setup_graph_pre(self):
         """
@@ -166,13 +169,16 @@ class Model():
         with self.g.as_default():
             self.training_mode = get_training_mode()
             self.batch_size_var = tf.placeholder_with_default(
-                tf.convert_to_tensor(self.batch_size, dtype=tf.int32), [])
+                tf.convert_to_tensor(self.batch_size, dtype=tf.int32), []
+            )
             self._create_train_input_objects()
             self.block_size_x_tensor = tf.placeholder_with_default(
-                self.block_size_x, [])
+                self.block_size_x, []
+            )
 
             self.global_step = tf.Variable(
-                0, name='global_step', trainable=False)
+                0, name='global_step', trainable=False
+            )
             self.inc_gs = tf.assign_add(self.global_step, 1)
             self.lr = self.lr_fn(self.global_step)
 
@@ -189,11 +195,14 @@ class Model():
                 out_classes=9,
                 batch_size=self.batch_size_var,
                 dtype=self.dtype,
-                **hyper)
+                **hyper
+            )
 
         if data['logits'].get_shape()[2] != 9:
-            raise ValueError("Loggits must be tensor with dim 2 = 9\n%s" % str(
-                data['logits'].get_shape()))
+            raise ValueError(
+                "Loggits must be tensor with dim 2 = 9\n%s" %
+                str(data['logits'].get_shape())
+            )
         with tf.control_dependencies([
             tf.cond(
                 self.training_mode,
@@ -214,7 +223,8 @@ class Model():
                 self.Y_batch.values,
                 self.Y_batch_len,
                 tf.div(self.X_batch_len, self.shrink_factor),
-                blank_label=8)
+                blank_label=8
+            )
             return tf.reduce_mean(loss)
 
     def _setup_prediction(self):
@@ -224,27 +234,32 @@ class Model():
 
         def dedup_output(sparse_tensor):
             sol_values = sparse_tensor.values - 4 * tf.to_int32(
-                sparse_tensor.values >= 4)
+                sparse_tensor.values >= 4
+            )
             sol = tf.SparseTensor(
                 sparse_tensor.indices,
                 sol_values,  # tf.Print(sol_values, [sol_values, sparse_tensor.values], first_n=5, message="__dedup", summarize=20),
-                sparse_tensor.dense_shape)
+                sparse_tensor.dense_shape
+            )
             return sol
 
         with tf.name_scope("prediction"):
             predicted = self._predict_from_logits()
             self.pred = dedup_output(tf.cast(predicted[0], tf.int32))
             self.dense_pred = tf.sparse_tensor_to_dense(
-                self.pred, default_value=-1)
-            self.edit_distance = tf.edit_distance(self.pred,
-                                                  dedup_output(self.Y_batch))
+                self.pred, default_value=-1
+            )
+            self.edit_distance = tf.edit_distance(
+                self.pred, dedup_output(self.Y_batch)
+            )
 
     def _predict_from_logits(self):
         predicted, _ = tf.nn.ctc_beam_search_decoder(
             self.logits,
             tf.div(self.X_batch_len, self.shrink_factor),
             merge_repeated=True,
-            top_paths=1)
+            top_paths=1
+        )
         return predicted
 
     def _setup_train(self):
@@ -255,7 +270,9 @@ class Model():
         self.grads = optimizer.compute_gradients(
             self.loss,
             self.g.get_collection(
-                tf.GraphKeys.TRAINABLE_VARIABLES, scope='model'))
+                tf.GraphKeys.TRAINABLE_VARIABLES, scope='model'
+            )
+        )
         if self.clip_grad is not None:
             with tf.name_scope("gradient_clipping"):
                 self.grads = [(tf.clip_by_value(grad, -2., 2.), var)
@@ -265,7 +282,8 @@ class Model():
 
         self.grad_summ = tf.summary.merge(add_gradients_summary(self.grads))
         self.activation_summ = tf.summary.merge(
-            add_activations_summary(self.g.get_collection("activations")))
+            add_activations_summary(self.g.get_collection("activations"))
+        )
 
         self.train_summ = tf.summary.merge([
             self.train_queue_size,
@@ -302,7 +320,8 @@ class Model():
 
         hdlr = logging.FileHandler(os.path.join(self.log_dir, "model.log"))
         file_log_fmt = logging.Formatter(
-            '%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+            '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+        )
         hdlr.setFormatter(file_log_fmt)
         hdlr.setLevel(logging.DEBUG)
         self.logger.addHandler(hdlr)
@@ -314,7 +333,8 @@ class Model():
                 os.environ['SLACK_TOKEN'],
                 hostname,
                 stack_trace=True,
-                username=username)
+                username=username
+            )
 
             slack_handler.setFormatter(file_log_fmt)
             slack_handler.setLevel(logging.INFO)
@@ -322,7 +342,8 @@ class Model():
             # self.logger.addHandler(slack_handler)
 
             slack_handler = SlackerLogHandler(
-                os.environ['SLACK_TOKEN'], 'error', username=username)
+                os.environ['SLACK_TOKEN'], 'error', username=username
+            )
 
             slack_handler.setFormatter(file_log_fmt)
             slack_handler.setLevel(logging.ERROR)
@@ -340,13 +361,15 @@ class Model():
                     ],
                     initializer=tf.zeros_initializer(),
                     dtype=self.dtype,
-                    trainable=False),
+                    trainable=False
+                ),
                 tf.get_variable(
                     "X_len",
                     shape=[self.batch_size],
                     initializer=tf.zeros_initializer(),
                     dtype=tf.int32,
-                    trainable=False),
+                    trainable=False
+                ),
                 tf.get_variable(
                     "Y",
                     initializer=tf.zeros_initializer(),
@@ -354,13 +377,15 @@ class Model():
                     shape=[
                         self.batch_size, self.block_size_y * self.num_blocks
                     ],
-                    trainable=False),
+                    trainable=False
+                ),
                 tf.get_variable(
                     "Y_len",
                     shape=[self.batch_size, self.num_blocks],
                     initializer=tf.zeros_initializer(),
                     dtype=tf.int32,
-                    trainable=False),
+                    trainable=False
+                ),
             ]
             names = [x.name[6:-2] for x in input_vars]  # TODO, hacky
             shapes = [x.get_shape()[1:] for x in input_vars]
@@ -368,78 +393,95 @@ class Model():
 
             with tf.name_scope("queue_handling"):
                 self.train_queue = tf.FIFOQueue(
-                    self.train_queue_cap, types, shapes=shapes)
+                    self.train_queue_cap, types, shapes=shapes
+                )
                 self.test_queue = tf.FIFOQueue(
-                    self.test_queue_cap, types, shapes=shapes)
+                    self.test_queue_cap, types, shapes=shapes
+                )
 
                 self.train_queue_size = tf.summary.scalar(
-                    "train_queue_filled", self.train_queue.size())
+                    "train_queue_filled", self.train_queue.size()
+                )
                 self.test_queue_size = tf.summary.scalar(
-                    "test_queue_filled", self.test_queue.size())
+                    "test_queue_filled", self.test_queue.size()
+                )
 
                 self.close_queues = tf.group(
-                    self.train_queue.close(True), self.test_queue.close(True))
+                    self.train_queue.close(True), self.test_queue.close(True)
+                )
 
                 for name, x in zip(
-                        names,
-                        input_vars,
+                    names,
+                    input_vars,
                 ):
                     self.__dict__[name] = x
                     self.__dict__[name + "_enqueue_val"] = tf.placeholder(
                         x.dtype.base_dtype,
                         shape=[None, *x.get_shape()[1:]],
-                        name=name + "_enqueue_val")
+                        name=name + "_enqueue_val"
+                    )
 
-                self.enqueue_train = self.train_queue.enqueue_many(
-                    [self.__dict__[name + "_enqueue_val"] for name in names])
-                self.enqueue_test = self.test_queue.enqueue_many(
-                    [self.__dict__[name + "_enqueue_val"] for name in names])
+                self.enqueue_train = self.train_queue.enqueue_many([
+                    self.__dict__[name + "_enqueue_val"] for name in names
+                ])
+                self.enqueue_test = self.test_queue.enqueue_many([
+                    self.__dict__[name + "_enqueue_val"] for name in names
+                ])
 
-                self.load_train = tf.group(*[
-                    tf.assign(x, qx)
-                    for x, qx in zip(input_vars,
-                                     self.train_queue.dequeue_many(
-                                         self.batch_size))
-                ])
-                self.load_test = tf.group(*[
-                    tf.assign(x, qx)
-                    for x, qx in zip(input_vars,
-                                     self.test_queue.dequeue_many(
-                                         self.batch_size))
-                ])
+                self.load_train = tf.group(
+                    *[
+                        tf.assign(x, qx) for x, qx in zip(
+                            input_vars,
+                            self.train_queue.dequeue_many(self.batch_size)
+                        )
+                    ]
+                )
+                self.load_test = tf.group(
+                    *[
+                        tf.assign(x, qx) for x, qx in zip(
+                            input_vars,
+                            self.test_queue.dequeue_many(self.batch_size)
+                        )
+                    ]
+                )
 
             self.block_idx = tf.placeholder(
-                dtype=tf.int32, shape=[], name="block_idx")
+                dtype=tf.int32, shape=[], name="block_idx"
+            )
             begin_x = self.block_idx * self.block_size_x
             begin_y = self.block_idx * self.block_size_y
 
             with tf.name_scope("X_batch"):
                 X = self.X
                 with tf.control_dependencies([
-                        tf.assert_less_equal(
-                            begin_x + self.block_size_x,
-                            tf.shape(X)[1],
-                            message="Cannot request that many elements from X"
-                        ),
-                        tf.assert_non_negative(
-                            self.block_idx,
-                            message="Beginning slice must be >=0"),
+                    tf.assert_less_equal(
+                        begin_x + self.block_size_x,
+                        tf.shape(X)[1],
+                        message="Cannot request that many elements from X"
+                    ),
+                    tf.assert_non_negative(
+                        self.block_idx, message="Beginning slice must be >=0"
+                    ),
                 ]):
                     max_len_x = tf.shape(X)[1]
                     left = tf.maximum(0, begin_x - self.max_reach)
                     right = tf.minimum(
-                        max_len_x,
-                        begin_x + self.block_size_x + self.max_reach)
+                        max_len_x, begin_x + self.block_size_x + self.max_reach
+                    )
                     self.X_batch_len = tf.clip_by_value(
                         tf.slice(self.X_len, [0], [self.batch_size_var]) -
-                        begin_x, 0, self.block_size_x)
+                        begin_x, 0, self.block_size_x
+                    )
 
-                net = tf.slice(X, [0, left, 0],
-                               [self.batch_size_var, right - left, -1])
+                net = tf.slice(
+                    X, [0, left, 0], [self.batch_size_var, right - left, -1]
+                )
                 padding = [[0, 0], [
                     tf.maximum(0, self.max_reach - begin_x),
-                    tf.maximum(0, begin_x + self.block_size_x +
-                               self.max_reach - max_len_x)
+                    tf.maximum(
+                        0,
+                        begin_x + self.block_size_x + self.max_reach - max_len_x
+                    )
                 ], [0, 0]]
                 padding = tf.convert_to_tensor(padding)
                 net = tf.pad(net, padding)
@@ -448,18 +490,25 @@ class Model():
                     self.in_data.in_dim
                 ])
                 self.X_batch = tf.placeholder_with_default(
-                    net, (None, None, self.in_data.in_dim))
+                    net, (None, None, self.in_data.in_dim)
+                )
 
             with tf.name_scope("Y_batch"):
                 self.Y_batch_len = tf.squeeze(
-                    tf.slice(self.Y_len, [0, self.block_idx],
-                             [self.batch_size_var, 1]), [1])
+                    tf.slice(
+                        self.Y_len, [0, self.block_idx],
+                        [self.batch_size_var, 1]
+                    ), [1]
+                )
                 # TODO: migrate to batch_size_var
                 self.Y_batch = dense2d_to_sparse(
-                    tf.slice(self.Y, [0, begin_y],
-                             [self.batch_size, self.block_size_y]),
+                    tf.slice(
+                        self.Y, [0, begin_y],
+                        [self.batch_size, self.block_size_y]
+                    ),
                     self.Y_batch_len,
-                    dtype=tf.int32)
+                    dtype=tf.int32
+                )
         return self.X_batch
 
     def _rnn_roll(self, add_fetch=[], add_feed={}, timeline_suffix=""):
@@ -483,18 +532,24 @@ class Model():
                         fetch,
                         feed_dict=feed,
                         options=tf.RunOptions(trace_level=self.trace_level),
-                        run_metadata=run_metadata)
+                        run_metadata=run_metadata
+                    )
 
                     if blk == 0 and self.trace_level > tf.RunOptions.NO_TRACE:
                         gs = self.get_global_step()
                         trace = timeline.Timeline(
-                            step_stats=run_metadata.step_stats)
+                            step_stats=run_metadata.step_stats
+                        )
                         trace_file = open(
-                            os.path.join(self.log_dir, 'timeline.%d' % gs +
-                                         timeline_suffix + '.json'), 'w')
+                            os.path.join(
+                                self.log_dir,
+                                'timeline.%d' % gs + timeline_suffix + '.json'
+                            ), 'w'
+                        )
                         trace_file.write(trace.generate_chrome_trace_format())
                         self.train_writer.add_run_metadata(
-                            run_metadata, "step%d" % gs, global_step=gs)
+                            run_metadata, "step%d" % gs, global_step=gs
+                        )
                         self.logger.info("%4d running full trace!!!", gs)
                     for i, val in enumerate(vals):
                         sol[i].append(val)
@@ -506,7 +561,8 @@ class Model():
                     self.logger.error(
                         '\r=== ERROR RNN ROLL, retrying %d ===\n',
                         retry,
-                        exc_info=True)
+                        exc_info=True
+                    )
                     continue
 
     def _inc_gs(self):
@@ -529,11 +585,13 @@ class Model():
         iter_step, _ = self.sess.run([self.global_step, self.load_train])
         self.sess.run([self.inc_gs])
         self.dequeue_time = 0.8 * self.dequeue_time + 0.2 * (
-            perf_counter() - tt)
+            perf_counter() - tt
+        )
 
         if trace_every > 0:
-            if (iter_step > 0
-                    and iter_step % trace_every == 0) or iter_step == 25:
+            if (
+                iter_step > 0 and iter_step % trace_every == 0
+            ) or iter_step == 25:
                 self.trace_level = tf.RunOptions.FULL_TRACE
 
         self.bbt = 0.8 * (self.bbt) + 0.2 * (perf_counter() - self.bbt_clock)
@@ -547,17 +605,24 @@ class Model():
         reg_loss = np.sum(vals[2]).item()
 
         self.train_writer.add_summary(
-            tf.Summary(value=[
-                tf.Summary.Value(tag="train/loss", simple_value=loss),
-                tf.Summary.Value(tag="train/reg_loss", simple_value=reg_loss),
-                tf.Summary.Value(
-                    tag="input/batch_time", simple_value=self.batch_time),
-                tf.Summary.Value(
-                    tag="input/dequeue_time", simple_value=self.dequeue_time),
-                tf.Summary.Value(
-                    tag="input/between_batch_time", simple_value=self.bbt),
-            ]),
-            global_step=iter_step)
+            tf.Summary(
+                value=[
+                    tf.Summary.Value(tag="train/loss", simple_value=loss),
+                    tf.Summary.
+                    Value(tag="train/reg_loss", simple_value=reg_loss),
+                    tf.Summary.
+                    Value(tag="input/batch_time", simple_value=self.batch_time),
+                    tf.Summary.Value(
+                        tag="input/dequeue_time",
+                        simple_value=self.dequeue_time
+                    ),
+                    tf.Summary.Value(
+                        tag="input/between_batch_time", simple_value=self.bbt
+                    ),
+                ]
+            ),
+            global_step=iter_step
+        )
 
         if iter_step % log_every == 0:
             train_summ, y_len = self.sess.run([self.train_summ, self.Y_len])
@@ -566,7 +631,8 @@ class Model():
             self.logger.info(
                 "%4d loss %6.3f reg_loss %6.3f bt %.3f, bbt %.3f, avg_y_len %.3f dequeue %.3fs",
                 iter_step, loss, reg_loss, self.batch_time, self.bbt,
-                np.mean(y_len), self.dequeue_time)
+                np.mean(y_len), self.dequeue_time
+            )
 
         self.trace_level = tf.RunOptions.NO_TRACE
         return loss
@@ -587,12 +653,14 @@ class Model():
         reg_losses = []
         edit_distances = []
         for _ in range(num_batches):
-            _, iter_step, summ = self.sess.run(
-                [self.load_test, self.global_step, self.test_queue_size])
+            _, iter_step, summ = self.sess.run([
+                self.load_test, self.global_step, self.test_queue_size
+            ])
             self.test_writer.add_summary(summ, global_step=iter_step)
             loss, reg_loss, edit_distance = self._rnn_roll(
                 add_fetch=[self.loss, self.reg, self.edit_distance],
-                timeline_suffix="ctc_val_loss")
+                timeline_suffix="ctc_val_loss"
+            )
             losses.append(np.sum(loss))
             reg_losses.append(np.sum(reg_loss))
             edit_distances.append(edit_distance)
@@ -600,38 +668,44 @@ class Model():
         avg_reg_loss = np.mean(reg_losses).item()
         avg_edit_distance = np.mean(edit_distances).item()
         self.test_writer.add_summary(
-            tf.Summary(value=[
-                tf.Summary.Value(tag="train/loss", simple_value=avg_loss),
-                tf.Summary.Value(
-                    tag="train/reg_loss", simple_value=avg_reg_loss),
-                tf.Summary.Value(
-                    tag="train/edit_distance", simple_value=avg_edit_distance),
-            ]),
-            global_step=iter_step)
+            tf.Summary(
+                value=[
+                    tf.Summary.Value(tag="train/loss", simple_value=avg_loss),
+                    tf.Summary.
+                    Value(tag="train/reg_loss", simple_value=avg_reg_loss),
+                    tf.Summary.Value(
+                        tag="train/edit_distance",
+                        simple_value=avg_edit_distance
+                    ),
+                ]
+            ),
+            global_step=iter_step
+        )
         self.logger.info(
-            "%4d validation loss %6.3f edit_distance %.3f in %.3fs" %
-            (iter_step, avg_loss, avg_edit_distance,
-             perf_counter() - self.bbt_clock))
+            "%4d validation loss %6.3f edit_distance %.3f in %.3fs" % (
+                iter_step, avg_loss, avg_edit_distance,
+                perf_counter() - self.bbt_clock
+            )
+        )
         self.bbt_clock = perf_counter()
         return avg_loss, avg_edit_distance
 
-    def basecall_sample(self,
-                        fast5_path,
-                        fasta_out=None,
-                        ref=None,
-                        write_logits=False):
+    def basecall_sample(
+        self, fast5_path, fasta_out=None, ref=None, write_logits=False
+    ):
         signal, start_pad = self.in_data.get_signal(fast5_path)
-        return self.basecall_singal(fast5_path, signal, start_pad,
-                                    write_logits)
+        return self.basecall_singal(fast5_path, signal, start_pad, write_logits)
 
-    def basecall_singal(self,
-                        fast5_path,
-                        signal,
-                        start_pad,
-                        write_logits=None,
-                        block_size=100000,
-                        pad=512,
-                        debug=False):
+    def basecall_singal(
+        self,
+        fast5_path,
+        signal,
+        start_pad,
+        write_logits=None,
+        block_size=100000,
+        pad=512,
+        debug=False
+    ):
         with self.g.as_default():
             is_training(False, session=self.sess)
         t = perf_counter()
@@ -649,13 +723,14 @@ class Model():
         # print(len(chunks), (signal.shape[1] - 2*pad)/block_size)
         # print("and now goes the chunks")
         np.testing.assert_equal(
-            np.sum([chunk.shape[1] - 2 * pad for chunk in chunks]),
-            original_len)
+            np.sum([chunk.shape[1] - 2 * pad for chunk in chunks]), original_len
+        )
 
         if debug:
             np.testing.assert_equal(
                 np.concatenate([c[:, pad:-pad, :] for c in chunks], axis=1),
-                original_signal)
+                original_signal
+            )
 
         logits_all = []
         for chunk in chunks:
@@ -669,7 +744,8 @@ class Model():
                     self.block_idx: 0,
                     self.batch_size_var: 1,
                     self.block_size_x_tensor: chunk.shape[1]
-                })
+                }
+            )
             cut = pad // self.shrink_factor
             logits = logits[cut:-cut]
             logits_all.append(logits)
@@ -683,17 +759,18 @@ class Model():
             self.dense_pred,
             feed_dict={
                 self.logits:
-                logits,
+                    logits,
                 self.X_batch_len:
-                np.array([self.shrink_factor * logits.shape[0]]).reshape([
-                    1,
-                ])
-            }).ravel()
+                    np.array([self.shrink_factor * logits.shape[0]]).reshape([
+                        1,
+                    ])
+            }
+        ).ravel()
 
         if write_logits:
             with h5py.File(fast5_path, 'a') as h5:
                 h5_path = 'Analyses/MinCall/Logits'
-                logits = np.squeeze(logits, (1, ))
+                logits = np.squeeze(logits, (1,))
                 try:
                     h5.create_dataset(h5_path, data=logits)
                 except RuntimeError:
@@ -704,7 +781,8 @@ class Model():
                 h5[h5_path].attrs['model_logdir'] = self.log_dir
                 h5[h5_path].attrs['run_id'] = self.run_id
                 h5[h5_path].attrs['in_data_classname'] = type(
-                    self.in_data).__name__
+                    self.in_data
+                ).__name__
                 h5[h5_path].attrs['shrink_factor'] = self.shrink_factor
 
                 fname = os.path.join(self.log_dir, 'model_hyperparams.json')
@@ -713,8 +791,10 @@ class Model():
                     for k, v in hyper.items():
                         h5[h5_path].attrs[k] = v
 
-        self.logger.debug("Basecalled %s in %.3f", fast5_path,
-                          perf_counter() - t)
+        self.logger.debug(
+            "Basecalled %s in %.3f", fast5_path,
+            perf_counter() - t
+        )
 
         basecalled = "".join(util.decode(basecalled))
         return basecalled
@@ -725,20 +805,19 @@ class Model():
         for var, val in zip(vars, vals):
             print(var.op.name, val.ravel()[:5])
 
-    def get_aligement(self,
-                      fast5_path,
-                      ref_path,
-                      verbose,
-                      fasta_out_dir=None,
-                      ref=None):
+    def get_aligement(
+        self, fast5_path, ref_path, verbose, fasta_out_dir=None, ref=None
+    ):
         t = perf_counter()
         fasta_out = None
         if fasta_out_dir is not None:
             fasta_out = os.path.join(
                 fasta_out_dir,
-                os.path.splitext(fast5_path)[0].split('/')[-1] + ".fasta")
+                os.path.splitext(fast5_path)[0].split('/')[-1] + ".fasta"
+            )
         basecalled = self.basecall_sample(
-            fast5_path, fasta_out=fasta_out, ref=ref)
+            fast5_path, fasta_out=fasta_out, ref=ref
+        )
         with open(ref_path) as f:
             target = f.readlines()[-1]
 
@@ -749,9 +828,11 @@ class Model():
         result = edlib.align(basecalled, target, task='path')
         cigar_pairs = butils.cigar_str_to_pairs(result['cigar'])
 
-        self.logger.debug("\nBasecalled: %s\nTarget    : %s",
-                          butils.query_align_string(basecalled, cigar_pairs),
-                          butils.reference_align_string(target, cigar_pairs))
+        self.logger.debug(
+            "\nBasecalled: %s\nTarget    : %s",
+            butils.query_align_string(basecalled, cigar_pairs),
+            butils.reference_align_string(target, cigar_pairs)
+        )
 
         self.logger.debug("extCigar %s", result['cigar'])
         self.logger.debug("Whole time %.3f", perf_counter() - t)
@@ -766,11 +847,9 @@ class Model():
         nedit = result['editDistance'] / len(target)
         return nedit, acc, len(basecalled), cigar_stat
 
-    def run_validation_full(self,
-                            frac,
-                            verbose=False,
-                            fasta_out_dir=None,
-                            ref=None):
+    def run_validation_full(
+        self, frac, verbose=False, fasta_out_dir=None, ref=None
+    ):
         """
             Runs full validation on test set with whole sequence_length
             Args:
@@ -799,13 +878,14 @@ class Model():
             pbar = tqdm(items)
             for i, fast5_path in enumerate(pbar):
                 t = perf_counter()
-                nedit[i], acc[
-                    i], read_len, cigar_read_stat = self.get_aligement(
-                        fast5_path,
-                        input_readers.find_ref(fast5_path),
-                        verbose=verbose,
-                        fasta_out_dir=fasta_out_dir,
-                        ref=ref)
+                nedit[i], acc[i
+                             ], read_len, cigar_read_stat = self.get_aligement(
+                                 fast5_path,
+                                 input_readers.find_ref(fast5_path),
+                                 verbose=verbose,
+                                 fasta_out_dir=fasta_out_dir,
+                                 ref=ref
+                             )
                 total_time += perf_counter() - t
                 total_bases_read += read_len
                 for k in ['=', 'X', 'I', 'D']:
@@ -813,34 +893,41 @@ class Model():
 
                 mu_edit, mu_acc = np.mean(nedit[:i + 1]), np.mean(acc[:i + 1])
                 std_edit, std_acc = np.std(nedit[:i + 1]), np.std(acc[:i + 1])
-                se_edit, se_acc = std_edit / np.sqrt(i + 1), std_acc / np.sqrt(
-                    i + 1)
+                se_edit, se_acc = std_edit / np.sqrt(i + 1
+                                                    ), std_acc / np.sqrt(i + 1)
                 pbar.set_postfix(
                     stat=
                     "avg edit %.4f s %.4f CI <%.4f, %.4f> avg_acc %.4f s %.4f CI <%.4f, %.4f> %.2f bps"
-                    % (mu_edit, std_edit, mu_edit - 2 * se_edit,
-                       mu_edit + 2 * se_edit, mu_acc, std_acc,
-                       mu_acc - 2 * se_acc, mu_acc + 2 * se_acc,
-                       total_bases_read / total_time))
+                    % (
+                        mu_edit, std_edit, mu_edit - 2 * se_edit,
+                        mu_edit + 2 * se_edit, mu_acc, std_acc,
+                        mu_acc - 2 * se_acc, mu_acc + 2 * se_acc,
+                        total_bases_read / total_time
+                    )
+                )
 
         mu_edit, mu_acc = np.mean(nedit), np.mean(acc)
         std_edit, std_acc = np.std(nedit), np.std(acc)
-        se_edit, se_acc = std_edit / np.sqrt(
-            len(nedit) + 1), std_acc / np.sqrt(len(nedit) + 1)
+        se_edit, se_acc = std_edit / np.sqrt(len(nedit) + 1), std_acc / np.sqrt(
+            len(nedit) + 1
+        )
 
         self.logger.info(
             "step: %d [samples %d] avg edit %.4f s %.4f CI <%.4f, %.4f> avg_acc %.4f s %.4f CI <%.4f, %.4f> %.3f bps",
-            self.get_global_step(), n, mu_edit, std_edit,
-            mu_edit - 2 * se_edit, mu_edit + 2 * se_edit, mu_acc, std_acc,
-            mu_acc - 2 * se_acc, mu_acc + 2 * se_acc,
-            total_bases_read / total_time)
+            self.get_global_step(), n, mu_edit, std_edit, mu_edit - 2 * se_edit,
+            mu_edit + 2 * se_edit, mu_acc, std_acc, mu_acc - 2 * se_acc,
+            mu_acc + 2 * se_acc, total_bases_read / total_time
+        )
 
         total_cigar_elements = np.sum(list(cigar_stat.values()))
         for k in ['=', 'X', 'I', 'D']:
-            self.logger.info("Step %d; %s %.2f%%", self.get_global_step(), k,
-                             100 * cigar_stat[k] / total_cigar_elements)
-        self.logger.info("Speed = %.3f bases per second",
-                         total_bases_read / total_time)
+            self.logger.info(
+                "Step %d; %s %.2f%%", self.get_global_step(), k,
+                100 * cigar_stat[k] / total_cigar_elements
+            )
+        self.logger.info(
+            "Speed = %.3f bases per second", total_bases_read / total_time
+        )
 
         return {
             'edit': {
@@ -872,11 +959,15 @@ class Model():
             self.train_writer.add_summary(summary, global_step=iter_step)
 
         self.train_writer.add_summary(
-            tf.Summary(value=[
-                tf.Summary.Value(
-                    tag="train/edit_distance", simple_value=edit_distance)
-            ]),
-            global_step=iter_step)
+            tf.Summary(
+                value=[
+                    tf.Summary.Value(
+                        tag="train/edit_distance", simple_value=edit_distance
+                    )
+                ]
+            ),
+            global_step=iter_step
+        )
 
         if write_example:
             out_net = list(map(lambda x: decode_sparse(x)[0], vals[-1]))
@@ -889,13 +980,15 @@ class Model():
     def decode_target(self, idx, pad=None):
         yy, yy_len = self.sess.run([self.Y, self.Y_len])
         return decode_example(
-            yy[idx], yy_len[idx], self.num_blocks, self.block_size_y, pad=pad)
+            yy[idx], yy_len[idx], self.num_blocks, self.block_size_y, pad=pad
+        )
 
     def save(self):
         self.saver.save(
             self.sess,
             os.path.join(self.log_dir, 'model.ckpt'),
-            global_step=self.get_global_step())
+            global_step=self.get_global_step()
+        )
         self.logger.info("%4d saved checkpoing", self.get_global_step())
 
     def restore(self, checkpoint=None, must_exist=True):
@@ -909,13 +1002,15 @@ class Model():
             if must_exist:
                 raise ValueError("No checkpoints found")
             iter_step = self.get_global_step()
-            self.logger.info("%4d Restored to checkpoint %s" % (iter_step,
-                                                                checkpoint))
+            self.logger.info(
+                "%4d Restored to checkpoint %s" % (iter_step, checkpoint)
+            )
         else:
             self.saver.restore(self.sess, checkpoint)
             iter_step = self.get_global_step()
-            self.logger.info("%4d Restored to checkpoint %s" % (iter_step,
-                                                                checkpoint))
+            self.logger.info(
+                "%4d Restored to checkpoint %s" % (iter_step, checkpoint)
+            )
         return iter_step
 
     def _start_queues(self, num_workers, proc):
@@ -928,8 +1023,8 @@ class Model():
                 if proc:
                     q = multiprocessing.Queue(5)
                     p = multiprocessing.Process(
-                        target=input_readers.proc_wrapper,
-                        args=(q, fun, *args))
+                        target=input_readers.proc_wrapper, args=(q, fun, *args)
+                    )
                     p.start()
                     gen_next = lambda: q.get()
                 else:
@@ -950,7 +1045,8 @@ class Model():
 
         def data_thread_fn(enqueue_op, subdir):
             return __queue_feeder_thread(
-                enqueue_op, self.in_data.input_fn, [self, subdir], proc=proc)
+                enqueue_op, self.in_data.input_fn, [self, subdir], proc=proc
+            )
 
         self.feed_threads = [
             data_thread_fn(self.enqueue_train, "train")
@@ -981,26 +1077,31 @@ class Model():
             self.sess.run(tf.global_variables_initializer())
             self.coord = tf.train.Coordinator()
             self.threads = tf.train.start_queue_runners(
-                sess=self.sess, coord=self.coord)
+                sess=self.sess, coord=self.coord
+            )
         self.g.finalize()
         self.train_writer = tf.summary.FileWriter(
-            os.path.join(self.log_dir, 'train'), graph=self.g)
+            os.path.join(self.log_dir, 'train'), graph=self.g
+        )
         self.test_writer = tf.summary.FileWriter(
-            os.path.join(self.log_dir, 'test'), graph=self.g)
+            os.path.join(self.log_dir, 'test'), graph=self.g
+        )
         self.feed_threads = []
         if start_queues:
             self._start_queues(num_workers, proc)
 
-    def simple_managed_train_model(self,
-                                   num_steps,
-                                   val_every=250,
-                                   save_every=5000,
-                                   summarize=True,
-                                   final_val_samples=500,
-                                   num_workers=3,
-                                   trace_every=10000,
-                                   ref=None,
-                                   **kwargs):
+    def simple_managed_train_model(
+        self,
+        num_steps,
+        val_every=250,
+        save_every=5000,
+        summarize=True,
+        final_val_samples=500,
+        num_workers=3,
+        trace_every=10000,
+        ref=None,
+        **kwargs
+    ):
         try:
             self.logger.info("Training %d steps", num_steps)
             if trace_every < 0:
@@ -1015,14 +1116,16 @@ class Model():
                 unit_scale=True,
                 dynamic_ncols=True,
                 initial=init_step,
-                total=num_steps)
+                total=num_steps
+            )
             for i in pbar:
                 pbar.set_postfix(
-                    OrderedDict(
-                        [('loss',
-                          self.train_minibatch(trace_every=trace_every)),
-                         ('batch_time', self.batch_time), ('bbt', self.bbt),
-                         ('dequeue_time', self.dequeue_time)]))
+                    OrderedDict([
+                        ('loss', self.train_minibatch(trace_every=trace_every)),
+                        ('batch_time', self.batch_time), ('bbt', self.bbt),
+                        ('dequeue_time', self.dequeue_time)
+                    ])
+                )
                 if i > 0 and i % val_every == 0:
                     self.run_validation()
                     if summarize:
@@ -1036,7 +1139,8 @@ class Model():
             os.makedirs(fasta_out_dir, exist_ok=True)
             self.logger.info("FASTA files in %s", fasta_out_dir)
             return self.run_validation_full(
-                final_val_samples, fasta_out_dir=fasta_out_dir, ref=ref)
+                final_val_samples, fasta_out_dir=fasta_out_dir, ref=ref
+            )
         except Exception as ex:
             if not isinstance(ex, KeyboardInterrupt):
                 self.logger.error("Error happened", exc_info=1)
@@ -1076,21 +1180,23 @@ class TeacherStudentModel(Model):
         self.teachers = []
         for i, teacher_params in enumerate(self.teacher_params):
             with tf.variable_scope("teacher%d" % i):
-                teacher = super()._setup_logits(teacher_params['model_fn'],
-                                                teacher_params['hyper'])
+                teacher = super()._setup_logits(
+                    teacher_params['model_fn'], teacher_params['hyper']
+                )
 
             mapping = {
                 '/'.join(v.op.name.split('/')[1:]): v
-                for v in self.g.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
-                                               'teacher%d' % i)
+                for v in self.g.
+                get_collection(tf.GraphKeys.GLOBAL_VARIABLES, 'teacher%d' % i)
             }
             self.logger.debug("Teacher %d uses following varibles", i)
             for k in mapping.keys():
                 self.logger.debug(k)
             teacher['saver'] = tf.train.Saver(mapping)
             teacher['log_dir'] = teacher_params['log_dir']
-            self.logger.info("Configured teacher%d, logdir %s", i,
-                             teacher['log_dir'])
+            self.logger.info(
+                "Configured teacher%d, logdir %s", i, teacher['log_dir']
+            )
             self.teachers.append(teacher)
 
     def _get_ensamble(self):
@@ -1102,10 +1208,9 @@ class TeacherStudentModel(Model):
         min_len = tf.reduce_min(tf.stack([tf.shape(x)[0] for x in ensamble]))
 
         with tf.control_dependencies([
-                tf.assert_less_equal(
-                    max_len - min_len,
-                    1,
-                    message="Maximum padding limit exceeded")
+            tf.assert_less_equal(
+                max_len - min_len, 1, message="Maximum padding limit exceeded"
+            )
         ]):
             ensamble = [
                 tf.pad(x, [[0, max_len - tf.shape(x)[0]], [0, 0], [0, 0]])
@@ -1121,7 +1226,9 @@ class TeacherStudentModel(Model):
         with tf.name_scope("loss"):
             self.ce_loss = tf.reduce_mean(
                 tf.nn.softmax_cross_entropy_with_logits(
-                    labels=ensamble, logits=logits))
+                    labels=ensamble, logits=logits
+                )
+            )
             return self.ce_loss + self.ctc_scale * self.ctc_loss
 
     def _restore_teachers(self):
@@ -1130,8 +1237,7 @@ class TeacherStudentModel(Model):
             checkpoint = tf.train.latest_checkpoint(teacher['log_dir'])
             if checkpoint is None:
                 raise ValueError("Teacher checkpoint must exist!")
-            self.logger.info("Loading teacher%d weights from %s", i,
-                             checkpoint)
+            self.logger.info("Loading teacher%d weights from %s", i, checkpoint)
             teacher['saver'].restore(self.sess, checkpoint)
         self.print_k()
 
@@ -1143,8 +1249,8 @@ class TeacherStudentModel(Model):
         for i in range(len(self.teacher_params)):
             vars = [
                 v for v in self.g.get_collection(
-                    tf.GraphKeys.TRAINABLE_VARIABLES, 'teacher%d' % i)
-                if '/k' in v.op.name
+                    tf.GraphKeys.TRAINABLE_VARIABLES, 'teacher%d' % i
+                ) if '/k' in v.op.name
             ]
             vals = self.sess.run(vars)
             for var, val in zip(vars, vals):

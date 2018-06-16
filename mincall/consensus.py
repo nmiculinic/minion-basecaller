@@ -16,8 +16,10 @@ from tqdm import tqdm
 """
 
 
-def process_mpileup(name, alignments_path, reference_path, mpileup_path,
-                    coverage_threshold, output_prefix):
+def process_mpileup(
+    name, alignments_path, reference_path, mpileup_path, coverage_threshold,
+    output_prefix
+):
     def _nlines(path):
         with open(path, 'r') as f:
             n_lines = sum(1 for _ in f)
@@ -34,7 +36,7 @@ def process_mpileup(name, alignments_path, reference_path, mpileup_path,
         # num_called_bases,
         # num_correct_bases,
         # coverage_sum
-        counts = np.zeros((7, ))
+        counts = np.zeros((7,))
 
         fp_variant = None
         fp_vcf = None
@@ -43,11 +45,13 @@ def process_mpileup(name, alignments_path, reference_path, mpileup_path,
             os.makedirs(output_prefix, exist_ok=True)
 
             variant_file = os.path.join(
-                output_prefix, 'cov_%d.variant.csv' % coverage_threshold)
+                output_prefix, 'cov_%d.variant.csv' % coverage_threshold
+            )
             fp_variant = open(variant_file, 'w')
 
-            vcf_file = os.path.join(output_prefix,
-                                    'cov_%d.variant.vcf' % coverage_threshold)
+            vcf_file = os.path.join(
+                output_prefix, 'cov_%d.variant.vcf' % coverage_threshold
+            )
             fp_vcf = open(vcf_file, 'w')
 
             fp_vcf.write('##fileformat=VCFv4.0\n')
@@ -91,7 +95,8 @@ def process_mpileup(name, alignments_path, reference_path, mpileup_path,
                 continue
 
             num_bases_to_skip, new_counts = process_mpileup_line(
-                line, coverage_threshold, fp_variant, fp_vcf)
+                line, coverage_threshold, fp_variant, fp_vcf
+            )
             counts += new_counts
 
             i += num_bases_to_skip
@@ -115,7 +120,7 @@ def process_mpileup(name, alignments_path, reference_path, mpileup_path,
             'average_coverage'
         ]
         values = [alignments_path, mpileup_path, coverage_threshold
-                  ] + counts.tolist()
+                 ] + counts.tolist()
         report = pd.DataFrame([values], columns=fields, index=[name])
         report.num_called_bases = report.num_correct_bases + report.snp_count + report.insertion_count
 
@@ -124,14 +129,15 @@ def process_mpileup(name, alignments_path, reference_path, mpileup_path,
             new_col = col.replace('count', 'rate')
             report[new_col] = 100 * report[col] / report.num_called_bases
 
-        report[
-            'correct_rate'] = 100 * report.num_correct_bases / report.num_called_bases
-        report[
-            'identity_percentage'] = 100 * report.num_correct_bases / reference_len
+        report['correct_rate'
+              ] = 100 * report.num_correct_bases / report.num_called_bases
+        report['identity_percentage'
+              ] = 100 * report.num_correct_bases / reference_len
 
         if output_prefix:
-            summary_file = os.path.join(output_prefix,
-                                        'cov_%d.sum.vcf' % coverage_threshold)
+            summary_file = os.path.join(
+                output_prefix, 'cov_%d.sum.vcf' % coverage_threshold
+            )
             report.to_csv(summary_file, sep=';', index=False)
         return report
 
@@ -147,7 +153,7 @@ def process_mpileup_line(line, coverage_threshold, fp_variant, fp_vcf):
     split_line = line.strip().split('\t')
     if len(split_line) < 5 or len(split_line) > 6:
         logging.error("Invalid mpileup line", line)
-        return 0, np.zeros((7, ))
+        return 0, np.zeros((7,))
 
     ref_name, position, ref_base, coverage, original_bases, *_ = split_line
     coverage = int(coverage)
@@ -218,11 +224,13 @@ def process_mpileup_line(line, coverage_threshold, fp_variant, fp_vcf):
         num_undercovered_bases += 1
         coverage_sum += coverage
         sorted_base_counts = sorted(
-            base_counts.items(), key=operator.itemgetter(1))
+            base_counts.items(), key=operator.itemgetter(1)
+        )
 
         variant_line = 'undercovered1\tpos = %s\tref = %s\tcoverage = %d\tbase_counts = %s\tinsertion_counts = %s\tdeletion_counts = %s' % (
             position, ref_name, int(coverage), str(sorted_base_counts),
-            str(insertion_event_counts), str(deletion_event_counts))
+            str(insertion_event_counts), str(deletion_event_counts)
+        )
         variant_write(variant_line)
 
         ### VCF output ###
@@ -230,9 +238,9 @@ def process_mpileup_line(line, coverage_threshold, fp_variant, fp_vcf):
         info = 'DP=%d;TYPE=snp' % coverage
         ref_field = ref_base
         alt_field = 'N'
-        vcf_line = '%s\t%s\t.\t%s\t%s\t%d\tPASS\t%s' % (ref_name, position,
-                                                        ref_field, alt_field,
-                                                        qual, info)
+        vcf_line = '%s\t%s\t.\t%s\t%s\t%d\tPASS\t%s' % (
+            ref_name, position, ref_field, alt_field, qual, info
+        )
         vcf_write(vcf_line)
 
     else:
@@ -241,7 +249,8 @@ def process_mpileup_line(line, coverage_threshold, fp_variant, fp_vcf):
         most_common_base_count = 0
 
         sorted_base_counts = sorted(
-            base_counts.items(), key=operator.itemgetter(1))
+            base_counts.items(), key=operator.itemgetter(1)
+        )
         try:
             most_common_base_count = sorted_base_counts[-1][1]
         except:
@@ -262,21 +271,20 @@ def process_mpileup_line(line, coverage_threshold, fp_variant, fp_vcf):
                     ref_base, ('{}') if (len(sorted_base_counts) == 0) else
                     (str(sorted_base_counts[-1][0])), str(sorted_base_counts),
                     str(insertion_event_counts), str(deletion_event_counts),
-                    line.strip())
+                    line.strip()
+                )
                 variant_write(variant_line)
 
                 ### VCF output ###
-                alt_base = ('{}') if (len(sorted_base_counts) == 0) else (str(
-                    sorted_base_counts[-1][0]))
+                alt_base = ('{}') if (len(sorted_base_counts) == 0
+                                     ) else (str(sorted_base_counts[-1][0]))
                 qual = 1000
                 info = 'DP=%d;TYPE=snp' % (coverage)
                 ref_field = ref_base
                 alt_field = alt_base
-                vcf_line = '%s\t%s\t.\t%s\t%s\t%d\tPASS\t%s' % (ref_name,
-                                                                position,
-                                                                ref_field,
-                                                                alt_field,
-                                                                qual, info)
+                vcf_line = '%s\t%s\t.\t%s\t%s\t%d\tPASS\t%s' % (
+                    ref_name, position, ref_field, alt_field, qual, info
+                )
                 vcf_write(vcf_line)
                 ##################
 
@@ -285,17 +293,21 @@ def process_mpileup_line(line, coverage_threshold, fp_variant, fp_vcf):
 
     non_indel_coverage_next_base = coverage - end_counts - deletion_count - insertion_count
     skip = 0
-    if (non_indel_coverage_next_base + deletion_count +
-            insertion_count) > coverage_threshold:
+    if (
+        non_indel_coverage_next_base + deletion_count + insertion_count
+    ) > coverage_threshold:
         if len(insertion_event_counts.keys()) > 0:
             sorted_insertion_counts = sorted(
-                insertion_event_counts.items(), key=operator.itemgetter(1))
+                insertion_event_counts.items(), key=operator.itemgetter(1)
+            )
             most_common_insertion_count = sorted_insertion_counts[-1][1]
             most_common_insertion_length = len(sorted_insertion_counts[-1][0])
-            insertion_unique = True if (sum([
-                int(insertion_count[1] == most_common_insertion_count)
-                for insertion_count in sorted_insertion_counts
-            ]) == 1) else False
+            insertion_unique = True if (
+                sum([
+                    int(insertion_count[1] == most_common_insertion_count)
+                    for insertion_count in sorted_insertion_counts
+                ]) == 1
+            ) else False
         else:
             most_common_insertion_count = 0
             most_common_insertion_length = 0
@@ -303,13 +315,16 @@ def process_mpileup_line(line, coverage_threshold, fp_variant, fp_vcf):
 
         if len(deletion_event_counts.keys()) > 0:
             sorted_deletion_counts = sorted(
-                deletion_event_counts.items(), key=operator.itemgetter(1))
+                deletion_event_counts.items(), key=operator.itemgetter(1)
+            )
             most_common_deletion_count = sorted_deletion_counts[-1][1]
             most_common_deletion_length = len(sorted_deletion_counts[-1][0])
-            deletion_unique = True if (sum([
-                int(deletion_count[1] == most_common_deletion_count)
-                for deletion_count in sorted_deletion_counts
-            ]) == 1) else False
+            deletion_unique = True if (
+                sum([
+                    int(deletion_count[1] == most_common_deletion_count)
+                    for deletion_count in sorted_deletion_counts
+                ]) == 1
+            ) else False
         else:
             most_common_deletion_count = 0
             most_common_deletion_length = 0
@@ -330,7 +345,8 @@ def process_mpileup_line(line, coverage_threshold, fp_variant, fp_vcf):
                     non_indel_coverage_current_base,
                     most_common_insertion_count, ref_base, temp_sorted_bc,
                     str(sorted_base_counts), str(insertion_event_counts),
-                    str(deletion_event_counts), line.strip())
+                    str(deletion_event_counts), line.strip()
+                )
                 variant_write(variant_line)
 
                 ### VCF output ###
@@ -338,11 +354,9 @@ def process_mpileup_line(line, coverage_threshold, fp_variant, fp_vcf):
                 info = 'DP=%d;TYPE=ins' % coverage
                 ref_field = ref_base
                 alt_field = '%s%s' % (ref_base, sorted_insertion_counts[-1][0])
-                vcf_line = '%s\t%s\t.\t%s\t%s\t%d\tPASS\t%s' % (ref_name,
-                                                                position,
-                                                                ref_field,
-                                                                alt_field,
-                                                                qual, info)
+                vcf_line = '%s\t%s\t.\t%s\t%s\t%d\tPASS\t%s' % (
+                    ref_name, position, ref_field, alt_field, qual, info
+                )
                 vcf_write(vcf_line)
                 ##################
 
@@ -351,11 +365,11 @@ def process_mpileup_line(line, coverage_threshold, fp_variant, fp_vcf):
                 actual_deletion_count += 1
                 variant_line = 'del\tpos = %s\tref = %s\tnon_indel_cov_next = %d\tnon_indel_cov_curr = %d\tmost_common_deletion_count = %d\tref_base = %s\tcons_base = %s\tbase_counts = %s\tinsertion_counts = %s\tdeletion_counts = %s\t%s' % (
                     position, ref_name, non_indel_coverage_next_base,
-                    non_indel_coverage_current_base,
-                    most_common_deletion_count, ref_base,
-                    sorted_base_counts[-1][0], str(sorted_base_counts),
-                    str(insertion_event_counts), str(deletion_event_counts),
-                    line.strip())
+                    non_indel_coverage_current_base, most_common_deletion_count,
+                    ref_base, sorted_base_counts[-1][0],
+                    str(sorted_base_counts), str(insertion_event_counts),
+                    str(deletion_event_counts), line.strip()
+                )
                 variant_write(variant_line)
 
                 ### VCF output ###
@@ -363,11 +377,9 @@ def process_mpileup_line(line, coverage_threshold, fp_variant, fp_vcf):
                 info = 'DP=%d;TYPE=del' % coverage
                 ref_field = '%s%s' % (ref_base, sorted_deletion_counts[-1][0])
                 alt_field = ref_base
-                vcf_line = '%s\t%s\t.\t%s\t%s\t%d\tPASS\t%s' % (ref_name,
-                                                                position,
-                                                                ref_field,
-                                                                alt_field,
-                                                                qual, info)
+                vcf_line = '%s\t%s\t.\t%s\t%s\t%d\tPASS\t%s' % (
+                    ref_name, position, ref_field, alt_field, qual, info
+                )
                 vcf_write(vcf_line)
                 ##################
                 skip = most_common_deletion_length
@@ -381,13 +393,15 @@ def process_mpileup_line(line, coverage_threshold, fp_variant, fp_vcf):
     return skip, np.array(cnts)
 
 
-def get_consensus_report(name,
-                         sam_path,
-                         ref_path,
-                         is_circular,
-                         coverage_threshold=0,
-                         report_out_dir=None,
-                         tmp_files_dir=None):
+def get_consensus_report(
+    name,
+    sam_path,
+    ref_path,
+    is_circular,
+    coverage_threshold=0,
+    report_out_dir=None,
+    tmp_files_dir=None
+):
     basename = os.path.basename(sam_path)
     file_name, ext = os.path.splitext(basename)
 
@@ -406,8 +420,7 @@ def get_consensus_report(name,
     split_aligments_in_sam(sam_path, tmp_sam_path)
 
     logging.info("Converting sam to bam")
-    pysam.view(
-        '-S', tmp_sam_path, '-b', '-o', tmp_bam_path, catch_stdout=False)
+    pysam.view('-S', tmp_sam_path, '-b', '-o', tmp_bam_path, catch_stdout=False)
 
     logging.info("Sorting bam file")
     pysam.sort(tmp_bam_path, '-o', bam_path, catch_stdout=False)
@@ -429,11 +442,14 @@ def get_consensus_report(name,
         bam_path,
         '-o',
         mpileup_path,
-        catch_stdout=False)
+        catch_stdout=False
+    )
 
     logging.info("Generating consensus and report")
-    report = process_mpileup(name, sam_path, ref_path, mpileup_path,
-                             coverage_threshold, report_out_dir)
+    report = process_mpileup(
+        name, sam_path, ref_path, mpileup_path, coverage_threshold,
+        report_out_dir
+    )
 
     if not keep_tmp_files:
         logging.info("Cleaning tmp files")

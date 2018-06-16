@@ -1,5 +1,7 @@
 import unittest
+from typing import *
 import logging
+import tempfile
 import numpy as np
 import itertools
 import threading
@@ -24,11 +26,8 @@ ex_fname = os.path.join(
 class TestInputFeeders(unittest.TestCase):
     def test_simple(self):
         golden_fn = os.path.join(
-            os.path.dirname(__file__), "test_simple.golden")
-
-        with gzip.open(ex_fname, "r") as f:
-            dp = dataset_pb2.DataPoint()
-            dp.ParseFromString(f.read())
+            os.path.dirname(__file__), "test_simple.golden"
+        )
 
         q = queue.Queue()
         p = queue.Queue()
@@ -36,6 +35,8 @@ class TestInputFeeders(unittest.TestCase):
             batch_size=None,
             seq_length=50,
             ratio=1,
+            num_bases=4,
+            surrogate_base_pair=False,
         )
         _input_feeders.produce_datapoints(
             cfg,
@@ -50,6 +51,8 @@ class TestInputFeeders(unittest.TestCase):
                 x = q.get_nowait()
                 if isinstance(x, ValueError):
                     got.append("ValueError")
+                else:
+                    got.append(x)
             except queue.Empty:
                 break
         if update_golden:
@@ -60,7 +63,14 @@ class TestInputFeeders(unittest.TestCase):
             with open(golden_fn, 'rb') as f:
                 golden = pickle.load(f)
 
-        self.assertListEqual(got, golden)
+        self.assertEqual(len(got), len(golden))
+        for a, b in zip(got, golden):
+            if isinstance(a, list):
+                assert len(a) == len(b)
+                for aa, bb in zip(a, b):
+                    np.testing.assert_allclose(aa, bb)
+            else:
+                self.assertEqual(a, b)
 
     def test_processing(self):
         g = tf.Graph()
@@ -70,6 +80,8 @@ class TestInputFeeders(unittest.TestCase):
                     batch_size=2,
                     seq_length=None,
                     ratio=1,
+                    num_bases=4,
+                    surrogate_base_pair=False,
                 ),
                 fnames=None,
                 min_after_deque=0,
@@ -91,17 +103,21 @@ class TestInputFeeders(unittest.TestCase):
                 dq.batch_labels, dq.batch_dense_labels, dq.batch_signal,
                 dq.batch_signal_len
             ])
-            np.testing.assert_allclose(batch_labels.indices,
-                                       np.array([[0, 0], [0, 1], [0, 2],
-                                                 [1, 0], [1, 1]]))
-            np.testing.assert_allclose(batch_labels.values,
-                                       np.array([1, 2, 3, 10, 20]))
-            np.testing.assert_allclose(batch_labels.dense_shape,
-                                       np.array([2, 3]))
-            np.testing.assert_allclose(signal,
-                                       np.array([[1, 2, 3, 4, 5, 0, 0],
-                                                 [10, 20, 30, 40, 50, 60,
-                                                  70]]).reshape(2, 7, 1))
+            np.testing.assert_allclose(
+                batch_labels.indices,
+                np.array([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1]])
+            )
+            np.testing.assert_allclose(
+                batch_labels.values, np.array([1, 2, 3, 10, 20])
+            )
+            np.testing.assert_allclose(
+                batch_labels.dense_shape, np.array([2, 3])
+            )
+            np.testing.assert_allclose(
+                signal,
+                np.array([[1, 2, 3, 4, 5, 0, 0], [10, 20, 30, 40, 50, 60,
+                                                  70]]).reshape(2, 7, 1)
+            )
             np.testing.assert_allclose(signal_len, np.array([5, 7]))
 
     def test_end2end(self):
@@ -112,6 +128,8 @@ class TestInputFeeders(unittest.TestCase):
                     batch_size=2,
                     seq_length=50,
                     ratio=1,
+                    num_bases=4,
+                    surrogate_base_pair=False,
                 ),
                 fnames=[ex_fname],
                 min_after_deque=40,
@@ -126,6 +144,81 @@ class TestInputFeeders(unittest.TestCase):
                         dq.batch_labels, dq.batch_signal, dq.batch_signal_len
                     ])
                 coord.request_stop()
+
+    def _create_valid_dp(self, seq: List[Tuple[int, int]]):
+        signal = []
+        labels = []
+
+        for bp, l in seq:
+            signal.extend([float(bp)] * l)
+            labels.append(
+                dataset_pb2.DataPoint.BPConfidenceInterval(
+                    lower=len(signal) - l,
+                    upper=len(signal),
+                    pair=bp,
+                )
+            )
+        return dataset_pb2.DataPoint(
+            signal=signal,
+            labels=labels,
+        )
+
+    def test_ok_process(self):
+        _, t = tempfile.mkstemp()
+        try:
+            with gzip.open(t, "w") as f:
+                f.write(
+                    self._create_valid_dp([
+                        (dataset_pb2.A, 10),
+                        (dataset_pb2.A, 10),
+                        (dataset_pb2.A, 10),
+                        (dataset_pb2.A, 10),
+                        (dataset_pb2.C, 20),
+                        (dataset_pb2.A, 10),
+                        (dataset_pb2.C, 10),
+                        (dataset_pb2.C, 10),
+                        (dataset_pb2.C, 10),
+                    ]).SerializeToString()
+                )
+
+            q = queue.Queue()
+            p = queue.Queue()
+            cfg: _input_feeders.InputFeederCfg = _input_feeders.InputFeederCfg(
+                batch_size=None,
+                seq_length=50,
+                ratio=1,
+                num_bases=4,
+                surrogate_base_pair=False,
+                min_signal_size=10,
+            )
+            _input_feeders.produce_datapoints(
+                cfg,
+                fnames=[t],
+                q=q,
+                poison=p,
+                repeat=False,
+            )
+            got = []
+            for i in itertools.count():
+                try:
+                    x = q.get_nowait()
+                    if isinstance(x, ValueError):
+                        got.append("ValueError")
+                    else:
+                        got.append(x)
+                except queue.Empty:
+                    break
+            self.assertEqual(len(got), 2)
+            np.testing.assert_equal(
+                got[0][1],
+                np.array(4 * [dataset_pb2.A] + [dataset_pb2.C], dtype=np.int32)
+            )
+            np.testing.assert_equal(
+                got[1][1],
+                np.array([dataset_pb2.A] + 3 * [dataset_pb2.C], dtype=np.int32)
+            )
+        finally:
+            os.unlink(t)
 
 
 if __name__ == "__main__":
