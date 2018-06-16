@@ -31,47 +31,6 @@ class ConstMultiplierLayer(Layer):
         return input_shape
 
 
-class GatedConvResidual1D(Layer):
-    """https://arxiv.org/abs/1612.08083
-   """
-
-    def __init__(self, kernel_size=3, **kwargs):
-        self.kernel_size = kernel_size
-        super().__init__(**kwargs)
-
-    def build(self, input_shape):
-        assert len(input_shape) == 3
-        channels_in = input_shape[2]
-        self.k = self.add_weight(
-            name='k',
-            shape=(),
-            initializer='ones',
-            dtype='float32',
-            trainable=True,
-        )
-        self.residual = models.Sequential([
-            layers.Conv1D(
-                channels_in,
-                kernel_size=self.kernel_size,
-                activation='linear',
-                batch_input_shape=input_shape
-            ),
-            layers.BatchNormalization(),
-            layers.Activation('relu'),
-        ])
-        self.residual.build(input_shape)
-        super().build(input_shape)
-
-    def call(self, x):
-        return layers.add([
-            x,
-            K.multiply(self.k, self.residual(x)),
-        ])
-
-    def compute_output_shape(self, input_shape):
-        return input_shape
-
-
 custom_layers = {ConstMultiplierLayer.__name__: ConstMultiplierLayer}
 
 
