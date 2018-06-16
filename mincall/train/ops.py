@@ -19,6 +19,16 @@ aligment_stats_ordering = [
 def alignment_stats(
     lable_ind, label_val, pred_ind, pred_val, batch_size, debug=False
 ):
+    """TODO
+
+    :param lable_ind:
+    :param label_val:
+    :param pred_ind:
+    :param pred_val:
+    :param batch_size:
+    :param debug:
+    :return:
+    """
     yt = defaultdict(list)
     for ind, val in zip(lable_ind, label_val):
         yt[ind[0]].append(val)
@@ -28,6 +38,7 @@ def alignment_stats(
         yp[ind[0]].append(val)
 
     sol = defaultdict(list)
+    identities = []
     for x in range(batch_size):
         query = decode(yp[x])
         target = decode(yt[x])
@@ -38,7 +49,10 @@ def alignment_stats(
 
         read_len = stats[dataset_pb2.MISMATCH
                         ] + stats[dataset_pb2.MATCH
-                                 ] + stats[dataset_pb2.DELETION]
+                                 ] + stats[dataset_pb2.INSERTION]
+
+        #  https://github.com/isovic/samscripts/blob/master/src/errorrates.py
+        identities.append(stats[dataset_pb2.MATCH] / sum(stats.values()))
 
         for op in aligment_stats_ordering:
             sol[op].append(stats[op] / read_len)
@@ -94,14 +108,15 @@ def alignment_stats(
         dataset_pb2.Cigar.Name(k): v
         for k, v in zip(aligment_stats_ordering, sol)
     }
+    sol_data["IDENTITY"] = identities
     logging.info(f"sol: \n{pd.DataFrame(sol_data)}")
-    return sol
+    return sol + [np.array(identities, dtype=np.float32)]
 
 
 if __name__ == "__main__":
     labels = tf.sparse_placeholder(tf.float32, name="labels")
     pred = tf.sparse_placeholder(tf.float32, name="pred")
-    stats = tf.py_func(
+    stats, _ = tf.py_func(
         alignment_stats,
         [
             labels.indices, labels.values, pred.indices, pred.values,
