@@ -188,7 +188,8 @@ class DataQueue():
         if self.cfg.surrogate_base_pair:
             for i in range(1, len(label)):
                 if label[i - 1] == label[i]:
-                    assert label[i] < self.cfg.num_bases, "invalid base pair data"
+                    assert label[i
+                                ] < self.cfg.num_bases, "invalid base pair data"
                     label[i] += self.cfg.num_bases
 
         sess.run(
