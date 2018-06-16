@@ -188,6 +188,7 @@ class DataQueue():
         if self.cfg.surrogate_base_pair:
             for i in range(1, len(label)):
                 if label[i - 1] == label[i]:
+                    assert label[i] < self.cfg.num_bases, "invalid base pair data"
                     label[i] += self.cfg.num_bases
 
         sess.run(
@@ -297,8 +298,8 @@ def produce_datapoints(
     :param q:
     :return:
     """
+    random.seed(os.urandom(20))
     for cnt in itertools.count(1):
-        random.seed(os.urandom(20))
         random.shuffle(fnames)
         for x in fnames:
             with gzip.open(x, "r") as f:
@@ -340,7 +341,9 @@ def produce_datapoints(
                     except queue.Empty:
                         pass
                     except BrokenPipeError:
-                        logging.warning("Got BrokenPipeError error while polling poison queue, quiting")
+                        logging.warning(
+                            "Got BrokenPipeError error while polling poison queue, quiting"
+                        )
                         return
 
                     signal_segment = signal[start:start + cfg.seq_length]
@@ -359,7 +362,9 @@ def produce_datapoints(
                                 np.array(buff, dtype=np.int32),
                             ])
                         except EOFError:
-                            logging.warning("Got EOF error while pushing new signal into queue, ignoring")
+                            logging.warning(
+                                "Got EOF error while pushing new signal into queue, ignoring"
+                            )
 
         if not repeat:
             break

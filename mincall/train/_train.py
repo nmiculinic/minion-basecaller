@@ -193,10 +193,15 @@ class Model():
         self.learning_phase = K.learning_phase()
         with K.name_scope("data_in"):
             self.dq = DataQueue(
-                cfg, self.dataset, capacity=10 * cfg.batch_size, trace=trace
+                cfg, self.dataset, capacity=10 * cfg.batch_size, trace=trace, min_after_deque=2 * cfg.batch_size
             )
         input_signal: tf.Tensor = self.dq.batch_signal
-        input_signal = tf.Print(input_signal, [tf.shape(input_signal)], first_n=1, summarize=10, message="input signal shape, [batch_size,max_time, 1]")
+        input_signal = tf.Print(
+            input_signal, [tf.shape(input_signal)],
+            first_n=1,
+            summarize=10,
+            message="input signal shape, [batch_size,max_time, 1]"
+        )
 
         labels: tf.SparseTensor = self.dq.batch_labels
         signal_len: tf.Tensor = self.dq.batch_signal_len
@@ -206,12 +211,22 @@ class Model():
         self.logits = tf.transpose(model(input_signal), [1, 0, 2]
                                   )  # [max_time, batch_size, class_num]
         self.logger.info(f"Logits shape: {self.logits.shape}")
-        self.logits = tf.Print(self.logits, [tf.shape(self.logits)], first_n=1, summarize=10, message="logits shape [max_time, batch_size, class_num]")
+        self.logits = tf.Print(
+            self.logits, [tf.shape(self.logits)],
+            first_n=1,
+            summarize=10,
+            message="logits shape [max_time, batch_size, class_num]"
+        )
 
         seq_len = tf.cast(
             tf.floor_div(signal_len + cfg.ratio - 1, cfg.ratio), tf.int32
         )  # Round up
-        seq_len = tf.Print(seq_len, [tf.shape(seq_len), seq_len], first_n=5, summarize=15, message="seq_len [expected around max_time]")
+        seq_len = tf.Print(
+            seq_len, [tf.shape(seq_len), seq_len],
+            first_n=5,
+            summarize=15,
+            message="seq_len [expected around max_time]"
+        )
 
         self.losses = tf.nn.ctc_loss(
             labels=labels,
@@ -225,7 +240,8 @@ class Model():
         self.predict = tf.nn.ctc_beam_search_decoder(
             inputs=self.logits,
             sequence_length=seq_len,
-            merge_repeated=cfg.surrogate_base_pair,  # Gotta merge if we have surrogate_base_pairs
+            merge_repeated=cfg.
+            surrogate_base_pair,  # Gotta merge if we have surrogate_base_pairs
             top_paths=1,
             beam_width=100,
         )[0][0]
@@ -274,24 +290,26 @@ class Model():
             *self.dq.summaries,
         ]
 
-
     def input_wrapper(self, sess: tf.Session, coord: tf.train.Coordinator):
         return self.dq.start_input_processes(sess, coord)
 
 
 def extended_summaries(m: Model):
     sums = []
+
+    *alignment_stats, identity = tf.py_func(
+        ops.alignment_stats,
+        [
+            m.labels.indices, m.labels.values, m.predict.indices,
+            m.predict.values, m.labels.dense_shape[0]
+        ],
+        (len(ops.aligment_stats_ordering) + 1)* [tf.float32],
+        stateful=False,
+    )
+
     for stat_type, stat in zip(
         ops.aligment_stats_ordering,
-        tf.py_func(
-            ops.alignment_stats,
-            [
-                m.labels.indices, m.labels.values, m.predict.indices,
-                m.predict.values, m.labels.dense_shape[0]
-            ],
-            4 * [tf.float32],
-            stateful=False,
-        )
+        alignment_stats
     ):
         stat.set_shape((None,))
         sums.append(
@@ -300,6 +318,12 @@ def extended_summaries(m: Model):
                 stat,
             )
         )
+
+    identity.set_shape((None,))
+    sums.append(tensor_default_summaries(
+        "IDENTITY",
+        identity,
+    ))
 
     sums.extend(tensor_default_summaries("logits", m.logits))
     return sums
@@ -364,7 +388,7 @@ def run(cfg: TrainConfig):
     )
 
     global_step = tf.train.get_or_create_global_step()
-    step = tf.assign_add(global_step, 1)
+    step_inc = tf.assign_add(global_step, 1)
     learning_rate = tf.train.exponential_decay(
         learning_rate=cfg.init_learning_rate,
         global_step=global_step,
@@ -457,98 +481,41 @@ def run(cfg: TrainConfig):
             ) as pbar, train_model.input_wrapper(
                 sess, coord
             ), test_model.input_wrapper(sess, coord):
-                for i in range(gs + 1, cfg.train_steps + 1):
+                for step in range(gs + 1, cfg.train_steps + 1):
                     #  Train hook
                     opts = {}
-                    if cfg.run_trace_every > 0 and i % cfg.run_trace_every == 0:
+                    if cfg.run_trace_every > 0 and step % cfg.run_trace_every == 0:
                         opts['options'] = tf.RunOptions(
                             trace_level=tf.RunOptions.FULL_TRACE
                         )
                         opts['run_metadata'] = tf.RunMetadata()
 
                     summary_op = train_model.summary
-                    if i % cfg.validate_every == 0:
+                    if step % cfg.validate_every == 0:
                         summary_op = train_model.ext_summary
 
                     _, _, loss, summary = sess.run([
-                        step,
+                        step_inc,
                         train_op,
                         train_model.ctc_loss,
                         summary_op,
                     ], **opts)
-                    summary_writer.add_summary(summary, i)
+                    summary_writer.add_summary(summary, step)
 
-                    if cfg.run_trace_every > 0 and i % cfg.run_trace_every == 0:
-                        opts['options'] = tf.RunOptions(
-                            trace_level=tf.RunOptions.FULL_TRACE
-                        )
-                        fetched_timeline = timeline.Timeline(
-                            opts['run_metadata'].step_stats
-                        )
-                        chrome_trace = fetched_timeline.generate_chrome_trace_format(
-                            show_memory=True
-                        )
-                        with open(
-                            os.path.join(cfg.logdir, f'timeline_{i:05}.json'),
-                            'w'
-                        ) as f:
-                            f.write(chrome_trace)
-                        summary_writer.add_run_metadata(
-                            opts['run_metadata'], f"step_{i:05}", global_step=i
-                        )
-                        logger.info(
-                            f"Saved trace metadata both to timeline_{i:05}.json and step_{i:05} in tensorboard"
-                        )
+                    if cfg.run_trace_every > 0 and step % cfg.run_trace_every == 0:
+                        log_trace(cfg, step, opts, summary_writer)
                     pbar.update()
 
                     #  Validate hook
-                    if i % cfg.validate_every == 0:
+                    if step % cfg.validate_every == 0:
                         beholder.update(session=sess)
-                        logits, predict, lb, val_loss, losses, test_summary = sess.run(
-                            [
-                                test_model.logits,
-                                test_model.predict,
-                                test_model.dq.batch_labels,
-                                test_model.ctc_loss,
-                                test_model.losses,
-                                test_model.summary,
-                            ],
-                            feed_dict={
-                                test_model.learning_phase: 0,
-                            }
-                        )
-
-                        logger.info(
-                            f"Logits[{logits.shape}]:\n describe:{pformat(stats.describe(logits, axis=None))}"
-                        )
-                        summary_writer.add_summary(test_summary, i)
-
-                        yt = defaultdict(list)
-                        yp = defaultdict(list)
-                        for ind, val in zip(lb.indices, lb.values):
-                            yt[ind[0]].append(val)
-
-                        for ind, val in zip(predict.indices, predict.values):
-                            yp[ind[0]].append(val)
-
-                        for x in range(cfg.batch_size):
-                            q, t, alignment = squggle(
-                                decode(yp[x]),
-                                decode(yt[x]),
-                            )
-                            logger.debug(
-                                f"{x}: \n"
-                                f"Basecalled: {q}\n"
-                                f"Target    : {t}\n"
-                                f"Loss      : {losses[x]}\n"
-                                f"Edit dist : {alignment['editDistance'] * 'x'}\n"
-                            )
+                        val_loss = log_validation(cfg, sess, step, summary_writer, test_model)
 
                     pbar.set_postfix(
                         loss=loss, val_loss=val_loss, refresh=False
                     )
                     #  Save hook
-                    if i % cfg.save_every == 0:
+                    if step % cfg.save_every == 0:
                         saver.save(
                             sess=sess,
                             save_path=os.path.join(cfg.logdir, 'model.ckpt'),
@@ -563,3 +530,65 @@ def run(cfg: TrainConfig):
         finally:
             coord.request_stop()
             coord.join(stop_grace_period_secs=5)
+
+
+def log_validation(cfg: TrainConfig, sess: tf.Session, step: int, summary_writer: tf.summary.FileWriter, test_model: Model):
+    logits, predict, lb, val_loss, losses, test_summary = sess.run(
+        [
+            test_model.logits,
+            test_model.predict,
+            test_model.dq.batch_labels,
+            test_model.ctc_loss,
+            test_model.losses,
+            test_model.summary,
+        ],
+        feed_dict={
+            test_model.learning_phase: 0,
+        }
+    )
+    logger.info(
+        f"Logits[{logits.shape}]:\n describe:{pformat(stats.describe(logits, axis=None))}"
+    )
+    summary_writer.add_summary(test_summary, step)
+    yt = defaultdict(list)
+    yp = defaultdict(list)
+    for ind, val in zip(lb.indices, lb.values):
+        yt[ind[0]].append(val)
+    for ind, val in zip(predict.indices, predict.values):
+        yp[ind[0]].append(val)
+    for x in range(cfg.batch_size):
+        q, t, alignment = squggle(
+            decode(yp[x]),
+            decode(yt[x]),
+        )
+        logger.debug(
+            f"{x}: \n"
+            f"Basecalled: {q}\n"
+            f"Target    : {t}\n"
+            f"Loss      : {losses[x]}\n"
+            f"Edit dist : {alignment['editDistance'] * 'x'}\n"
+        )
+    return val_loss
+
+
+def log_trace(cfg: TrainConfig, step:int, opts, summary_writer: tf.summary.FileWriter):
+    opts['options'] = tf.RunOptions(
+        trace_level=tf.RunOptions.FULL_TRACE
+    )
+    fetched_timeline = timeline.Timeline(
+        opts['run_metadata'].step_stats
+    )
+    chrome_trace = fetched_timeline.generate_chrome_trace_format(
+        show_memory=True
+    )
+    with open(
+            os.path.join(cfg.logdir, f'timeline_{step:05}.json'),
+            'w'
+    ) as f:
+        f.write(chrome_trace)
+    summary_writer.add_run_metadata(
+        opts['run_metadata'], f"step_{step:05}", global_step=step
+    )
+    logger.info(
+        f"Saved trace metadata both to timeline_{step:05}.json and step_{step:05} in tensorboard"
+    )
