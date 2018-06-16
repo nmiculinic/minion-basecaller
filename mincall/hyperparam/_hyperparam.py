@@ -107,38 +107,51 @@ def add_args(parser: argparse.ArgumentParser):
     parser.set_defaults(func=run_args)
     parser.set_defaults(name="mincall_hyperparam_search")
 
-def make_dict(x, subs: Dict) -> Tuple[Dict, List[Param]]:
-    print(x)
+
+def make_dict(x, subs: Dict) -> Tuple[Dict, Dict]:
+    if x is None:
+        return {}, {}
+    if isinstance(x, (int, str, float, bool)): # scalar
+        return x, {}
     if isinstance(x, Param):
-        return {}, [x]
+        return x, x
     if isinstance(x, dict):
         sol = {}
-        params: List[Param] = []
+        params = {}
         for k, v in x.items():
             if k in subs:
-                d, p = v, []
+                d, p = v, {}
             else:
                 d, p = make_dict(v, subs.get(k, {}))
             sol[k] = d
-            params.append(p)
+            if len(p):
+                params[k] = p
         return sol, params
     if isinstance(x, list):
         sol = []
         for d, p in map(lambda k: make_dict(k, subs), x):
             if len(p)>0:
-                raise ValueError(f"Cannot have params in list!\n{x}")
+                raise ValueError(f"Cannot have params in list!{x}\nparams: {p}\ndata:{d}")
             sol.append(d)
-        return sol, []
+        return sol, {}
     if hasattr(x, '_asdict'):
-        return make_dict(x._asdict(), subs)
-    if isinstance(x, (int, str, float, bool)): # scalar
-        return x, []
+        return make_dict(dict(x._asdict()), subs)
     raise ValueError(f"Unknown type {type(x).__name__}: {x}")
 
+def extract_parama(x) -> Dict[str, Param]:
+    if isinstance(x, Param):
+        return {"": x}
+    if isinstance(x, dict):
+        sol = {}
+        for k, v in x.items():
+            for kk, vv in extract_parama(v).items():
+                sol[f"{k}.{kk}"] = vv
+        return sol
+    raise ValueError(f"Unknown type {type(x).__name__}: {x}")
 
 def run(cfg: HyperParamCfg):
     print(pformat(cfg._asdict()))
     print("---")
-    print(yaml.dump(dict(cfg._asdict())))
-    print(make_dict(cfg, {}))
-    pass
+    dd, params = make_dict(cfg, {})
+    dd = toolz.keyfilter(lambda x: x in TrainConfig.__annotations__.keys(), dd)
+    print(yaml.dump(dd))
