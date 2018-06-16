@@ -373,10 +373,14 @@ def run(cfg: TrainConfig):
     num_bases = TOTAL_BASE_PAIRS
     if cfg.surrogate_base_pair:
         num_bases += TOTAL_BASE_PAIRS
-    model, ratio = all_models[cfg.model_name](
-        n_classes=num_bases + 1, hparams=cfg.model_hparams
-    )
-    logger.info(f"Compression ratio: {ratio}")
+    try:
+        model, ratio = all_models[cfg.model_name](
+            n_classes=num_bases + 1, hparams=cfg.model_hparams
+        )
+        logger.info(f"Compression ratio: {ratio}")
+    except voluptuous.error.Error as e:
+        logger.error(f"Invalid hyper params, check your config {humanize_error(cfg.model_hparams, e)}")
+        raise
 
     input_feeder_cfg = InputFeederCfg(
         batch_size=cfg.batch_size,
