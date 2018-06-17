@@ -216,7 +216,7 @@ class DataQueue():
 
                 iself.processes: List[Process] = []
                 for _ in range(cnt):
-                    p = Process(
+                    p = Thread(
                         target=produce_datapoints,
                         args=(self.cfg, self.fnames, q, iself.poison_queue)
                     )
@@ -228,13 +228,15 @@ class DataQueue():
                     for i in count(start=1):
                         try:
                             iself.poison_queue.get_nowait()
+                            self.logger.info("worker thread got poison, stopping")
                             return
                         except queue.Empty:
                             pass
                         if coord.should_stop():
+                            self.logger.info("worker thread coord stop, stopping")
                             return
                         try:
-                            it = q.get(timeout=0.5)
+                            it = q.get(timeout=1)
                             if isinstance(it, Exception):
                                 self.logger.debug(
                                     f"Exception happened during processing data {type(it).__name__}:\n{it}"
@@ -243,6 +245,7 @@ class DataQueue():
                                 continue
                             signal, labels = it
                             try:
+                                self.logger.debug("about to push to tf queue")
                                 self.push_to_queue(sess, signal, labels)
                             except tf.errors.CancelledError:
                                 if coord.should_stop():
@@ -254,7 +257,7 @@ class DataQueue():
                                     f"sucessfully submitted {i - exs}/{i} samples; -- {(i-exs)/i:.2f}"
                                 )
                         except queue.Empty:
-                            pass
+                            self.logger.debug("No new datapoints for 1s")
 
                 iself.th = Thread(target=worker_fn, daemon=True)
                 iself.th.start()
@@ -338,6 +341,7 @@ def produce_datapoints(
                         label_idx += 1
                     try:
                         poison.get_nowait()
+                        logging.info("produce_datapoints got poison, quiting")
                         return
                     except queue.Empty:
                         pass
@@ -358,6 +362,7 @@ def produce_datapoints(
                         )
                     else:
                         try:
+                            logging.debug("produce_datapoints: Putting data into python queue (probably halting)")
                             q.put([
                                 signal_segment,
                                 np.array(buff, dtype=np.int32),
@@ -368,4 +373,5 @@ def produce_datapoints(
                             )
 
         if not repeat:
+            logging.info("Repeat is false, quiting")
             break

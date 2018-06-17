@@ -11,7 +11,7 @@ import random
 
 __all__ = [
     "decode", "tensor_default_summaries", "squggle", "named_tuple_helper",
-    "ext_cigar_stats", "TOTAL_BASE_PAIRS", "expand_cigar", "name_generator"
+    "ext_cigar_stats", "TOTAL_BASE_PAIRS", "expand_cigar", "name_generator", "ExtraFieldsFilter"
 ]
 
 TOTAL_BASE_PAIRS = 4  # Total number of bases (A, C, T, G)  # Total number of bases (A, C, T, G)
@@ -1276,3 +1276,18 @@ def name_generator() -> str:
     ]
 
     return "-".join([random.choice(adjective), random.choice(name)])
+
+
+class ExtraFieldsFilter(logging.Filter):
+    def __init__(self, extra_fields):
+        super().__init__()
+        self.extra_fields = extra_fields
+
+    def filter(self, record: logging.LogRecord):
+        for k, v in self.extra_fields.items():
+            setattr(record, k, v)
+        if record.exc_info:
+            exc_type, value, traceback = record.exc_info
+            setattr(record, 'exc_type', exc_type.__name__)
+            setattr(record, 'exc_value', str(value))
+        return True

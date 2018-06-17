@@ -128,6 +128,7 @@ def add_args(parser: argparse.ArgumentParser):
         "Activate surrogate base pairs, that is repeated base pair shall be replaces with surrogate during training phase."
         "for example, let A=0. We have AAAA, which ordinarily will be 0, 0, 0, 0. With surrogate base pairs this will be 0, 4, 0, 4"
     )
+    parser.add_argument("--name", help="This model name. It's only used in logs so far", default=name_generator())
     parser.set_defaults(func=run_args)
     parser.set_defaults(name="mincall_train")
 
@@ -244,8 +245,8 @@ class Model():
             percent_finite, [percent_finite], first_n=10, message="%finite"
         )
         self.summaries = [
-            tf.summary.scalar(f'total_loss', self.total_loss),
-            tf.summary.scalar(f'ctc_loss', self.ctc_loss),
+            tf.summary.scalar(f'total_loss', self.total_loss, family="losses"),
+            tf.summary.scalar(f'ctc_loss', self.ctc_loss, family="losses"),
             tf.summary.scalar(
                 f'regularization_loss',
                 self.regularization_loss,
@@ -286,7 +287,7 @@ def extended_summaries(m: Model):
         "IDENTITY",
         identity,
     ))
-    sums.extend(tensor_default_summaries("logits", m.logits))
+    sums.extend(tensor_default_summaries("logits", m.logits, family="logits"))
 
     sums.append(
         tf.summary.image(
@@ -320,6 +321,7 @@ def run_args(args):
         logger.error(humanize_error(config, e))
         sys.exit(1)
 
+    logger.info(f"Parsed config\n{pformat(cfg)}")
     formatter = logging.Formatter(
         "%(asctime)s [%(levelname)5s]:%(name)20s: %(message)s"
     )
@@ -329,15 +331,19 @@ def run_args(args):
         train_cfg.logdir, f"{getattr(args, 'name', 'mincall')}.log"
     )
     h = (logging.FileHandler(fn))
-    h.setLevel(logging.DEBUG)
+    h.setLevel(logging.INFO)
     h.setFormatter(formatter)
-    logging.getLogger().addHandler(h)
+    name_filter = ExtraFieldsFilter({"run_name": args.name})
+    root_logger = logging.getLogger()
+
+    root_logger.addHandler(h)
+    root_logger.addFilter(name_filter)
     logging.info(f"Added handler to {fn}")
-    logger.info(f"Parsed config\n{pformat(cfg)}")
     try:
         return run(cfg['train'])
     finally:
-        logging.getLogger().removeHandler(h)
+        root_logger.removeHandler(h)
+        root_logger.removeFilter(name_filter)
 
 
 def run(cfg: TrainConfig):
@@ -461,6 +467,7 @@ def run(cfg: TrainConfig):
             ), test_model.input_wrapper(sess, coord):
                 for step in range(gs + 1, cfg.train_steps + 1):
                     #  Train hook
+                    logger.debug(f"Starting step {step}")
                     opts = {}
                     if cfg.run_trace_every > 0 and step % cfg.run_trace_every == 0:
                         opts['options'] = tf.RunOptions(
@@ -507,7 +514,7 @@ def run(cfg: TrainConfig):
                     for _ in range(5)
                 ])
                 coord.request_stop()
-                p = os.path.join(cfg.logdir, f"full-model.save")
+                p = os.path.join(cfg.logdir, f"full-model-{step:05}.save")
                 model.save(p, overwrite=True, include_optimizer=False)
                 logger.info(f"Finished training saved model to {p}")
             logger.info(f"Input queues exited ok")

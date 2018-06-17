@@ -3,6 +3,7 @@ from tqdm import tqdm
 import logging
 from mincall import train, basecall, embedding
 from mincall.hyperparam import _hyperparam
+import graypy
 import os
 
 
@@ -15,6 +16,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser("mincall")
     parser.add_argument("--verbose", "-v", action="store_true")
     parser.add_argument("--logdir", help="Directory for all the logs")
+    parser.add_argument("--gelf-udp", help="gelf udp host:port")
     subparsers = parser.add_subparsers()
 
     train.add_args(subparsers.add_parser("train"))
@@ -49,6 +51,13 @@ if __name__ == "__main__":
             root_logger.addHandler(h)
             logging.info(f"Added handler to {fn}")
         logging.info("Initialized logging handlers")
+        if args.gelf_udp:
+            host, port = args.gelf_udp.split(":")
+            port = int(port)
+            handler = graypy.GELFHandler(host, port, extra_fields=True)
+            handler.setLevel(logging.DEBUG)
+            logging.getLogger().addHandler(handler)
+            logging.info(f"Added gelf handler @ {host}:{port}")
         args.func(args)
     else:
         parser.print_help()
