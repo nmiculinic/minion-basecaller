@@ -245,8 +245,8 @@ class Model():
             percent_finite, [percent_finite], first_n=10, message="%finite"
         )
         self.summaries = [
-            tf.summary.scalar(f'total_loss', self.total_loss),
-            tf.summary.scalar(f'ctc_loss', self.ctc_loss),
+            tf.summary.scalar(f'total_loss', self.total_loss, family="losses"),
+            tf.summary.scalar(f'ctc_loss', self.ctc_loss, family="losses"),
             tf.summary.scalar(
                 f'regularization_loss',
                 self.regularization_loss,
@@ -287,7 +287,7 @@ def extended_summaries(m: Model):
         "IDENTITY",
         identity,
     ))
-    sums.extend(tensor_default_summaries("logits", m.logits))
+    sums.extend(tensor_default_summaries("logits", m.logits, family="logits"))
 
     sums.append(
         tf.summary.image(
@@ -514,7 +514,7 @@ def run(cfg: TrainConfig):
                     for _ in range(5)
                 ])
                 coord.request_stop()
-                p = os.path.join(cfg.logdir, f"full-model.save")
+                p = os.path.join(cfg.logdir, f"full-model-{step:05}.save")
                 model.save(p, overwrite=True, include_optimizer=False)
                 logger.info(f"Finished training saved model to {p}")
             logger.info(f"Input queues exited ok")
