@@ -1,4 +1,6 @@
 import tensorflow as tf
+import uuid
+import os
 import pandas as pd
 from collections import defaultdict
 import numpy as np
@@ -9,6 +11,8 @@ import logging
 from pprint import pformat
 import cytoolz as toolz
 import random
+
+logger = logging.getLogger(__name__)
 
 aligment_stats_ordering = [
     dataset_pb2.MATCH, dataset_pb2.MISMATCH, dataset_pb2.INSERTION,
@@ -33,6 +37,19 @@ def alignment_stats(
     :param debug:
     :return:
     """
+
+    prefix = os.environ.get("MINCALL_LOG_DATA", ".")
+    fname = os.path.abspath(os.path.join(prefix, f"{uuid.uuid4().hex}.npz"))
+    with open(fname, "wb") as f:
+        np.savez(f, **{
+            "label_val": label_val,
+            "lable_ind": lable_ind,
+            "pred_val": pred_val,
+            "pred_ind": pred_ind,
+            "batch_size": batch_size,
+        })
+    logger.debug(f"Saves alignment stats input data to {fname}")
+
     yt = defaultdict(list)
     for ind, val in zip(lable_ind, label_val):
         yt[ind[0]].append(val)
@@ -60,7 +77,7 @@ def alignment_stats(
 
         for op in aligment_stats_ordering:
             sol[op].append(stats[op] / read_len)
-        if x < 5:
+        if True:
             msg = "edlib results\n"
             s_query, s_target, _ = squggle(query, target)
             exp_cigar = expand_cigar(edlib_res['cigar'])
