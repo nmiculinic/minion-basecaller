@@ -147,7 +147,7 @@ def run(cfg: HyperParamCfg):
     )
     solver = RandomSolver(params)
 
-    for i in count():
+    while True:
         assigement = solver.new_assignment()
         concrete_params = assigement.params
         folder = os.path.normpath(
@@ -175,5 +175,3 @@ def run(cfg: HyperParamCfg):
             ))
         )
         solver.report(assigement, obs)
-        if i > 20:
-            break
