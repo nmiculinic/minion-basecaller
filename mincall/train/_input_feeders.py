@@ -239,7 +239,7 @@ class DataQueue():
                                     raise
                             except tf.errors.DeadlineExceededError:
                                 self.logger.warning("Queue pushing timeout exceeded")
-                            if i % 2000 == 0:
+                            if i > 0 and i % 2000 == 0:
                                 self.logger.info(
                                     f"sucessfully submitted {i - exs}/{i} samples; -- {(i-exs)/i:.2f}"
                                 )
@@ -247,7 +247,7 @@ class DataQueue():
                         self.logger.critical(f"{type(e).__name__}: {e}", exc_info=True)
                         raise
 
-                iself.th = Thread(target=worker_fn, daemon=True)
+                iself.th = Thread(target=worker_fn, daemon=False)
                 iself.th.start()
                 logging.getLogger(__name__).info("Started all feeders")
 
@@ -258,13 +258,15 @@ class DataQueue():
                     try:
                         sess.run(x)
                     except Exception as ex:
-                        logging.getLogger(__name__).warning(
+                        logging.getLogger(__name__).error(
                             f"Cannot close queue {type(ex).__name__}: {ex}"
                         )
-                        pass
                 logging.getLogger(__name__).info("Closed all queues")
                 iself.th.join(timeout=5)
-                logging.getLogger(__name__).info("Closed all feeders")
+                if iself.th.is_alive():
+                    logging.getLogger(__name__).error("Input thread is still alive")
+                else:
+                    logging.getLogger(__name__).info("Closed all feeders")
         return Wrapper()
 
 
