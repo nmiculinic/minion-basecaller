@@ -25,14 +25,6 @@ if __name__ == "__main__":
     _hyperparam.add_args(subparsers.add_parser("hyperparam"))
 
     args = parser.parse_args()
-    if args.gelf_udp:
-        host, port = args.gelf_udp.split(":")
-        port = int(port)
-        logging.info(f"Added gelf handler @ {args.gelf_udp}")
-        handler = graypy.GELFHandler(host, port, extra_fields=True)
-        handler.setLevel(logging.DEBUG)
-        logging.getLogger().addHandler(handler)
-        logging.info(f"Added gelf handler @ {host}:{port}")
     if hasattr(args, 'func'):
         root_logger = logging.getLogger()
         root_logger.setLevel(logging.DEBUG)
@@ -59,6 +51,13 @@ if __name__ == "__main__":
             root_logger.addHandler(h)
             logging.info(f"Added handler to {fn}")
         logging.info("Initialized logging handlers")
+        if args.gelf_udp:
+            host, port = args.gelf_udp.split(":")
+            port = int(port)
+            handler = graypy.GELFHandler(host, port, extra_fields=True)
+            handler.setLevel(logging.DEBUG)
+            logging.getLogger().addHandler(handler)
+            logging.info(f"Added gelf handler @ {host}:{port}")
         args.func(args)
     else:
         parser.print_help()
