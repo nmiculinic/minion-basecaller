@@ -123,7 +123,7 @@ def alignment_stats(
             df = df[['query', 'target', 'delta']]
             msg += "Stats\n" + str(df) + "\n"
             msg += "==================\n"
-            logging.info(msg)
+            logger.info(msg)
     sol = [
         np.array(sol[op], dtype=np.float32) for op in aligment_stats_ordering
     ]
@@ -132,7 +132,7 @@ def alignment_stats(
         for k, v in zip(aligment_stats_ordering, sol)
     }
     sol_data["IDENTITY"] = identities
-    logging.info(f"sol: \n{pd.DataFrame(sol_data)}")
+    logger.info(f"sol: \n{pd.DataFrame(sol_data)}")
     return sol + [np.array(identities, dtype=np.float32)]
 
 
