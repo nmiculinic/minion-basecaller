@@ -231,8 +231,7 @@ class DataQueue():
                                     self.logger.warning("enqueue op canceled, and coord is stopping")
                                     return
                                 else:
-                                    self.logger.warning("Canelled error occured yet coord is not stopping!")
-                                    raise
+                                    self.logger.error("Cancelled error occurred yet coord is not stopping!", exc_info=True)
                             except tf.errors.DeadlineExceededError:
                                 self.logger.warning("Queue pushing timeout exceeded")
                             if i > 0 and i % 2000 == 0:
