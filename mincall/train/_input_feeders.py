@@ -233,6 +233,7 @@ class DataQueue():
                         except queue.Empty:
                             pass
                         if coord.should_stop():
+                            self.logger.info("worker thread coord stop, stopping")
                             return
                         try:
                             it = q.get(timeout=1)
