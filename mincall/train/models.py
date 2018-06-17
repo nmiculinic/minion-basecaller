@@ -1,8 +1,10 @@
 from keras import models, layers, regularizers, constraints, backend as K
 from keras.engine.topology import Layer
 from typing import *
+from mincall.common import named_tuple_helper
 import logging
 import tensorflow as tf
+import voluptuous
 
 import numpy as np
 
@@ -34,10 +36,19 @@ class ConstMultiplierLayer(Layer):
 custom_layers = {ConstMultiplierLayer.__name__: ConstMultiplierLayer}
 
 
-def dummy_model(n_classes: int, hparams: str = None):
+class DummyCfg(NamedTuple):
+    num_layers: int
+
+    @classmethod
+    def scheme(cls, data):
+        return named_tuple_helper(cls, {}, data)
+
+
+def dummy_model(n_classes: int, hparams: Dict):
+    cfg: DummyCfg = DummyCfg.scheme(hparams)
     input = layers.Input(shape=(None, 1))
     net = input
-    for _ in range(5):
+    for _ in range(cfg.num_layers):
         net = layers.BatchNormalization()(net)
         net = layers.Conv1D(
             10,
@@ -52,117 +63,56 @@ def dummy_model(n_classes: int, hparams: str = None):
     return models.Model(inputs=[input], outputs=[net]), 1
 
 
-def big_01(n_classes: int, hparams: str):
-    input = layers.Input(shape=(None, 1))
-    net = layers.BatchNormalization()(input)
-    net = layers.Conv1D(
-        256, 3, padding="same", bias_regularizer=regularizers.l1(0.1)
-    )(net)
+class Big01Cfg(NamedTuple):
+    num_blocks: int
+    block_elem: int
+    block_init_channels: int = 32
+    receptive_width: int = 5
 
-    for _ in range(2):
-        x = net
-        net = layers.Conv1D(256, 5, padding='same')(net)
-        net = layers.BatchNormalization()(net)
-        net = layers.Activation('relu')(net)
-        net = layers.Conv1D(256, 5, padding='same')(net)
-        net = layers.BatchNormalization()(net)
-        net = layers.Activation('relu')(net)
-        net = ConstMultiplierLayer()(net)
-        net = layers.add([x, net])
-        net = layers.MaxPool1D(padding='same', pool_size=2)(net)
-
-    net = layers.Conv1D(n_classes, 3, padding="same")(net)
-    net = layers.BatchNormalization()(net)
-    return models.Model(inputs=[input], outputs=[net]), 2 * 2
+    @classmethod
+    def scheme(cls, data):
+        return named_tuple_helper(cls, {}, data)
 
 
-def m270(n_classes: int, hparams: str):
+def big_01(n_classes: int, hparams: Dict):
+    cfg: Big01Cfg = Big01Cfg.scheme(hparams)
     input = layers.Input(shape=(None, 1))
     net = input
-    block_channels = [32, 64]
-
-    for block_channel in block_channels:
+    for i in range(cfg.num_blocks):
+        channels = 2**i * cfg.block_init_channels
         net = layers.Conv1D(
-            block_channel,
-            3,
+            channels,
+            cfg.receptive_width,
             padding="same",
             bias_regularizer=regularizers.l1(0.1)
         )(net)
-        for _ in range(20):
-            x = net
-            net = layers.Conv1D(block_channel, 3, padding='same')(net)
-            net = layers.BatchNormalization()(net)
-            net = layers.Activation('relu')(net)
-            net = layers.Conv1D(block_channel, 3, padding='same')(net)
-            net = layers.BatchNormalization()(net)
-            net = layers.Activation('relu')(net)
-            net = ConstMultiplierLayer()(net)
-            net = layers.add([x, net])
+        with tf.name_scope(f"block_{i}"):
+            for _ in range(cfg.block_elem):
+                x = net
+                net = layers.Conv1D(
+                    channels, cfg.receptive_width, padding='same'
+                )(net)
+                net = layers.BatchNormalization()(net)
+                net = layers.Activation('relu')(net)
+                net = layers.Conv1D(
+                    channels, cfg.receptive_width, padding='same'
+                )(net)
+                net = layers.BatchNormalization()(net)
+                net = layers.Activation('relu')(net)
+                net = ConstMultiplierLayer()(net)
+                net = layers.add([x, net])
         net = layers.MaxPool1D(padding='same', pool_size=2)(net)
 
-    net = layers.Conv1D(n_classes, 3, padding="same")(net)
-    net = layers.BatchNormalization()(net)
-    return models.Model(inputs=[input], outputs=[net]), 2**len(block_channels)
-
-
-def chiron_like(n_classes: int, hparams: str):
-    input = layers.Input(shape=(None, 1))
-    net = input  # (batch_size, sequence_len, channels)
-    out_chan = 256
-    for i in range(3):
-        with tf.name_scope(f"block_{i}"):
-            net = layers.BatchNormalization()(net)
-            with tf.variable_scope('branch1'):
-                b1 = layers.Conv1D(
-                    filters=out_chan,
-                    kernel_size=1,
-                    activation='linear',
-                    padding='same',
-                    use_bias=False
-                )(net)
-            with tf.variable_scope('branch2'):
-                b2 = net
-                b2 = layers.Conv1D(
-                    filters=out_chan,
-                    kernel_size=1,
-                    activation='relu',
-                    padding='same',
-                    use_bias=False
-                )(b2)
-                b2 = layers.Conv1D(
-                    filters=out_chan,
-                    kernel_size=3,
-                    activation='relu',
-                    padding='same',
-                    use_bias=False
-                )(b2)
-                b2 = layers.Conv1D(
-                    filters=out_chan,
-                    kernel_size=1,
-                    activation='linear',
-                    padding='same',
-                    use_bias=False
-                )(b2)
-            with tf.variable_scope('plus'):
-                net = layers.Add()([b1, b2])
-                net = layers.Activation('relu')(net)
-
-    hidden_num = [100, 100, n_classes]
-    # RNN layers:
-    if tf.test.is_built_with_cuda():
-        logging.getLogger(__name__).info(f"Using CuDNNLSTM optimized cell")
-        cell = layers.CuDNNLSTM
-    else:
-        cell = layers.LSTM
-
-    for h in hidden_num:
-        net = cell(h, return_sequences=True)(net)
-    return models.Model(inputs=[input], outputs=[net]), 1
+    net = layers.Conv1D(n_classes, cfg.receptive_width, padding="same")(net)
+    return models.Model(inputs=[input], outputs=[net]), 2**cfg.num_blocks
 
 
 all_models: Dict[str, Callable[[str], models.Model]] = {
     'dummy': dummy_model,
     'big_01': big_01,
-    'm270': m270,
-    'chiron': chiron_like,
+}
+
+hparam_cfg: Dict[str, NamedTuple] = {
+    'big_01': Big01Cfg,
+    'dummy': DummyCfg,
 }

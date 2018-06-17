@@ -46,68 +46,36 @@ class DataDir(NamedTuple):
 
 
 class TrainConfig(NamedTuple):
+    model_name: str
     train_data: List[DataDir]
     test_data: List[DataDir]
-    batch_size: int
-    seq_length: int
-    train_steps: int
-    trace: bool
     logdir: str
-    validate_every: int
-    save_every: int
-    debug: bool
-    tensorboard_debug: str
-    run_trace_every: int
-    model_name: str
-    model_hparams: str
-    grad_clipping: float
+    seq_length: int
+    batch_size: int
     surrogate_base_pair: bool
+
+    train_steps: int
     init_learning_rate: float
     lr_decay_steps: int
     lr_decay_rate: float
 
+    model_hparams: dict = {}
+    grad_clipping: float = 10.0
+    validate_every: int = 50
+    run_trace_every: int = 5000
+    save_every: int = 10000
+
+    tensorboard_debug: str = ""  # Empty string is use CLI debug
+    debug: bool = False
+    trace: bool = False
+
     @classmethod
     def schema(cls, data):
-        return cls(
-            **voluptuous.Schema({
+        return named_tuple_helper(
+            cls, {
                 'train_data': [DataDir.schema],
                 'test_data': [DataDir.schema],
-                'batch_size':
-                    int,
-                'seq_length':
-                    int,
-                voluptuous.Optional('train_steps', default=1000):
-                    int,
-                voluptuous.Optional('trace', default=False):
-                    bool,
-                'logdir':
-                    str,
-                voluptuous.Optional('save_every', default=2000):
-                    int,
-                voluptuous.Optional('run_trace_every', default=5000):
-                    int,
-                voluptuous.Optional('validate_every', default=50):
-                    int,
-                voluptuous.Optional('debug', default=False):
-                    bool,
-                voluptuous.Optional('tensorboard_debug', default=None):
-                    voluptuous.Any(str, None),
-                voluptuous.Optional('model_name', default='dummy'):
-                    str,
-                voluptuous.Optional('model_hparams', default=''):
-                    str,
-                voluptuous.Optional('grad_clipping', default=1.0):
-                    voluptuous.Coerce(float),
-                voluptuous.Optional('surrogate_base_pair', default=False):
-                    bool,
-                "init_learning_rate":
-                    voluptuous.Coerce(float),
-                "lr_decay_steps":
-                    voluptuous.Coerce(int),
-                "lr_decay_rate":
-                    voluptuous.Coerce(float),
-            },
-                                required=True)(data)
+            }, data
         )
 
 
@@ -180,7 +148,7 @@ class Model():
                 f"Added {len(dps)} datapoint from {x.name} to train set; dir: {x.dir}"
             )
 
-        self.logger = logging.getLogger(__name__)
+        self._logger = logging.getLogger(__name__)
         self.learning_phase = K.learning_phase()
         with K.name_scope("data_in"):
             self.dq = DataQueue(
@@ -205,7 +173,7 @@ class Model():
 
         self.logits = tf.transpose(model(input_signal), [1, 0, 2]
                                   )  # [max_time, batch_size, class_num]
-        self.logger.info(f"Logits shape: {self.logits.shape}")
+        self._logger.info(f"Logits shape: {self.logits.shape}")
         self.logits = tf.Print(
             self.logits, [tf.shape(self.logits)],
             first_n=1,
@@ -241,20 +209,18 @@ class Model():
             beam_width=100,
         )[0][0]
 
-        self.finite_mask = tf.logical_not(
+        finite_mask = tf.logical_not(
             tf.logical_or(
                 tf.is_nan(self.losses),
                 tf.is_inf(self.losses),
             )
         )
-        self.p = tf.reduce_mean(tf.cast(self.finite_mask, tf.int32))
-        self.p = tf.Print(self.p, [self.p], first_n=10, message="%finite")
 
         # self.ctc_loss = tf.reduce_mean(self.losses)
         self.ctc_loss = tf.reduce_mean(
             tf.boolean_mask(
                 self.losses,
-                self.finite_mask,
+                finite_mask,
             )
         )
         if model.losses:
@@ -273,6 +239,10 @@ class Model():
 
         self.total_loss = self.ctc_loss + self.regularization_loss
 
+        percent_finite = tf.reduce_mean(tf.cast(finite_mask, tf.int32))
+        percent_finite = tf.Print(
+            percent_finite, [percent_finite], first_n=10, message="%finite"
+        )
         self.summaries = [
             tf.summary.scalar(f'total_loss', self.total_loss),
             tf.summary.scalar(f'ctc_loss', self.ctc_loss),
@@ -281,7 +251,7 @@ class Model():
                 self.regularization_loss,
                 family="losses"
             ),
-            tf.summary.scalar("finite_percent", self.p),
+            tf.summary.scalar("finite_percent", percent_finite),
             *self.dq.summaries,
         ]
 
@@ -346,36 +316,46 @@ def run_args(args):
         },
                                 extra=voluptuous.REMOVE_EXTRA,
                                 required=True)(config)
-        if args.logdir is None:
-            formatter = logging.Formatter(
-                "%(asctime)s [%(levelname)5s]:%(name)20s: %(message)s"
-            )
-            train_cfg: TrainConfig = cfg['train']
-            os.makedirs(train_cfg.logdir, exist_ok=True)
-            fn = os.path.join(
-                train_cfg.logdir, f"{getattr(args, 'name', 'mincall')}.log"
-            )
-            h = (logging.FileHandler(fn))
-            h.setLevel(logging.DEBUG)
-            h.setFormatter(formatter)
-            logging.getLogger().addHandler(h)
-            logging.info(f"Added handler to {fn}")
-        logger.info(f"Parsed config\n{pformat(cfg)}")
-        run(cfg['train'])
     except voluptuous.error.Error as e:
         logger.error(humanize_error(config, e))
         sys.exit(1)
 
+    formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)5s]:%(name)20s: %(message)s"
+    )
+    train_cfg: TrainConfig = cfg['train']
+    os.makedirs(train_cfg.logdir, exist_ok=True)
+    fn = os.path.join(
+        train_cfg.logdir, f"{getattr(args, 'name', 'mincall')}.log"
+    )
+    h = (logging.FileHandler(fn))
+    h.setLevel(logging.DEBUG)
+    h.setFormatter(formatter)
+    logging.getLogger().addHandler(h)
+    logging.info(f"Added handler to {fn}")
+    logger.info(f"Parsed config\n{pformat(cfg)}")
+    try:
+        return run(cfg['train'])
+    finally:
+        logging.getLogger().removeHandler(h)
+
 
 def run(cfg: TrainConfig):
+    tf.reset_default_graph()
     os.makedirs(cfg.logdir, exist_ok=True)
     num_bases = TOTAL_BASE_PAIRS
     if cfg.surrogate_base_pair:
         num_bases += TOTAL_BASE_PAIRS
-    model, ratio = all_models[cfg.model_name](
-        n_classes=num_bases + 1, hparams=cfg.model_hparams
-    )
-    logger.info(f"Compression ratio: {ratio}")
+    try:
+        model, ratio = all_models[cfg.model_name](
+            n_classes=num_bases + 1, hparams=cfg.model_hparams
+        )
+        logger.info(f"Compression ratio: {ratio}")
+    except voluptuous.error.Error as e:
+        logger.error(
+            f"Invalid hyper params, check your config {humanize_error(cfg.model_hparams, e)}"
+        )
+        raise
 
     input_feeder_cfg = InputFeederCfg(
         batch_size=cfg.batch_size,
@@ -390,8 +370,8 @@ def run(cfg: TrainConfig):
     learning_rate = tf.train.exponential_decay(
         learning_rate=cfg.init_learning_rate,
         global_step=global_step,
-        decay_steps=10000,
-        decay_rate=0.5,
+        decay_steps=cfg.lr_decay_steps,
+        decay_rate=cfg.lr_decay_rate,
     )
 
     with tf.name_scope("train"):
@@ -451,7 +431,7 @@ def run(cfg: TrainConfig):
     beholder = Beholder(cfg.logdir)
     with tf.Session(config=config) as sess:
         if cfg.debug:
-            if cfg.tensorboard_debug is None:
+            if cfg.tensorboard_debug:
                 sess = tf_debug.LocalCLIDebugWrapperSession(sess)
             else:
                 sess = tf_debug.TensorBoardDebugWrapperSession(
@@ -522,11 +502,16 @@ def run(cfg: TrainConfig):
                             global_step=global_step
                         )
                         logger.info(f"Saved new model checkpoint")
+                mean_val_loss = np.mean([
+                    log_validation(cfg, sess, None, None, test_model)
+                    for _ in range(5)
+                ])
                 coord.request_stop()
                 p = os.path.join(cfg.logdir, f"full-model.save")
                 model.save(p, overwrite=True, include_optimizer=False)
                 logger.info(f"Finished training saved model to {p}")
             logger.info(f"Input queues exited ok")
+            return mean_val_loss
         finally:
             coord.request_stop()
             coord.join(stop_grace_period_secs=5)
@@ -552,7 +537,8 @@ def log_validation(
     logger.info(
         f"Logits[{logits.shape}]: describe:{pformat(stats.describe(logits, axis=None))}"
     )
-    summary_writer.add_summary(test_summary, step)
+    if summary_writer is not None:
+        summary_writer.add_summary(test_summary, step)
     return val_loss
 
 
