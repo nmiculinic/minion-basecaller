@@ -321,6 +321,7 @@ def run_args(args):
         logger.error(humanize_error(config, e))
         sys.exit(1)
 
+    logger.info(f"Parsed config\n{pformat(cfg)}")
     formatter = logging.Formatter(
         "%(asctime)s [%(levelname)5s]:%(name)20s: %(message)s"
     )
@@ -330,14 +331,14 @@ def run_args(args):
         train_cfg.logdir, f"{getattr(args, 'name', 'mincall')}.log"
     )
     h = (logging.FileHandler(fn))
-    h.setLevel(logging.DEBUG)
+    h.setLevel(logging.INFO)
     h.setFormatter(formatter)
-    root_logger = logging.getLogger()
-    root_logger.addHandler(h)
     name_filter = ExtraFieldsFilter({"run_name": args.name})
+    root_logger = logging.getLogger()
+
+    root_logger.addHandler(h)
     root_logger.addFilter(name_filter)
     logging.info(f"Added handler to {fn}")
-    logger.info(f"Parsed config\n{pformat(cfg)}")
     try:
         return run(cfg['train'])
     finally:
@@ -466,6 +467,7 @@ def run(cfg: TrainConfig):
             ), test_model.input_wrapper(sess, coord):
                 for step in range(gs + 1, cfg.train_steps + 1):
                     #  Train hook
+                    logger.debug(f"Starting step {step}")
                     opts = {}
                     if cfg.run_trace_every > 0 and step % cfg.run_trace_every == 0:
                         opts['options'] = tf.RunOptions(
