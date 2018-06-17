@@ -464,13 +464,17 @@ def run(cfg: TrainConfig):
                 sess, coord
             ), test_model.input_wrapper(sess, coord):
                 for step in range(gs + 1, cfg.train_steps + 1):
+                    do_trace = cfg.run_trace_every > 0 and step % cfg.run_trace_every == 0
                     #  Train hook
                     logger.debug(f"Starting step {step}")
-                    opts = {}
-                    if cfg.run_trace_every > 0 and step % cfg.run_trace_every == 0:
+                    opts = {'options': tf.RunOptions(
+                        timeout_in_ms=10 * 1000,  # Single op should complete in 10s
+                    )}
+                    if do_trace:
                         logger.debug("Adding trace options")
                         opts['options'] = tf.RunOptions(
-                            trace_level=tf.RunOptions.FULL_TRACE
+                            trace_level=tf.RunOptions.FULL_TRACE,
+                            timeout_in_ms=20 * 1000,
                         )
                         opts['run_metadata'] = tf.RunMetadata()
 
@@ -478,15 +482,19 @@ def run(cfg: TrainConfig):
                     if step % cfg.validate_every == 0:
                         summary_op = train_model.ext_summary
 
+                    logger.debug("Sess_run started")
                     _, _, loss, summary = sess.run([
                         step_inc,
                         train_op,
                         train_model.ctc_loss,
                         summary_op,
                     ], **opts)
-                    summary_writer.add_summary(summary, step)
 
-                    if cfg.run_trace_every > 0 and step % cfg.run_trace_every == 0:
+                    logger.debug("Sess_run finished")
+                    summary_writer.add_summary(summary, step)
+                    logger.debug("summary writer finished")
+
+                    if do_trace:
                         log_trace(cfg, step, opts, summary_writer)
                     pbar.update()
 
@@ -518,6 +526,10 @@ def run(cfg: TrainConfig):
                 logger.info(f"Finished training saved model to {p}")
             logger.info(f"Input queues exited ok")
             return mean_val_loss
+        except KeyboardInterrupt:
+            logger.info("Keyboard interrupt")
+        except Exception as e:
+            logger.critical(f"Training interupter! {type(e).__name__}: {e}", exc_info=True)
         finally:
             coord.request_stop()
             coord.join(stop_grace_period_secs=5)
@@ -538,7 +550,10 @@ def log_validation(
         ],
         feed_dict={
             test_model.learning_phase: 0,
-        }
+        },
+        options=tf.RunOptions(
+            timeout_in_ms=20 * 1000,  # Single op should complete in 20s
+        ),
     )
     logger.info(
         f"Logits[{logits.shape}]: describe:{pformat(stats.describe(logits, axis=None))}"
@@ -551,7 +566,8 @@ def log_validation(
 def log_trace(
     cfg: TrainConfig, step: int, opts, summary_writer: tf.summary.FileWriter
 ):
-    opts['options'] = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+
+    logger.debug("Starting trace logging")
     fetched_timeline = timeline.Timeline(opts['run_metadata'].step_stats)
     chrome_trace = fetched_timeline.generate_chrome_trace_format(
         show_memory=True
