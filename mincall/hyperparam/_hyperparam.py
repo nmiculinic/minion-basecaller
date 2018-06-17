@@ -172,6 +172,7 @@ def run(cfg: HyperParamCfg):
             run_args(argparse.Namespace(
                 config=cfg_path,
                 logdir=None,
+                name=assigement.name,
             ))
         )
         solver.report(assigement, obs)

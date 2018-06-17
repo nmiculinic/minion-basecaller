@@ -128,6 +128,7 @@ def add_args(parser: argparse.ArgumentParser):
         "Activate surrogate base pairs, that is repeated base pair shall be replaces with surrogate during training phase."
         "for example, let A=0. We have AAAA, which ordinarily will be 0, 0, 0, 0. With surrogate base pairs this will be 0, 4, 0, 4"
     )
+    parser.add_argument("--name", help="This model name. It's only used in logs so far", default=name_generator())
     parser.set_defaults(func=run_args)
     parser.set_defaults(name="mincall_train")
 
@@ -331,13 +332,17 @@ def run_args(args):
     h = (logging.FileHandler(fn))
     h.setLevel(logging.DEBUG)
     h.setFormatter(formatter)
-    logging.getLogger().addHandler(h)
+    root_logger = logging.getLogger()
+    root_logger.addHandler(h)
+    name_filter = ExtraFieldsFilter({"run_name": args.name})
+    root_logger.addFilter(name_filter)
     logging.info(f"Added handler to {fn}")
     logger.info(f"Parsed config\n{pformat(cfg)}")
     try:
         return run(cfg['train'])
     finally:
-        logging.getLogger().removeHandler(h)
+        root_logger.removeHandler(h)
+        root_logger.removeFilter(name_filter)
 
 
 def run(cfg: TrainConfig):

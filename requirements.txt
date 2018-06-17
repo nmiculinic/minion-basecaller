@@ -5,6 +5,7 @@ cffi==1.11.5
 cytoolz==0.9.0.1
 edlib==1.2.3.post1
 gast==0.2.0
+graypy==0.3
 grpcio==1.12.0
 grpcio-tools==1.12.0
 h5py==2.7.1
