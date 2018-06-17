@@ -38,17 +38,18 @@ def alignment_stats(
     :return:
     """
 
-    prefix = os.environ.get("MINCALL_LOG_DATA", ".")
-    fname = os.path.abspath(os.path.join(prefix, f"{uuid.uuid4().hex}.npz"))
-    with open(fname, "wb") as f:
-        np.savez(f, **{
-            "label_val": label_val,
-            "lable_ind": lable_ind,
-            "pred_val": pred_val,
-            "pred_ind": pred_ind,
-            "batch_size": batch_size,
-        })
-    logger.debug(f"Saves alignment stats input data to {fname}")
+    prefix = os.environ.get("MINCALL_LOG_DATA", None)
+    if prefix:
+        fname = os.path.abspath(os.path.join(prefix, f"{uuid.uuid4().hex}.npz"))
+        with open(fname, "wb") as f:
+            np.savez(f, **{
+                "label_val": label_val,
+                "lable_ind": lable_ind,
+                "pred_val": pred_val,
+                "pred_ind": pred_ind,
+                "batch_size": batch_size,
+            })
+        logger.debug(f"Saves alignment stats input data to {fname}")
 
     yt = defaultdict(list)
     for ind, val in zip(lable_ind, label_val):
@@ -65,6 +66,10 @@ def alignment_stats(
         target = decode(yt[x])
         if len(target) == 0:
             raise ValueError("Empty target sequence")
+        if len(query) == 0:
+            logger.warning(f"Empty query sequence\n"
+                           f"Target: {target}")
+            continue
         edlib_res = edlib.align(query, target, task='path')
         stats = ext_cigar_stats(edlib_res['cigar'])
 
