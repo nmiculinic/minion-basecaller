@@ -4,16 +4,12 @@ import itertools
 import logging
 from typing import *
 import voluptuous
-from itertools import count
 import os
 import random
 import gzip
 import numpy as np
-from multiprocessing import Queue, Manager, Process
-import queue
 from threading import Thread
 import scrappy
-import sys
 
 
 class InputFeederCfg(NamedTuple):
@@ -296,10 +292,8 @@ def produce_datapoints(
                 signal = scrappy.RawTable(signal).scale().data(as_numpy=True)
                 assert len(signal) == len(dp.signal), "Trimming occured"
                 if len(signal) < cfg.min_signal_size:
-                    q.put(
-                        ValueError(
+                    yield ValueError(
                             f"Signal too short {len(dp.signal)} < {cfg.min_signal_size}"
-                        )
                     )
                     continue
 
