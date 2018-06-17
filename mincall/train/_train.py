@@ -16,7 +16,6 @@ from ._input_feeders import InputFeederCfg, DataQueue
 import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 from tensorflow.python.client import timeline
-from tensorboard.plugins.beholder import Beholder
 from keras import backend as K
 from keras import models
 from .models import all_models
@@ -63,7 +62,7 @@ class TrainConfig(NamedTuple):
     grad_clipping: float = 10.0
     validate_every: int = 50
     run_trace_every: int = 5000
-    save_every: int = 10000
+    save_every: int = 2000
 
     tensorboard_debug: str = ""  # Empty string is use CLI debug
     debug: bool = False
@@ -434,7 +433,6 @@ def run(cfg: TrainConfig):
     saver = tf.train.Saver(max_to_keep=10)
     config = tf.ConfigProto(allow_soft_placement=True)
     config.gpu_options.allow_growth = True
-    beholder = Beholder(cfg.logdir)
     with tf.Session(config=config) as sess:
         if cfg.debug:
             if cfg.tensorboard_debug:
@@ -470,6 +468,7 @@ def run(cfg: TrainConfig):
                     logger.debug(f"Starting step {step}")
                     opts = {}
                     if cfg.run_trace_every > 0 and step % cfg.run_trace_every == 0:
+                        logger.debug("Adding trace options")
                         opts['options'] = tf.RunOptions(
                             trace_level=tf.RunOptions.FULL_TRACE
                         )
@@ -493,7 +492,7 @@ def run(cfg: TrainConfig):
 
                     #  Validate hook
                     if step % cfg.validate_every == 0:
-                        beholder.update(session=sess)
+                        logger.debug(f"running validation for step {step}")
                         val_loss = log_validation(
                             cfg, sess, step, summary_writer, test_model
                         )

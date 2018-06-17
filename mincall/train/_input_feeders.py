@@ -199,44 +199,27 @@ class DataQueue():
                 self._values_len_ph: len(label),
                 self._signal_ph: signal.reshape((-1, 1)),
                 self._signal_len_ph: len(signal),
-            }
+            },
+            options = tf.RunOptions(
+                timeout_in_ms=5 * 60 * 1000,  # if nothing gets in the queue for 5min something is probably wrong
+            )
         )
 
     def start_input_processes(
-        self, sess: tf.Session, coord: tf.train.Coordinator, cnt=1
+        self, sess: tf.Session, coord: tf.train.Coordinator
     ):
         class Wrapper():
             def __init__(self):
                 pass
 
             def __enter__(iself):
-                m = Manager()
-                q: Queue = m.Queue(maxsize=256)
-                iself.poison_queue: Queue = m.Queue(maxsize=256)
-
-                iself.processes: List[Process] = []
-                for _ in range(cnt):
-                    p = Thread(
-                        target=produce_datapoints,
-                        args=(self.cfg, self.fnames, q, iself.poison_queue)
-                    )
-                    p.start()
-                    iself.processes.append(p)
-
                 def worker_fn():
-                    exs = 0
-                    for i in count(start=1):
-                        try:
-                            iself.poison_queue.get_nowait()
-                            self.logger.info("worker thread got poison, stopping")
-                            return
-                        except queue.Empty:
-                            pass
-                        if coord.should_stop():
-                            self.logger.info("worker thread coord stop, stopping")
-                            return
-                        try:
-                            it = q.get(timeout=1)
+                    try:
+                        exs = 0
+                        for i, it in enumerate(produce_datapoints(
+                            cfg=self.cfg,
+                            fnames=self.fnames,
+                        )):
                             if isinstance(it, Exception):
                                 self.logger.debug(
                                     f"Exception happened during processing data {type(it).__name__}:\n{it}"
@@ -249,15 +232,20 @@ class DataQueue():
                                 self.push_to_queue(sess, signal, labels)
                             except tf.errors.CancelledError:
                                 if coord.should_stop():
+                                    self.logger.warning("enqueue op canceled, and coord is stopping")
                                     return
                                 else:
+                                    self.logger.warning("Canelled error occured yet coord is not stopping!")
                                     raise
+                            except tf.errors.DeadlineExceededError:
+                                self.logger.warning("Queue pushing timeout exceeded")
                             if i % 2000 == 0:
                                 self.logger.info(
                                     f"sucessfully submitted {i - exs}/{i} samples; -- {(i-exs)/i:.2f}"
                                 )
-                        except queue.Empty:
-                            self.logger.debug("No new datapoints for 1s")
+                    except Exception as e:
+                        self.logger.critical(f"{type(e).__name__}: {e}", exc_info=True)
+                        raise
 
                 iself.th = Thread(target=worker_fn, daemon=True)
                 iself.th.start()
@@ -275,21 +263,14 @@ class DataQueue():
                         )
                         pass
                 logging.getLogger(__name__).info("Closed all queues")
-                for _ in range(cnt + 1):
-                    iself.poison_queue.put(None)
-                for p in iself.processes:
-                    p.join(timeout=5)
                 iself.th.join(timeout=5)
                 logging.getLogger(__name__).info("Closed all feeders")
-
         return Wrapper()
 
 
 def produce_datapoints(
     cfg: InputFeederCfg,
     fnames: List[str],
-    q: Queue,
-    poison: Queue,
     repeat=True
 ):
     """
@@ -339,39 +320,20 @@ def produce_datapoints(
                                         ].lower <= start + cfg.seq_length
 
                         label_idx += 1
-                    try:
-                        poison.get_nowait()
-                        logging.info("produce_datapoints got poison, quiting")
-                        return
-                    except queue.Empty:
-                        pass
-                    except BrokenPipeError:
-                        logging.warning(
-                            "Got BrokenPipeError error while polling poison queue, quiting"
-                        )
-                        return
 
                     signal_segment = signal[start:start + cfg.seq_length]
                     if len(buff) == 0:
-                        q.put(ValueError("Empty labels"))
+                        yield ValueError("Empty labels")
                     elif len(signal_segment) / cfg.ratio < len(buff):
-                        q.put(
-                            ValueError(
+                        yield ValueError(
                                 f"max possible labels {signal_segment/cfg.ratio}, have {len(buff)} labels"
-                            )
                         )
                     else:
-                        try:
-                            logging.debug("produce_datapoints: Putting data into python queue (probably halting)")
-                            q.put([
-                                signal_segment,
-                                np.array(buff, dtype=np.int32),
-                            ])
-                        except EOFError:
-                            logging.warning(
-                                "Got EOF error while pushing new signal into queue, ignoring"
-                            )
-
+                        logging.debug(f"produce_datapoints: yielding datapoint")
+                        yield [
+                            signal_segment,
+                            np.array(buff, dtype=np.int32),
+                        ]
         if not repeat:
             logging.info("Repeat is false, quiting")
             break

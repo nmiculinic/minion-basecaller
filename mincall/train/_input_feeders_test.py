@@ -29,8 +29,6 @@ class TestInputFeeders(unittest.TestCase):
             os.path.dirname(__file__), "test_simple.golden"
         )
 
-        q = queue.Queue()
-        p = queue.Queue()
         cfg: _input_feeders.InputFeederCfg = _input_feeders.InputFeederCfg(
             batch_size=None,
             seq_length=50,
@@ -38,23 +36,16 @@ class TestInputFeeders(unittest.TestCase):
             num_bases=4,
             surrogate_base_pair=False,
         )
-        _input_feeders.produce_datapoints(
-            cfg,
-            fnames=[ex_fname],
-            q=q,
-            poison=p,
-            repeat=False,
-        )
         got = []
-        for i in itertools.count():
-            try:
-                x = q.get_nowait()
-                if isinstance(x, ValueError):
-                    got.append("ValueError")
-                else:
-                    got.append(x)
-            except queue.Empty:
-                break
+        for x in _input_feeders.produce_datapoints(
+                cfg,
+                fnames=[ex_fname],
+                repeat=False,
+            ):
+            if isinstance(x, ValueError):
+                got.append("ValueError")
+            else:
+                got.append(x)
         if update_golden:
             golden = got
             with open(golden_fn, 'wb') as f:
@@ -181,8 +172,6 @@ class TestInputFeeders(unittest.TestCase):
                     ]).SerializeToString()
                 )
 
-            q = queue.Queue()
-            p = queue.Queue()
             cfg: _input_feeders.InputFeederCfg = _input_feeders.InputFeederCfg(
                 batch_size=None,
                 seq_length=50,
@@ -191,23 +180,16 @@ class TestInputFeeders(unittest.TestCase):
                 surrogate_base_pair=False,
                 min_signal_size=10,
             )
-            _input_feeders.produce_datapoints(
+            got = []
+            for x in  _input_feeders.produce_datapoints(
                 cfg,
                 fnames=[t],
-                q=q,
-                poison=p,
                 repeat=False,
-            )
-            got = []
-            for i in itertools.count():
-                try:
-                    x = q.get_nowait()
-                    if isinstance(x, ValueError):
-                        got.append("ValueError")
-                    else:
-                        got.append(x)
-                except queue.Empty:
-                    break
+            ):
+                if isinstance(x, ValueError):
+                    got.append("ValueError")
+                else:
+                    got.append(x)
             self.assertEqual(len(got), 2)
             np.testing.assert_equal(
                 got[0][1],

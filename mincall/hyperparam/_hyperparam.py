@@ -38,7 +38,7 @@ class HyperParamCfg(NamedTuple):
     grad_clipping: float = 10.0
     validate_every: int = 50
     run_trace_every: int = 5000
-    save_every: int = 10000
+    save_every: int = 2000
 
     @classmethod
     def schema(cls, data):
