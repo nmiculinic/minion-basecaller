@@ -70,7 +70,7 @@ class RandomSolver(AbstractSolver):
         if isinstance(x, Param):
             if x.type == "int":
                 return int(np.random.randint(x.min, x.max))
-            if x.type == "float":
+            if x.type == "double":
                 return float(np.random.ranf(x.min, x.max))
             raise ValueError(f"Unknown type {x.type}")
         if isinstance(x, dict):
@@ -100,9 +100,12 @@ class SigOpt(AbstractSolver):
                 "envvar SIGOPT_API_TOKEN must be set with SigOptSolver"
             )
         self.conn = Connection(client_token=api_token)
+        self.logger = logging.getLogger(
+            ".".join(__name__.split(".")[:-1] + ["SigOptSolver"])
+        )
         if self.experiment_id is None:
             params = flatten_params(params)
-            experiment = self.conn.experiments(id=self.experiment_id).create(
+            experiment = self.conn.experiments().create(
                 name=f'Mincall opt {socket.gethostname()}',
                 parameters=[{
                     "name": name,
@@ -125,9 +128,6 @@ class SigOpt(AbstractSolver):
             )
 
         self.conn = Connection(client_token=api_token)
-        self.logger = logging.getLogger(
-            ".".join(__name__.split(".")[:-1] + ["RandomSolver"])
-        )
 
     def new_assignment(self):
         suggestion = self.conn.experiments(self.experiment_id

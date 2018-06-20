@@ -40,10 +40,13 @@ class TestFlatten(unittest.TestCase):
 class TestSigOpt(unittest.TestCase):
     def test_doesnt_crash(self):
         opt = SigOpt({"a":{"b": Param(min=0, max=5, type="double")}})
-        for _ in range(3):
-            assignment = opt.new_assignment()
-            logging.info(f"Assignment: {pformat(assignment)}")
-            opt.report(assignment, Observation(metric=1.0))
+        try:
+            for _ in range(3):
+                assignment = opt.new_assignment()
+                logging.info(f"Assignment: {pformat(assignment)}")
+                opt.report(assignment, Observation(metric=1.0))
+        finally:
+            opt.conn.experiments(id=opt.experiment_id).delete()
 
 
 if __name__ == "__main__":
