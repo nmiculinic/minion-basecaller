@@ -1,4 +1,5 @@
 import argparse
+import pandas as pd
 import os
 import re
 from collections import defaultdict
@@ -195,7 +196,7 @@ class Model():
             message="seq_len [expected around max_time]"
         )
 
-        self.losses = tf.nn.ctc_loss(
+        self.ctc_loss_unaggregated = tf.nn.ctc_loss(
             labels=labels,
             inputs=self.logits,
             sequence_length=seq_len,
@@ -215,15 +216,15 @@ class Model():
 
         finite_mask = tf.logical_not(
             tf.logical_or(
-                tf.is_nan(self.losses),
-                tf.is_inf(self.losses),
+                tf.is_nan(self.ctc_loss_unaggregated),
+                tf.is_inf(self.ctc_loss_unaggregated),
             )
         )
 
         # self.ctc_loss = tf.reduce_mean(self.losses)
         self.ctc_loss = tf.reduce_mean(
             tf.boolean_mask(
-                self.losses,
+                self.ctc_loss_unaggregated,
                 finite_mask,
             )
         )
@@ -269,23 +270,29 @@ class Model():
             ],
             (len(ops.aligment_stats_ordering) + 1) * [tf.float32],
             stateful=False,
-            )
+        )
 
-        for stat_type, stat in zip(ops.aligment_stats_ordering, self.alignment_stats):
+        for stat_type, stat in zip(
+            ops.aligment_stats_ordering, self.alignment_stats
+        ):
             stat.set_shape((None,))
             self.ext_summaries.append(
                 tensor_default_summaries(
                     dataset_pb2.Cigar.Name(stat_type) + "_rate",
                     stat,
-                    )
+                )
             )
 
         self.identity.set_shape((None,))
-        self.ext_summaries.append(tensor_default_summaries(
-            "IDENTITY",
-            self.identity,
-        ))
-        self.ext_summaries.extend(tensor_default_summaries("logits", self.logits, family="logits"))
+        self.ext_summaries.append(
+            tensor_default_summaries(
+                "IDENTITY",
+                self.identity,
+            )
+        )
+        self.ext_summaries.extend(
+            tensor_default_summaries("logits", self.logits, family="logits")
+        )
 
         self.ext_summaries.append(
             tf.summary.image(
@@ -301,7 +308,7 @@ class Model():
         return self.dq.start_input_processes(sess, coord)
 
 
-def run_args(args):
+def run_args(args) -> pd.DataFrame:
     with open(args.config) as f:
         config = yaml.load(f)
     for k, v in vars(args).items():
@@ -340,14 +347,14 @@ def run_args(args):
     root_logger.addFilter(name_filter)
     logging.info(f"Added handler to {fn}")
     try:
-        return run(cfg['train'])
+        with tf.Graph().as_default():
+            return run(cfg['train'])
     finally:
         root_logger.removeHandler(h)
         root_logger.removeFilter(name_filter)
 
 
-def run(cfg: TrainConfig):
-    tf.reset_default_graph()
+def run(cfg: TrainConfig) -> pd.DataFrame:
     os.makedirs(cfg.logdir, exist_ok=True)
     num_bases = TOTAL_BASE_PAIRS
     if cfg.surrogate_base_pair:
@@ -504,7 +511,7 @@ def run(cfg: TrainConfig):
                     if step % cfg.validate_every == 0:
                         logger.debug(f"running validation for step {step}")
                         val_loss = log_validation(
-                            cfg, sess, step, summary_writer, test_model
+                            sess, step, summary_writer, test_model
                         )
 
                     pbar.set_postfix(
@@ -518,16 +525,14 @@ def run(cfg: TrainConfig):
                             global_step=global_step
                         )
                         logger.info(f"Saved new model checkpoint")
-                mean_val_loss = np.mean([
-                    log_validation(cfg, sess, None, None, test_model)
-                    for _ in range(5)
-                ])
-                coord.request_stop()
                 p = os.path.join(cfg.logdir, f"full-model-{step:05}.save")
                 model.save(p, overwrite=True, include_optimizer=False)
+
+                final_val = final_validation(sess, test_model)
+                coord.request_stop()
                 logger.info(f"Finished training saved model to {p}")
             logger.info(f"Input queues exited ok")
-            return mean_val_loss
+            return final_val
         except KeyboardInterrupt:
             logger.info("Keyboard interrupt")
         except Exception as e:
@@ -539,9 +544,50 @@ def run(cfg: TrainConfig):
             coord.join(stop_grace_period_secs=5)
 
 
+def final_validation(
+    sess: tf.Session, test_model: Model, min_cnt=100
+) -> pd.DataFrame:
+    logger = logging.getLogger("mincall.train.ops")
+    lvl = logger.getEffectiveLevel()
+    logger.setLevel(logging.WARNING)
+    sol = None
+    while True:
+        ctc_loss, *alignment_stats, identity = sess.run(
+            [
+                test_model.ctc_loss_unaggregated,
+                *test_model.alignment_stats,
+                test_model.identity,
+            ],
+            feed_dict={
+                test_model.learning_phase: 0,
+            },
+            options=tf.RunOptions(
+                timeout_in_ms=20 * 1000,  # Single op should complete in 20s
+            ),
+        )
+
+        tmp = pd.DataFrame({
+            "ctc_loss": ctc_loss,
+            "identity": identity,
+            **{
+                dataset_pb2.Cigar.Name(op): stat
+                for op, stat in zip(
+                    ops.aligment_stats_ordering, alignment_stats
+                )
+            },
+        })
+        if sol is None:
+            sol = tmp
+        else:
+            sol = sol.append(tmp, ignore_index=True)
+        if len(sol) > min_cnt:
+            logger.setLevel(lvl)
+            return sol
+
+
 def log_validation(
-    cfg: TrainConfig, sess: tf.Session, step: int,
-    summary_writer: tf.summary.FileWriter, test_model: Model
+    sess: tf.Session, step: int, summary_writer: tf.summary.FileWriter,
+    test_model: Model
 ):
     logits, predict, lb, val_loss, losses, test_summary = sess.run(
         [
@@ -549,7 +595,7 @@ def log_validation(
             test_model.predict,
             test_model.dq.batch_labels,
             test_model.ctc_loss,
-            test_model.losses,
+            test_model.ctc_loss_unaggregated,
             test_model.summary,
         ],
         feed_dict={

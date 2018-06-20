@@ -253,6 +253,7 @@ class DataQueue():
                         self.logger.critical(
                             f"{type(e).__name__}: {e}", exc_info=True
                         )
+                        coord.request_stop(e)
                         raise
 
                 iself.th = Thread(target=worker_fn, daemon=False)
@@ -260,6 +261,11 @@ class DataQueue():
                 logging.getLogger(__name__).info("Started all feeders")
 
             def __exit__(iself, exc_type, exc_val, exc_tb):
+                if exc_val:
+                    logging.getLogger(__name__).error(
+                        f"Error happened and closing {exc_val}"
+                    )
+                    coord.request_stop(exc_val)
                 logging.getLogger(__name__
                                  ).info("Starting to close all feeders")
                 for x in self.closing:

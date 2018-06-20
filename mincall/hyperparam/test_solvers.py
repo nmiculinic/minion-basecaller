@@ -36,10 +36,12 @@ class TestFlatten(unittest.TestCase):
         }))
 
 
-@unittest.skipIf(os.getenv("SIGOPT_API_TOKEN") is None, "Sigopt api token not setup!")
+@unittest.skipIf(
+    os.getenv("SIGOPT_API_TOKEN") is None, "Sigopt api token not setup!"
+)
 class TestSigOpt(unittest.TestCase):
     def test_doesnt_crash(self):
-        opt = SigOpt({"a":{"b": Param(min=0, max=5, type="double")}})
+        opt = SigOpt({"a": {"b": Param(min=0, max=5, type="double")}})
         try:
             for _ in range(3):
                 assignment = opt.new_assignment()

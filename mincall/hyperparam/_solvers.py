@@ -150,7 +150,7 @@ class SigOpt(AbstractSolver):
         )
 
 
-available_solvers={
+available_solvers = {
     "sigopt": SigOpt,
     "random": RandomSolver,
 }

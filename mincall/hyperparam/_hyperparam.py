@@ -143,7 +143,8 @@ def subs_dict(x, subs: Dict) -> Dict:
 
 def run(cfg: HyperParamCfg):
     logger = hyperparam_logger
-    train_cfg, params = make_dict(toolz.keyfilter(
+    train_cfg, params = make_dict(
+        toolz.keyfilter(
             lambda x: x in TrainConfig.__annotations__.keys(), cfg._asdict()
         ),
         {},
@@ -171,13 +172,18 @@ def run(cfg: HyperParamCfg):
                            stream=f,
                            default_flow_style=False)
         result = _train.run_args(
-                argparse.Namespace(
-                    config=cfg_path,
-                    logdir=None,
-                    name=assigement.name,
-                )
+            argparse.Namespace(
+                config=cfg_path,
+                logdir=None,
+                name=assigement.name,
             )
+        )
+        logger.info(f"Got results:\n{result.describe().to_string()}\n{result}")
         obs = Observation(
-            metric=float(result)
+            metric=float(np.mean(result['identity'])),
+            metadata={
+                c: float(np.mean(series))
+                for c, series in result.iteritems()
+            }
         )
         solver.report(assigement, obs)
