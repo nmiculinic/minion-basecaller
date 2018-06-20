@@ -196,8 +196,9 @@ class DataQueue():
                 self._signal_ph: signal.reshape((-1, 1)),
                 self._signal_len_ph: len(signal),
             },
-            options = tf.RunOptions(
-                timeout_in_ms=5 * 60 * 1000,  # if nothing gets in the queue for 5min something is probably wrong
+            options=tf.RunOptions(
+                timeout_in_ms=5 * 60 *
+                1000,  # if nothing gets in the queue for 5min something is probably wrong
             )
         )
 
@@ -212,10 +213,12 @@ class DataQueue():
                 def worker_fn():
                     try:
                         exs = 0
-                        for i, it in enumerate(produce_datapoints(
-                            cfg=self.cfg,
-                            fnames=self.fnames,
-                        )):
+                        for i, it in enumerate(
+                            produce_datapoints(
+                                cfg=self.cfg,
+                                fnames=self.fnames,
+                            )
+                        ):
                             if isinstance(it, Exception):
                                 self.logger.debug(
                                     f"Exception happened during processing data {type(it).__name__}:\n{it}"
@@ -228,19 +231,28 @@ class DataQueue():
                                 self.push_to_queue(sess, signal, labels)
                             except tf.errors.CancelledError:
                                 if coord.should_stop():
-                                    self.logger.warning("enqueue op canceled, and coord is stopping")
+                                    self.logger.warning(
+                                        "enqueue op canceled, and coord is stopping"
+                                    )
                                     return
                                 else:
-                                    self.logger.error("Cancelled error occurred yet coord is not stopping!", exc_info=True)
+                                    self.logger.error(
+                                        "Cancelled error occurred yet coord is not stopping!",
+                                        exc_info=True
+                                    )
                                     raise
                             except tf.errors.DeadlineExceededError:
-                                self.logger.warning("Queue pushing timeout exceeded")
+                                self.logger.warning(
+                                    "Queue pushing timeout exceeded"
+                                )
                             if i > 0 and i % 2000 == 0:
                                 self.logger.info(
                                     f"sucessfully submitted {i - exs}/{i} samples; -- {(i-exs)/i:.2f}"
                                 )
                     except Exception as e:
-                        self.logger.critical(f"{type(e).__name__}: {e}", exc_info=True)
+                        self.logger.critical(
+                            f"{type(e).__name__}: {e}", exc_info=True
+                        )
                         raise
 
                 iself.th = Thread(target=worker_fn, daemon=False)
@@ -260,17 +272,15 @@ class DataQueue():
                 logging.getLogger(__name__).info("Closed all queues")
                 iself.th.join(timeout=5)
                 if iself.th.is_alive():
-                    logging.getLogger(__name__).error("Input thread is still alive")
+                    logging.getLogger(__name__
+                                     ).error("Input thread is still alive")
                 else:
                     logging.getLogger(__name__).info("Closed all feeders")
+
         return Wrapper()
 
 
-def produce_datapoints(
-    cfg: InputFeederCfg,
-    fnames: List[str],
-    repeat=True
-):
+def produce_datapoints(cfg: InputFeederCfg, fnames: List[str], repeat=True):
     """
 
     Pushes single instances to the queue of the form:
@@ -293,7 +303,7 @@ def produce_datapoints(
                 assert len(signal) == len(dp.signal), "Trimming occured"
                 if len(signal) < cfg.min_signal_size:
                     yield ValueError(
-                            f"Signal too short {len(dp.signal)} < {cfg.min_signal_size}"
+                        f"Signal too short {len(dp.signal)} < {cfg.min_signal_size}"
                     )
                     continue
 
@@ -322,7 +332,7 @@ def produce_datapoints(
                         yield ValueError("Empty labels")
                     elif len(signal_segment) / cfg.ratio < len(buff):
                         yield ValueError(
-                                f"max possible labels {signal_segment/cfg.ratio}, have {len(buff)} labels"
+                            f"max possible labels {signal_segment/cfg.ratio}, have {len(buff)} labels"
                         )
                     else:
                         logging.debug(f"produce_datapoints: yielding datapoint")

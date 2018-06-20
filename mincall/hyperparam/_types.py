@@ -23,3 +23,4 @@ class Param(NamedTuple):
 
 class Observation(NamedTuple):
     metric: float
+    metadata: Dict = {}

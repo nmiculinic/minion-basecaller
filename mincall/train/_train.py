@@ -127,7 +127,11 @@ def add_args(parser: argparse.ArgumentParser):
         "Activate surrogate base pairs, that is repeated base pair shall be replaces with surrogate during training phase."
         "for example, let A=0. We have AAAA, which ordinarily will be 0, 0, 0, 0. With surrogate base pairs this will be 0, 4, 0, 4"
     )
-    parser.add_argument("--name", help="This model name. It's only used in logs so far", default=name_generator())
+    parser.add_argument(
+        "--name",
+        help="This model name. It's only used in logs so far",
+        default=name_generator()
+    )
     parser.set_defaults(func=run_args)
     parser.set_defaults(name="mincall_train")
 
@@ -467,9 +471,13 @@ def run(cfg: TrainConfig):
                     do_trace = cfg.run_trace_every > 0 and step % cfg.run_trace_every == 0
                     #  Train hook
                     logger.debug(f"Starting step {step}")
-                    opts = {'options': tf.RunOptions(
-                        timeout_in_ms=10 * 1000,  # Single op should complete in 10s
-                    )}
+                    opts = {
+                        'options':
+                            tf.RunOptions(
+                                timeout_in_ms=10 *
+                                1000,  # Single op should complete in 10s
+                            )
+                    }
                     if do_trace:
                         logger.debug("Adding trace options")
                         opts['options'] = tf.RunOptions(
@@ -529,7 +537,9 @@ def run(cfg: TrainConfig):
         except KeyboardInterrupt:
             logger.info("Keyboard interrupt")
         except Exception as e:
-            logger.critical(f"Training interupter! {type(e).__name__}: {e}", exc_info=True)
+            logger.critical(
+                f"Training interupter! {type(e).__name__}: {e}", exc_info=True
+            )
         finally:
             coord.request_stop()
             coord.join(stop_grace_period_secs=5)

@@ -168,11 +168,12 @@ def run(cfg: HyperParamCfg):
                            stream=f,
                            default_flow_style=False)
         obs = Observation(
-            metric=_train.
-            run_args(argparse.Namespace(
-                config=cfg_path,
-                logdir=None,
-                name=assigement.name,
-            ))
+            metric=_train.run_args(
+                argparse.Namespace(
+                    config=cfg_path,
+                    logdir=None,
+                    name=assigement.name,
+                )
+            )
         )
         solver.report(assigement, obs)
