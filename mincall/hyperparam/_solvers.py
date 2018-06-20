@@ -148,3 +148,9 @@ class SigOpt(AbstractSolver):
             value=observation.metric,
             metadata=observation.metadata,
         )
+
+
+available_solvers={
+    "sigopt": SigOpt,
+    "random": RandomSolver,
+}
