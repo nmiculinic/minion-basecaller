@@ -1,4 +1,5 @@
 from ._types import Param, Observation
+import socket
 from sigopt import Connection
 import os
 from pprint import pformat
@@ -98,11 +99,11 @@ class SigOpt(AbstractSolver):
             raise ValueError(
                 "envvar SIGOPT_API_TOKEN must be set with SigOptSolver"
             )
-
-        if not self.experiment_id:
+        self.conn = Connection(client_token=api_token)
+        if self.experiment_id is None:
             params = flatten_params(params)
             experiment = self.conn.experiments(id=self.experiment_id).create(
-                name='Mincall opt',
+                name=f'Mincall opt {socket.gethostname()}',
                 parameters=[{
                     "name": name,
                     "type": p.type,

@@ -1,4 +1,5 @@
 import unittest
+from pprint import pformat
 import logging
 from typing import *
 from ._solvers import *
@@ -33,6 +34,16 @@ class TestFlatten(unittest.TestCase):
             "a.b": 2,
             "c": 3
         }))
+
+
+@unittest.skipIf(os.getenv("SIGOPT_API_TOKEN") is None, "Sigopt api token not setup!")
+class TestSigOpt(unittest.TestCase):
+    def test_doesnt_crash(self):
+        opt = SigOpt({"a":{"b": Param(min=0, max=5, type="double")}})
+        for _ in range(3):
+            assignment = opt.new_assignment()
+            logging.info(f"Assignment: {pformat(assignment)}")
+            opt.report(assignment, Observation(metric=1.0))
 
 
 if __name__ == "__main__":
