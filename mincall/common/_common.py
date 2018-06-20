@@ -11,7 +11,8 @@ import random
 
 __all__ = [
     "decode", "tensor_default_summaries", "squggle", "named_tuple_helper",
-    "ext_cigar_stats", "TOTAL_BASE_PAIRS", "expand_cigar", "name_generator", "ExtraFieldsFilter"
+    "ext_cigar_stats", "TOTAL_BASE_PAIRS", "expand_cigar", "name_generator",
+    "ExtraFieldsFilter"
 ]
 
 TOTAL_BASE_PAIRS = 4  # Total number of bases (A, C, T, G)  # Total number of bases (A, C, T, G)

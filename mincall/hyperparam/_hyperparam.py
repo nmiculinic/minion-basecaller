@@ -12,7 +12,7 @@ from mincall.train import _train
 from mincall.common import *
 from mincall.train._train import DataDir, TrainConfig
 from voluptuous.humanize import humanize_error
-from ._solvers import AbstractSolver, RandomSolver
+from ._solvers import AbstractSolver, available_solvers
 from ._types import Param, Observation
 import sys
 
@@ -34,6 +34,7 @@ class HyperParamCfg(NamedTuple):
 
     model_hparams: Dict[str, Param]
 
+    solver_class: Callable[[Dict], AbstractSolver]
     work_dir: str
     grad_clipping: float = 10.0
     validate_every: int = 50
@@ -49,6 +50,7 @@ class HyperParamCfg(NamedTuple):
                 'model_hparams': {
                     str: Param.scheme
                 },
+                'solver_class': lambda x: available_solvers[voluptuous.validators.In(available_solvers.keys())(x)],
             }, data
         )
 
@@ -141,11 +143,13 @@ def subs_dict(x, subs: Dict) -> Dict:
 
 def run(cfg: HyperParamCfg):
     logger = hyperparam_logger
-    train_cfg, params = make_dict(cfg, {})
-    train_cfg = toolz.keyfilter(
-        lambda x: x in TrainConfig.__annotations__.keys(), train_cfg
+    train_cfg, params = make_dict(
+        toolz.keyfilter(
+            lambda x: x in TrainConfig.__annotations__.keys(), cfg._asdict()
+        ),
+        {},
     )
-    solver = RandomSolver(params)
+    solver = cfg.solver_class(params)
 
     while True:
         assigement = solver.new_assignment()
@@ -167,12 +171,20 @@ def run(cfg: HyperParamCfg):
             },
                            stream=f,
                            default_flow_style=False)
-        obs = Observation(
-            metric=_train.
-            run_args(argparse.Namespace(
+        result = _train.run_args(
+            argparse.Namespace(
                 config=cfg_path,
                 logdir=None,
                 name=assigement.name,
-            ))
+            )
+        )
+        logger.info(f"Got results:\n{result.describe().to_string()}\n{result}")
+        obs = Observation(
+            metric=float(np.mean(result['identity'])),
+            metric_std=float(np.std(result['identity'])),
+            metadata={
+                c: float(np.mean(series))
+                for c, series in result.iteritems()
+            }
         )
         solver.report(assigement, obs)

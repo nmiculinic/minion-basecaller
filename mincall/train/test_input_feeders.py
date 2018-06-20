@@ -38,10 +38,10 @@ class TestInputFeeders(unittest.TestCase):
         )
         got = []
         for x in _input_feeders.produce_datapoints(
-                cfg,
-                fnames=[ex_fname],
-                repeat=False,
-            ):
+            cfg,
+            fnames=[ex_fname],
+            repeat=False,
+        ):
             if isinstance(x, ValueError):
                 got.append("ValueError")
             else:
@@ -181,7 +181,7 @@ class TestInputFeeders(unittest.TestCase):
                 min_signal_size=10,
             )
             got = []
-            for x in  _input_feeders.produce_datapoints(
+            for x in _input_feeders.produce_datapoints(
                 cfg,
                 fnames=[t],
                 repeat=False,

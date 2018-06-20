@@ -15,16 +15,18 @@ class TestAlignmentStats(unittest.TestCase):
         data = {k: x[k] for k in x.files}
         res = ops.alignment_stats(**data)
         if update_golden:
-            np.savez(os.path.join(ops_data, "end2end_empty_query.golden.npz"), *res)
+            np.savez(
+                os.path.join(ops_data, "end2end_empty_query.golden.npz"), *res
+            )
         else:
-            golden = np.load(os.path.join(ops_data, "end2end_empty_query.golden.npz"))
+            golden = np.load(
+                os.path.join(ops_data, "end2end_empty_query.golden.npz")
+            )
             golder_arr = [golden[k] for k in golden.files]
             self.assertEqual(len(res), len(golder_arr))
-            for actual, desired in zip(
-                res,
-                golder_arr
-            ):
+            for actual, desired in zip(res, golder_arr):
                 np.testing.assert_allclose(actual, desired)
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
