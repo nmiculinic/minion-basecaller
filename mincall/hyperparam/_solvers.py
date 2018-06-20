@@ -118,8 +118,8 @@ class SigOpt(AbstractSolver):
             )
             self.experiment_id = experiment.id
             self.logger.info(
-                "Created experiment: https://sigopt.com/experiment/" +
-                self.experiment_id
+                f"Created experiment: https://sigopt.com/experiment/{self.experiment_id} in "
+                f"{'DEVELOPMENT' if experiment.development else 'PRODUCTION'} mode"
             )
         else:
             self.logger.info(
@@ -127,7 +127,6 @@ class SigOpt(AbstractSolver):
                 self.experiment_id
             )
 
-        self.conn = Connection(client_token=api_token)
 
     def new_assignment(self):
         suggestion = self.conn.experiments(self.experiment_id
