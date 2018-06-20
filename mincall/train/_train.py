@@ -259,49 +259,46 @@ class Model():
             *self.dq.summaries,
         ]
 
+        self.ext_summaries = self.summaries[:]
+
+        *self.alignment_stats, self.identity = tf.py_func(
+            ops.alignment_stats,
+            [
+                self.labels.indices, self.labels.values, self.predict.indices,
+                self.predict.values, self.labels.dense_shape[0]
+            ],
+            (len(ops.aligment_stats_ordering) + 1) * [tf.float32],
+            stateful=False,
+            )
+
+        for stat_type, stat in zip(ops.aligment_stats_ordering, self.alignment_stats):
+            stat.set_shape((None,))
+            self.ext_summaries.append(
+                tensor_default_summaries(
+                    dataset_pb2.Cigar.Name(stat_type) + "_rate",
+                    stat,
+                    )
+            )
+
+        self.identity.set_shape((None,))
+        self.ext_summaries.append(tensor_default_summaries(
+            "IDENTITY",
+            self.identity,
+        ))
+        self.ext_summaries.extend(tensor_default_summaries("logits", self.logits, family="logits"))
+
+        self.ext_summaries.append(
+            tf.summary.image(
+                "logits",
+                tf.expand_dims(
+                    tf.nn.softmax(tf.transpose(self.logits, [1, 2, 0])),
+                    -1,
+                )
+            )
+        )
+
     def input_wrapper(self, sess: tf.Session, coord: tf.train.Coordinator):
         return self.dq.start_input_processes(sess, coord)
-
-
-def extended_summaries(m: Model):
-    sums = []
-
-    *alignment_stats, identity = tf.py_func(
-        ops.alignment_stats,
-        [
-            m.labels.indices, m.labels.values, m.predict.indices,
-            m.predict.values, m.labels.dense_shape[0]
-        ],
-        (len(ops.aligment_stats_ordering) + 1) * [tf.float32],
-        stateful=False,
-    )
-
-    for stat_type, stat in zip(ops.aligment_stats_ordering, alignment_stats):
-        stat.set_shape((None,))
-        sums.append(
-            tensor_default_summaries(
-                dataset_pb2.Cigar.Name(stat_type) + "_rate",
-                stat,
-            )
-        )
-
-    identity.set_shape((None,))
-    sums.append(tensor_default_summaries(
-        "IDENTITY",
-        identity,
-    ))
-    sums.extend(tensor_default_summaries("logits", m.logits, family="logits"))
-
-    sums.append(
-        tf.summary.image(
-            "logits",
-            tf.expand_dims(
-                tf.nn.softmax(tf.transpose(m.logits, [1, 2, 0])),
-                -1,
-            )
-        )
-    )
-    return sums
 
 
 def run_args(args):
@@ -396,9 +393,7 @@ def run(cfg: TrainConfig):
         )
 
         train_model.summary = tf.summary.merge(train_model.summaries)
-        train_model.ext_summary = tf.summary.merge(
-            train_model.summaries + extended_summaries(train_model)
-        )
+        train_model.ext_summary = tf.summary.merge(train_model.ext_summaries)
 
     optimizer = tf.train.AdamOptimizer(learning_rate)
     grads_and_vars = optimizer.compute_gradients(train_model.total_loss)
@@ -427,9 +422,8 @@ def run(cfg: TrainConfig):
                     tensor_default_summaries(name + "/grad", grad)
                 )
 
-        var_summaries.extend(extended_summaries(test_model))
         test_model.summary = tf.summary.merge(
-            test_model.summaries + var_summaries
+            test_model.ext_summaries + var_summaries
         )
 
     # Session stuff
