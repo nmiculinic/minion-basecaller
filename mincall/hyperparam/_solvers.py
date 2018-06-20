@@ -146,6 +146,7 @@ class SigOpt(AbstractSolver):
         self.conn.experiments(self.experiment_id).observations().create(
             suggestion=assignment.context,
             value=observation.metric,
+            value_stddev=observation.metric_std,
             metadata=observation.metadata,
         )
 

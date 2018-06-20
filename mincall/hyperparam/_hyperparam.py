@@ -181,6 +181,7 @@ def run(cfg: HyperParamCfg):
         logger.info(f"Got results:\n{result.describe().to_string()}\n{result}")
         obs = Observation(
             metric=float(np.mean(result['identity'])),
+            metric_std=float(np.std(result['identity'])),
             metadata={
                 c: float(np.mean(series))
                 for c, series in result.iteritems()
