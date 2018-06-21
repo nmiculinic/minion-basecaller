@@ -334,7 +334,7 @@ def run(cfg: TrainConfig) -> pd.DataFrame:
                             global_step=global_step
                         )
                         logger.info(f"Saved new model checkpoint")
-                model.save(cfg.logdir, cfg.train_steps)
+                model.save(sess, cfg.logdir, cfg.train_steps)
                 final_val = final_validation(sess, test_model)
                 coord.request_stop()
             logger.info(f"Input queues exited ok")
