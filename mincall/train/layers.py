@@ -3,6 +3,7 @@ from keras.engine.topology import Layer
 
 __all__ = ["ConstMultiplierLayer", "custom_layers"]
 
+
 class ConstMultiplierLayer(Layer):
     def __init__(self, **kwargs):
         super(ConstMultiplierLayer, self).__init__(**kwargs)

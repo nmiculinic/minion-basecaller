@@ -137,6 +137,43 @@ def alignment_stats(
     return sol + [np.array(identities, dtype=np.float32)]
 
 
+def autoencoder_loss(signal_reconstruction, signal, signal_len):
+    """
+    
+    :param signal_reconstruction: 
+    :param signal: 
+    :param signal_len: 
+    :return: 
+    """
+
+    with tf.control_dependencies([
+        tf.assert_equal(
+            tf.shape(signal_reconstruction),
+            tf.shape(signal),
+            message="signal lengths must be same"
+        ),
+        tf.assert_equal(tf.shape(signal)[2], 1, message="last dim must be 1"),
+        tf.assert_equal(tf.rank(signal), 3, message="signal rank must be 3"),
+    ]):
+        mask = tf.sequence_mask(
+            lengths=signal_len,
+            maxlen=tf.shape(signal)[1],
+        )
+
+    diff = 0.5 * tf.square(
+        tf.squeeze(signal_reconstruction, axis=[2]) -
+        tf.squeeze(signal, axis=[2])
+    )
+
+    return tf.reduce_mean(
+        tf.boolean_mask(
+            diff,
+            mask,
+        ),
+        axis=[0],
+    )
+
+
 if __name__ == "__main__":
     labels = tf.sparse_placeholder(tf.float32, name="labels")
     pred = tf.sparse_placeholder(tf.float32, name="pred")

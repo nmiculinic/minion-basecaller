@@ -21,14 +21,17 @@ class AbstractModel:
     forward_model: models.Model
     ratio: int
     autoencoder_model: Optional[models.Model] = None
+    autoenc_coeff: float = 1.0
 
-    def bind(self, cfg: InputFeederCfg, data_dir: List[DataDir]) -> 'BindedModel':
+    def bind(self, cfg: InputFeederCfg,
+             data_dir: List[DataDir]) -> 'BindedModel':
         assert cfg.ratio == self.ratio
         return BindedModel(
             cfg=cfg,
             data_dir=data_dir,
             forward_model=self.forward_model,
             autoencoder_model=self.autoencoder_model,
+            autoenc_coeff=self.autoenc_coeff,
         )
 
     def save(self, folder, step: int):
@@ -41,12 +44,14 @@ class BindedModel:
 
     It shouldn't be created direcly by the end consumer
     """
+
     def __init__(
-            self,
-            cfg: InputFeederCfg,
-            data_dir: List[DataDir],
-            forward_model: models.Model,
-            autoencoder_model: models.Model = None,
+        self,
+        cfg: InputFeederCfg,
+        data_dir: List[DataDir],
+        forward_model: models.Model,
+        autoencoder_model: models.Model = None,
+        autoenc_coeff: float = 1,
     ):
         self.dataset = []
         for x in data_dir:
@@ -80,7 +85,7 @@ class BindedModel:
 
         untransposed_logits = forward_model(input_signal)
         self.logits = tf.transpose(untransposed_logits, [1, 0, 2]
-                                   )  # [max_time, batch_size, class_num]
+                                  )  # [max_time, batch_size, class_num]
         self._logger.info(f"Logits shape: {self.logits.shape}")
         self.logits = tf.Print(
             self.logits, [tf.shape(self.logits)],
@@ -112,10 +117,10 @@ class BindedModel:
             inputs=self.logits,
             sequence_length=seq_len,
             merge_repeated=cfg.
-                surrogate_base_pair,  # Gotta merge if we have surrogate_base_pairs
+            surrogate_base_pair,  # Gotta merge if we have surrogate_base_pairs
             top_paths=1,
             beam_width=100,
-                )[0][0]
+        )[0][0]
 
         finite_mask = tf.logical_not(
             tf.logical_or(
@@ -145,7 +150,7 @@ class BindedModel:
             decay_steps=200,
         )
 
-        self.total_loss = self.ctc_loss + self.regularization_loss
+        self.total_loss = [self.ctc_loss, self.regularization_loss]
 
         percent_finite = tf.reduce_mean(tf.cast(finite_mask, tf.int32))
         percent_finite = tf.Print(
@@ -155,21 +160,33 @@ class BindedModel:
 
         if autoencoder_model is not None:
             if autoencoder_model.losses:
-                regularization_loss = tf.reduce_mean(tf.add_n(autoencoder_model.losses))
+                regularization_loss = tf.reduce_mean(
+                    tf.add_n(autoencoder_model.losses)
+                )
             else:
                 regularization_loss = tf.constant(0.0)
-            self.summaries.append(tf.summary.scalar('regularization_loss_autoenc', regularization_loss, family="losses"))
+            self.summaries.append(
+                tf.summary.scalar(
+                    'regularization_loss_autoenc',
+                    regularization_loss,
+                    family="losses"
+                )
+            )
             signal_reconstruction = autoencoder_model(untransposed_logits)
-            # TODO
-            # autoenc_loss = tf.reduce_mean(
-            #     tf.boolean_mask(
-            #         tf.py_func()
-            #         tf.square(signal_reconstruction - input_signal)
-            #     )
-            # )
+            autoencoder_loss = autoenc_coeff * ops.autoencoder_loss(
+                signal=input_signal,
+                signal_reconstruction=signal_reconstruction,
+                signal_len=signal_len,
+            )
 
+            self.summaries.append(
+                tf.summary.scalar(
+                    'autoenc_loss', autoencoder_loss, family="losses"
+                )
+            )
+            self.total_loss.append(autoencoder_loss)
 
-
+        self.total_loss = tf.add_n(self.total_loss)
         self.summaries.extend([
             tf.summary.scalar(f'total_loss', self.total_loss, family="losses"),
             tf.summary.scalar(f'ctc_loss', self.ctc_loss, family="losses"),
@@ -192,17 +209,17 @@ class BindedModel:
             ],
             (len(ops.aligment_stats_ordering) + 1) * [tf.float32],
             stateful=False,
-            )
+        )
 
         for stat_type, stat in zip(
-                ops.aligment_stats_ordering, self.alignment_stats
+            ops.aligment_stats_ordering, self.alignment_stats
         ):
             stat.set_shape((None,))
             self.ext_summaries.append(
                 tensor_default_summaries(
                     dataset_pb2.Cigar.Name(stat_type) + "_rate",
                     stat,
-                    )
+                )
             )
 
         self.identity.set_shape((None,))
@@ -226,8 +243,6 @@ class BindedModel:
             )
         )
 
-
-
     def input_wrapper(self, sess: tf.Session, coord: tf.train.Coordinator):
         return self.dq.start_input_processes(sess, coord)
 
@@ -242,6 +257,7 @@ class DummyCfg(NamedTuple):
 
 class DummyModel(AbstractModel):
     cfg_class = DummyCfg
+
     def __init__(self, n_classes, hparams: Dict):
         cfg: DummyCfg = DummyCfg.scheme(hparams)
         input = layers.Input(shape=(None, 1))
@@ -314,4 +330,3 @@ all_models: Dict[str, Callable[[str], AbstractModel]] = {
     'dummy': DummyModel,
     'big_01': Big01,
 }
-

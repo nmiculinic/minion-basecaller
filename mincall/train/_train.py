@@ -120,8 +120,6 @@ def add_args(parser: argparse.ArgumentParser):
     parser.set_defaults(name="mincall_train")
 
 
-
-
 def run_args(args) -> pd.DataFrame:
     with open(args.config) as f:
         config = yaml.load(f)

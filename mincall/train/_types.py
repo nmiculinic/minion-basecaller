@@ -1,6 +1,7 @@
 from typing import *
 import voluptuous
 
+
 class DataDir(NamedTuple):
     name: str
     dir: str
@@ -12,7 +13,7 @@ class DataDir(NamedTuple):
                 'name': str,
                 'dir': voluptuous.validators.IsDir(),
             },
-                required=True)(data)
+                                required=True)(data)
         )
 
 

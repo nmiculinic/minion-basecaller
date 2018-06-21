@@ -13,8 +13,6 @@ import scrappy
 from ._types import *
 
 
-
-
 class DataQueue():
     def __init__(
         self,
