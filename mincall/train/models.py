@@ -157,6 +157,7 @@ class BindedModel:
             percent_finite, [percent_finite], first_n=10, message="%finite"
         )
         self.summaries = []
+        self.ext_summaries = []
 
         if autoencoder_model is not None:
             if autoencoder_model.losses:
@@ -186,6 +187,9 @@ class BindedModel:
                     'autoenc_loss', autoencoder_loss, family="losses"
                 )
             )
+            self.ext_summaries.extend(
+                tensor_default_summaries("autoenc_signal", signal_reconstruction, family="signal"),
+            )
             self.total_loss.append(autoencoder_loss)
 
         self.total_loss = tf.add_n(self.total_loss)
@@ -201,7 +205,10 @@ class BindedModel:
             *self.dq.summaries,
         ])
 
-        self.ext_summaries = self.summaries[:]
+        self.ext_summaries.extend(
+            tensor_default_summaries("input_signal", input_signal, family="signal"),
+        )
+
 
         *self.alignment_stats, self.identity = tf.py_func(
             ops.alignment_stats,
@@ -244,6 +251,7 @@ class BindedModel:
                 )
             )
         )
+        self.ext_summaries.extend(self.summaries)
 
     def input_wrapper(self, sess: tf.Session, coord: tf.train.Coordinator):
         return self.dq.start_input_processes(sess, coord)
