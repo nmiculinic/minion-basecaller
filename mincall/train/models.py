@@ -262,6 +262,12 @@ class DummyModel(AbstractModel):
 
     def __init__(self, n_classes, hparams: Dict):
         cfg: DummyCfg = DummyCfg.scheme(hparams)
+        self.forward_model = self._foraward_model(n_classes, cfg)
+        self.autoencoder_model = self._backwards(n_classes, cfg)
+        self.ratio = 1
+
+    @staticmethod
+    def _foraward_model(n_classes, cfg: DummyCfg) -> models.Model:
         input = layers.Input(shape=(None, 1))
         net = input
         for _ in range(cfg.num_layers):
@@ -276,8 +282,26 @@ class DummyModel(AbstractModel):
             net = layers.Activation('relu')(net)
 
         net = layers.Conv1D(n_classes, 3, padding="same")(net)
-        self.forward_model = models.Model(inputs=[input], outputs=[net])
-        self.ratio = 1
+        return models.Model(inputs=[input], outputs=[net])
+
+    @staticmethod
+    def _backwards(n_classes, cfg: DummyCfg) -> models.Model:
+        input = layers.Input(shape=(None, n_classes))
+        net = input
+        for _ in range(cfg.num_layers):
+            net = layers.BatchNormalization()(net)
+            net = layers.Conv1D(
+                10,
+                3,
+                padding="same",
+                dilation_rate=2,
+                bias_regularizer=regularizers.l1(0.1)
+            )(net)
+            net = layers.Activation('relu')(net)
+
+        net = layers.Conv1D(1, 3, padding="same")(net)
+        return models.Model(inputs=[input], outputs=[net])
+
 
 
 class Big01Cfg(NamedTuple):
