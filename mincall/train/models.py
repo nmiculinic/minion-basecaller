@@ -172,6 +172,8 @@ class BindedModel:
                     family="losses"
                 )
             )
+            self.total_loss.append(regularization_loss)
+
             signal_reconstruction = autoencoder_model(untransposed_logits)
             autoencoder_loss = autoenc_coeff * ops.autoencoder_loss(
                 signal=input_signal,
