@@ -8,9 +8,9 @@ import numpy as np
 import yaml
 import argparse
 import voluptuous
-from mincall.train import _train
 from mincall.common import *
-from mincall.train._train import DataDir, TrainConfig
+from mincall import train
+from mincall.train import DataDir, TrainConfig
 from voluptuous.humanize import humanize_error
 from ._solvers import AbstractSolver, available_solvers
 from ._types import Param, Observation
@@ -171,7 +171,7 @@ def run(cfg: HyperParamCfg):
             },
                            stream=f,
                            default_flow_style=False)
-        result = _train.run_args(
+        result = train.run_args(
             argparse.Namespace(
                 config=cfg_path,
                 logdir=None,

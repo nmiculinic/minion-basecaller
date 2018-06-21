@@ -10,27 +10,9 @@ import gzip
 import numpy as np
 from threading import Thread
 import scrappy
+from ._types import *
 
 
-class InputFeederCfg(NamedTuple):
-    batch_size: int
-    seq_length: int
-    ratio: int
-    surrogate_base_pair: bool
-    num_bases: int
-    min_signal_size: int = 10000
-
-    @classmethod
-    def schema(cls, data):
-        return cls(
-            **voluptuous.Schema({
-                voluptuous.Optional('batch_size', 10): int,
-                'seq_length': int,
-                'surrogate_base_pair': bool,
-                voluptuous.Optional("min_signal_size"): int,
-                voluptuous.Optional("num_bases"): int,
-            })(data)
-        )
 
 
 class DataQueue():

@@ -11,38 +11,21 @@ import yaml
 from typing import *
 import logging
 from voluptuous.humanize import humanize_error
-from glob import glob
 from pprint import pformat
-from ._input_feeders import InputFeederCfg, DataQueue
 import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 from tensorflow.python.client import timeline
 from keras import backend as K
-from keras import models
-from .models import all_models
+from .models import all_models, AbstractModel, BindedModel
 from mincall.common import *
 from mincall.train import ops
 from minion_data import dataset_pb2
+from ._types import *
 
 import toolz
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
-
-
-class DataDir(NamedTuple):
-    name: str
-    dir: str
-
-    @classmethod
-    def schema(cls, data):
-        return cls(
-            **voluptuous.Schema({
-                'name': str,
-                'dir': voluptuous.validators.IsDir(),
-            },
-                                required=True)(data)
-        )
 
 
 class TrainConfig(NamedTuple):
@@ -137,175 +120,6 @@ def add_args(parser: argparse.ArgumentParser):
     parser.set_defaults(name="mincall_train")
 
 
-class Model():
-    def __init__(
-        self,
-        cfg: InputFeederCfg,
-        model: models.Model,
-        data_dir: List[DataDir],
-        trace=False,
-    ):
-        self.dataset = []
-        for x in data_dir:
-            dps = list(glob(f"{x.dir}/*.datapoint"))
-            self.dataset.extend(dps)
-            logger.info(
-                f"Added {len(dps)} datapoint from {x.name} to train set; dir: {x.dir}"
-            )
-
-        self._logger = logging.getLogger(__name__)
-        self.learning_phase = K.learning_phase()
-        with K.name_scope("data_in"):
-            self.dq = DataQueue(
-                cfg,
-                self.dataset,
-                capacity=10 * cfg.batch_size,
-                trace=trace,
-                min_after_deque=2 * cfg.batch_size
-            )
-        input_signal: tf.Tensor = self.dq.batch_signal
-        input_signal = tf.Print(
-            input_signal, [tf.shape(input_signal)],
-            first_n=1,
-            summarize=10,
-            message="input signal shape, [batch_size,max_time, 1]"
-        )
-
-        labels: tf.SparseTensor = self.dq.batch_labels
-        signal_len: tf.Tensor = self.dq.batch_signal_len
-
-        self.labels = labels
-
-        self.logits = tf.transpose(model(input_signal), [1, 0, 2]
-                                  )  # [max_time, batch_size, class_num]
-        self._logger.info(f"Logits shape: {self.logits.shape}")
-        self.logits = tf.Print(
-            self.logits, [tf.shape(self.logits)],
-            first_n=1,
-            summarize=10,
-            message="logits shape [max_time, batch_size, class_num]"
-        )
-
-        seq_len = tf.cast(
-            tf.floor_div(signal_len + cfg.ratio - 1, cfg.ratio), tf.int32
-        )  # Round up
-        seq_len = tf.Print(
-            seq_len, [tf.shape(seq_len), seq_len],
-            first_n=5,
-            summarize=15,
-            message="seq_len [expected around max_time]"
-        )
-
-        self.ctc_loss_unaggregated = tf.nn.ctc_loss(
-            labels=labels,
-            inputs=self.logits,
-            sequence_length=seq_len,
-            preprocess_collapse_repeated=False,
-            ctc_merge_repeated=True,
-            time_major=True,
-        )
-
-        self.predict = tf.nn.ctc_beam_search_decoder(
-            inputs=self.logits,
-            sequence_length=seq_len,
-            merge_repeated=cfg.
-            surrogate_base_pair,  # Gotta merge if we have surrogate_base_pairs
-            top_paths=1,
-            beam_width=100,
-        )[0][0]
-
-        finite_mask = tf.logical_not(
-            tf.logical_or(
-                tf.is_nan(self.ctc_loss_unaggregated),
-                tf.is_inf(self.ctc_loss_unaggregated),
-            )
-        )
-
-        # self.ctc_loss = tf.reduce_mean(self.losses)
-        self.ctc_loss = tf.reduce_mean(
-            tf.boolean_mask(
-                self.ctc_loss_unaggregated,
-                finite_mask,
-            )
-        )
-        if model.losses:
-            self.regularization_loss = tf.add_n(model.losses)
-        else:
-            self.regularization_loss = tf.constant(0.0)
-        # Nice little hack to get inf/NaNs out of the way. In the beginning of the training
-        # logits shall move to some unrealistically large numbers and it shall be hard
-        # finding path through the network
-        self.regularization_loss += tf.train.exponential_decay(
-            learning_rate=tf.nn.l2_loss(self.logits),
-            global_step=tf.train.get_or_create_global_step(),
-            decay_rate=0.5,
-            decay_steps=200,
-        )
-
-        self.total_loss = self.ctc_loss + self.regularization_loss
-
-        percent_finite = tf.reduce_mean(tf.cast(finite_mask, tf.int32))
-        percent_finite = tf.Print(
-            percent_finite, [percent_finite], first_n=10, message="%finite"
-        )
-        self.summaries = [
-            tf.summary.scalar(f'total_loss', self.total_loss, family="losses"),
-            tf.summary.scalar(f'ctc_loss', self.ctc_loss, family="losses"),
-            tf.summary.scalar(
-                f'regularization_loss',
-                self.regularization_loss,
-                family="losses"
-            ),
-            tf.summary.scalar("finite_percent", percent_finite),
-            *self.dq.summaries,
-        ]
-
-        self.ext_summaries = self.summaries[:]
-
-        *self.alignment_stats, self.identity = tf.py_func(
-            ops.alignment_stats,
-            [
-                self.labels.indices, self.labels.values, self.predict.indices,
-                self.predict.values, self.labels.dense_shape[0]
-            ],
-            (len(ops.aligment_stats_ordering) + 1) * [tf.float32],
-            stateful=False,
-        )
-
-        for stat_type, stat in zip(
-            ops.aligment_stats_ordering, self.alignment_stats
-        ):
-            stat.set_shape((None,))
-            self.ext_summaries.append(
-                tensor_default_summaries(
-                    dataset_pb2.Cigar.Name(stat_type) + "_rate",
-                    stat,
-                )
-            )
-
-        self.identity.set_shape((None,))
-        self.ext_summaries.append(
-            tensor_default_summaries(
-                "IDENTITY",
-                self.identity,
-            )
-        )
-        self.ext_summaries.extend(
-            tensor_default_summaries("logits", self.logits, family="logits")
-        )
-
-        self.ext_summaries.append(
-            tf.summary.image(
-                "logits",
-                tf.expand_dims(
-                    tf.nn.softmax(tf.transpose(self.logits, [1, 2, 0])),
-                    -1,
-                )
-            )
-        )
-
-    def input_wrapper(self, sess: tf.Session, coord: tf.train.Coordinator):
-        return self.dq.start_input_processes(sess, coord)
 
 
 def run_args(args) -> pd.DataFrame:
@@ -360,10 +174,11 @@ def run(cfg: TrainConfig) -> pd.DataFrame:
     if cfg.surrogate_base_pair:
         num_bases += TOTAL_BASE_PAIRS
     try:
-        model, ratio = all_models[cfg.model_name](
+        model = all_models[cfg.model_name](
             n_classes=num_bases + 1, hparams=cfg.model_hparams
         )
-        logger.info(f"Compression ratio: {ratio}")
+        model: AbstractModel = model
+        logger.info(f"Compression ratio: {model.ratio}")
     except voluptuous.error.Error as e:
         logger.error(
             f"Invalid hyper params, check your config {humanize_error(cfg.model_hparams, e)}"
@@ -373,7 +188,7 @@ def run(cfg: TrainConfig) -> pd.DataFrame:
     input_feeder_cfg = InputFeederCfg(
         batch_size=cfg.batch_size,
         seq_length=cfg.seq_length,
-        ratio=ratio,
+        ratio=model.ratio,
         surrogate_base_pair=cfg.surrogate_base_pair,
         num_bases=TOTAL_BASE_PAIRS,
     )
@@ -388,11 +203,9 @@ def run(cfg: TrainConfig) -> pd.DataFrame:
     )
 
     with tf.name_scope("train"):
-        train_model = Model(
-            input_feeder_cfg,
-            model=model,
+        train_model = model.bind(
+            cfg=input_feeder_cfg,
             data_dir=cfg.train_data,
-            trace=cfg.trace,
         )
         # Basic only train summaries
         train_model.summaries.append(
@@ -411,11 +224,9 @@ def run(cfg: TrainConfig) -> pd.DataFrame:
     )
 
     with tf.name_scope("test"):
-        test_model = Model(
-            input_feeder_cfg,
-            model=model,
+        test_model = model.bind(
+            cfg=input_feeder_cfg,
             data_dir=cfg.test_data,
-            trace=cfg.trace,
         )
         var_summaries = []
         for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
@@ -525,12 +336,9 @@ def run(cfg: TrainConfig) -> pd.DataFrame:
                             global_step=global_step
                         )
                         logger.info(f"Saved new model checkpoint")
-                p = os.path.join(cfg.logdir, f"full-model-{step:05}.save")
-                model.save(p, overwrite=True, include_optimizer=False)
-
+                model.save(cfg.logdir, cfg.train_steps)
                 final_val = final_validation(sess, test_model)
                 coord.request_stop()
-                logger.info(f"Finished training saved model to {p}")
             logger.info(f"Input queues exited ok")
             return final_val
         except KeyboardInterrupt:
@@ -545,7 +353,7 @@ def run(cfg: TrainConfig) -> pd.DataFrame:
 
 
 def final_validation(
-    sess: tf.Session, test_model: Model, min_cnt=100
+    sess: tf.Session, test_model: BindedModel, min_cnt=100
 ) -> pd.DataFrame:
     logger = logging.getLogger("mincall.train.ops")
     lvl = logger.getEffectiveLevel()
@@ -587,7 +395,7 @@ def final_validation(
 
 def log_validation(
     sess: tf.Session, step: int, summary_writer: tf.summary.FileWriter,
-    test_model: Model
+    test_model: BindedModel
 ):
     logits, predict, lb, val_loss, losses, test_summary = sess.run(
         [
