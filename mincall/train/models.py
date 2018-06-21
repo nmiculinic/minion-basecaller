@@ -188,7 +188,9 @@ class BindedModel:
                 )
             )
             self.ext_summaries.extend(
-                tensor_default_summaries("autoenc_signal", signal_reconstruction, family="signal"),
+                tensor_default_summaries(
+                    "autoenc_signal", signal_reconstruction, family="signal"
+                ),
             )
             self.total_loss.append(autoencoder_loss)
 
@@ -206,9 +208,10 @@ class BindedModel:
         ])
 
         self.ext_summaries.extend(
-            tensor_default_summaries("input_signal", input_signal, family="signal"),
+            tensor_default_summaries(
+                "input_signal", input_signal, family="signal"
+            ),
         )
-
 
         *self.alignment_stats, self.identity = tf.py_func(
             ops.alignment_stats,
@@ -309,7 +312,6 @@ class DummyModel(AbstractModel):
 
         net = layers.Conv1D(1, 3, padding="same")(net)
         return models.Model(inputs=[input], outputs=[net])
-
 
 
 class Big01Cfg(NamedTuple):
