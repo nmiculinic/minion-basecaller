@@ -127,7 +127,6 @@ class SigOpt(AbstractSolver):
                 self.experiment_id
             )
 
-
     def new_assignment(self):
         suggestion = self.conn.experiments(self.experiment_id
                                           ).suggestions().create()
@@ -146,7 +145,9 @@ class SigOpt(AbstractSolver):
             suggestion=assignment.context,
             value=observation.metric,
             value_stddev=observation.metric_std,
-            metadata=observation.metadata,
+            metadata=toolz.merge(
+                observation.metadata, {'model_name': assignment.name}
+            )
         )
 
 
