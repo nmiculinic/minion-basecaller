@@ -1,1 +1,1 @@
-from ._basecall import add_args
+from .main import add_args
