@@ -29,12 +29,6 @@ class AbstractModel:
         self.autoencoder_model = autoencoder_model
         self.autoenc_coeff = autoenc_coeff
 
-        with K.name_scope("export"):
-            self.x = tf.placeholder(tf.float32, shape=(None, None, 1))
-            self.y = self.forward_model(self.x)
-            print(self.y.shape)
-
-
     def bind(self, cfg: InputFeederCfg,
              data_dir: List[DataDir]) -> 'BindedModel':
         assert cfg.ratio == self.ratio
@@ -50,26 +44,33 @@ class AbstractModel:
         p = os.path.join(folder, f"full-model-{step:05}.save")
         self.forward_model.save(p, overwrite=True, include_optimizer=False)
 
-        model_input = tf.saved_model.utils.build_tensor_info(self.x)
-        model_output = tf.saved_model.utils.build_tensor_info(self.y)
+        with tf.Graph().as_default(), tf.Session() as sess, sess.as_default():
+            model = models.load_model(p, custom_objects=custom_layers, compile=False)
+            with tf.name_scope("export"):
+                x = tf.placeholder(tf.float32, shape=(None, None, 1))
+                y = model(x)
+            model.load_weights(p)
 
-        signature_definition = tf.saved_model.signature_def_utils.build_signature_def(
-            inputs={"x": model_input},
-            outputs={"y": model_output},
-            method_name=tf.saved_model.signature_constants.PREDICT_METHOD_NAME
-        )
+            model_input = tf.saved_model.utils.build_tensor_info(x)
+            model_output = tf.saved_model.utils.build_tensor_info(y)
 
-        export_path = os.path.join(folder, "saver", "1")
-        builder = tf.saved_model.builder.SavedModelBuilder(export_path)
-        builder.add_meta_graph_and_variables(
-            sess,
-            [tf.saved_model.tag_constants.SERVING],
-            signature_def_map={
-                "mincall":
-                    signature_definition,
-            },
-        )
-        builder.save()
+            signature_definition = tf.saved_model.signature_def_utils.build_signature_def(
+                inputs={"x": model_input},
+                outputs={"y": model_output},
+                method_name=tf.saved_model.signature_constants.PREDICT_METHOD_NAME
+            )
+
+            export_path = os.path.join(folder, "saver", "1")
+            builder = tf.saved_model.builder.SavedModelBuilder(export_path)
+            builder.add_meta_graph_and_variables(
+                sess,
+                [tf.saved_model.tag_constants.SERVING],
+                signature_def_map={
+                    "mincall":
+                        signature_definition,
+                },
+            )
+            builder.save()
 
 class BindedModel:
     """Class representing model binded to the dataset with all required properties.
