@@ -368,7 +368,7 @@ class Big01(AbstractModel):
     def __init__(self, n_classes: int, hparams: Dict):
         cfg: Big01Cfg = Big01Cfg.scheme(hparams)
         input = layers.Input(shape=(None, 1))
-        net = input
+        net = layers.BatchNormalization()(input)
         for i in range(cfg.num_blocks):
             channels = 2**i * cfg.block_init_channels
             net = layers.Conv1D(
@@ -423,22 +423,30 @@ class FunnyFermat(AbstractModel):
             autoenc_coeff=cfg.autoenc_coeff,
         )
 
-
     @staticmethod
     def _foraward_model(n_classes, cfg: FunnyFermatCfg) -> models.Model:
         input = layers.Input(shape=(None, 1))
         net = input
+        net = layers.BatchNormalization()(net)
         for i in range(cfg.num_blocks):
             channels = cfg.block_init_channels * 2**i
+            net = layers.Conv1D(
+                channels, cfg.receptive_width, padding='same'
+            )(net)
             for _ in range(cfg.block_elem):
+                x = net
                 net = layers.Conv1D(
-                    channels,
-                    cfg.receptive_width,
-                    padding="same",
-                    dilation_rate=cfg.dilation,
-                    kernel_initializer='lecun_normal',
-                    activation='selu',
+                    channels, cfg.receptive_width, padding='same'
                 )(net)
+                net = layers.BatchNormalization()(net)
+                net = layers.Activation('relu')(net)
+                net = layers.Conv1D(
+                    channels, cfg.receptive_width, padding='same'
+                )(net)
+                net = layers.BatchNormalization()(net)
+                net = layers.Activation('relu')(net)
+                net = ConstMultiplierLayer()(net)
+                net = layers.add([x, net])
             net = layers.MaxPool1D()(net)
 
         net = layers.Conv1D(n_classes, cfg.receptive_width, padding="same")(net)
@@ -451,18 +459,27 @@ class FunnyFermat(AbstractModel):
         for i in reversed(range(cfg.num_blocks)):
             net = layers.UpSampling1D()(net)
             channels = cfg.block_init_channels * 2**i
+            net = layers.Conv1D(
+                channels, cfg.receptive_width, padding='same'
+            )(net)
             for _ in range(cfg.block_elem):
+                x = net
                 net = layers.Conv1D(
-                    channels,
-                    cfg.receptive_width,
-                    padding="same",
-                    dilation_rate=cfg.dilation,
-                    kernel_initializer='lecun_normal',
-                    activation='selu',
+                    channels, cfg.receptive_width, padding='same'
                 )(net)
+                net = layers.BatchNormalization()(net)
+                net = layers.Activation('relu')(net)
+                net = layers.Conv1D(
+                    channels, cfg.receptive_width, padding='same'
+                )(net)
+                net = layers.BatchNormalization()(net)
+                net = layers.Activation('relu')(net)
+                net = ConstMultiplierLayer()(net)
+                net = layers.add([x, net])
 
         net = layers.Conv1D(1, cfg.receptive_width, padding="same")(net)
         return models.Model(inputs=[input], outputs=[net])
+
 
 all_models: Dict[str, Callable[[str], AbstractModel]] = {
     'dummy': DummyModel,
