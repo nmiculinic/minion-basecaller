@@ -284,15 +284,15 @@ def run(cfg: TrainConfig) -> pd.DataFrame:
                     opts = {
                         'options':
                             tf.RunOptions(
-                                timeout_in_ms=10 *
-                                1000,  # Single op should complete in 10s
+                                timeout_in_ms=100 *
+                                1000,  # Single op should complete in 100s
                             )
                     }
                     if do_trace:
                         logger.debug("Adding trace options")
                         opts['options'] = tf.RunOptions(
                             trace_level=tf.RunOptions.FULL_TRACE,
-                            timeout_in_ms=20 * 1000,
+                            timeout_in_ms=200 * 1000,
                         )
                         opts['run_metadata'] = tf.RunMetadata()
 
@@ -368,7 +368,7 @@ def final_validation(
                 test_model.learning_phase: 0,
             },
             options=tf.RunOptions(
-                timeout_in_ms=20 * 1000,  # Single op should complete in 20s
+                timeout_in_ms=200 * 1000,  # Single op should complete in 200s
             ),
         )
 
