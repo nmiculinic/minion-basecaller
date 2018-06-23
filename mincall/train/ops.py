@@ -70,6 +70,11 @@ def alignment_stats(
             raise ValueError("Empty target sequence")
         if len(query) == 0:
             logger.warning(f"Empty query sequence\n" f"Target: {target}")
+            sol[dataset_pb2.MATCH].append(0.0)
+            sol[dataset_pb2.MISMATCH].append(0.0)
+            sol[dataset_pb2.DELETION].append(1.0)
+            sol[dataset_pb2.INSERTION].append(0.0)
+            identities.append(0)
             continue
         edlib_res = edlib.align(query, target, task='path')
         stats = ext_cigar_stats(edlib_res['cigar'])
