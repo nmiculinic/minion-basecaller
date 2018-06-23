@@ -23,7 +23,7 @@ class AbstractModel:
     autoencoder_model: Optional[models.Model] = None
     autoenc_coeff: float = 1.0
 
-    def __init__(self, forward_model, ratio, autoencoder_model=None, autoenc_coeff=1):
+    def __init__(self, forward_model, ratio, autoencoder_model=None, autoenc_coeff: float =1.0):
         self.ratio = ratio
         self.forward_model = forward_model
         self.autoencoder_model = autoencoder_model
@@ -309,7 +309,7 @@ class DummyModel(AbstractModel):
         cfg: DummyCfg = DummyCfg.scheme(hparams)
         super().__init__(
             forward_model=self._foraward_model(n_classes, cfg),
-            ratio= 1,
+            ratio=1,
             autoencoder_model=self._backwards(n_classes, cfg),
         )
 
@@ -399,7 +399,73 @@ class Big01(AbstractModel):
         self.ratio = 2**cfg.num_blocks
 
 
+class FunnyFermatCfg(NamedTuple):
+    num_blocks: int
+    block_elem: int
+    autoenc_coeff: float
+    block_init_channels: int = 32
+    receptive_width: int = 5
+    dilation: int = 1
+
+    @classmethod
+    def scheme(cls, data) -> 'FunnyFermatCfg':
+        return named_tuple_helper(cls, {}, data)
+
+class FunnyFermat(AbstractModel):
+    cfg_class = FunnyFermatCfg
+
+    def __init__(self, n_classes: int, hparams: Dict):
+        cfg = FunnyFermatCfg.scheme(hparams)
+        super().__init__(
+            forward_model=self._foraward_model(n_classes, cfg),
+            ratio=2**cfg.block_elem,
+            autoencoder_model=self._backwards(n_classes, cfg),
+            autoenc_coeff=cfg.autoenc_coeff,
+        )
+
+
+    @staticmethod
+    def _foraward_model(n_classes, cfg: FunnyFermatCfg) -> models.Model:
+        input = layers.Input(shape=(None, 1))
+        net = input
+        for i in range(cfg.num_blocks):
+            channels = cfg.block_init_channels * 2**i
+            for _ in range(cfg.block_elem):
+                net = layers.Conv1D(
+                    channels,
+                    cfg.receptive_width,
+                    padding="same",
+                    dilation_rate=cfg.dilation,
+                    kernel_initializer='lecun_normal',
+                    activation='selu',
+                )(net)
+            net = layers.MaxPool1D()(net)
+
+        net = layers.Conv1D(n_classes, cfg.receptive_width, padding="same")(net)
+        return models.Model(inputs=[input], outputs=[net])
+
+    @staticmethod
+    def _backwards(n_classes, cfg: FunnyFermatCfg) -> models.Model:
+        input = layers.Input(shape=(None, n_classes))
+        net = input
+        for i in reversed(range(cfg.num_blocks)):
+            net = layers.UpSampling1D()(net)
+            channels = cfg.block_init_channels * 2**i
+            for _ in range(cfg.block_elem):
+                net = layers.Conv1D(
+                    channels,
+                    cfg.receptive_width,
+                    padding="same",
+                    dilation_rate=cfg.dilation,
+                    kernel_initializer='lecun_normal',
+                    activation='selu',
+                )(net)
+
+        net = layers.Conv1D(1, cfg.receptive_width, padding="same")(net)
+        return models.Model(inputs=[input], outputs=[net])
+
 all_models: Dict[str, Callable[[str], AbstractModel]] = {
     'dummy': DummyModel,
     'big_01': Big01,
+    'funny_fermat': FunnyFermat,
 }
