@@ -10,11 +10,11 @@ class BasecallCfg(NamedTuple):
     output_fasta: str
     model: str
     logdir: str = None
-    jump: int = 100
+    jump: int = 80000
     gzip: bool = False
     recursive: bool = False
-    batch_size: int = 1100
-    seq_length: int = 1000
+    batch_size: int = 1
+    seq_length: int = 100000
     beam_width: int = 50
 
     @classmethod

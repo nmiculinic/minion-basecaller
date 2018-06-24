@@ -85,10 +85,10 @@ class BasecallMe:
                 batch.append(ch)
             batch = np.vstack(batch)
             all_logits = self.batch_to_logits(batch)
+            ratio = cfg.seq_length // len(all_logits[0])
             for single_logits, ll in zip(all_logits, lens):
-                ratio = cfg.seq_length // len(single_logits)
                 logits.append(single_logits[:ll//ratio])
-        return logits
+        return logits, ratio
 
 
     def batch_to_logits(self, batch):
@@ -103,13 +103,13 @@ class BasecallMe:
             }
         )
 
-    def basecall_logits(self, raw_signal_len: int, logits_arr: List[np.ndarray]):
+    def basecall_logits(self, raw_signal_len: int, logits_arr: List[np.ndarray], ratio):
         logits = np.zeros(
-            shape=(raw_signal_len, self.n_classes), dtype=np.float32
+            shape=(raw_signal_len // ratio, self.n_classes), dtype=np.float32
         )
 
         for i, l in zip(
-            reversed(range(0, raw_signal_len, self.cfg.jump)),
+            reversed(range(0, raw_signal_len // ratio, self.cfg.jump // ratio)),
             reversed(logits_arr),
         ):
             logits[i:i + l.shape[0], :] = l
@@ -118,21 +118,24 @@ class BasecallMe:
             self.predict[0][0].values,
             feed_dict={
                 self.logits: logits[np.newaxis, :, :],
-                self.seq_len_ph: np.array([raw_signal_len // 4])
+                self.seq_len_ph: np.array([raw_signal_len // ratio])
             }
         )
         return decode(vals)
 
     def basecall(self, fname: str):
-        # chunks, signal_len = self.chunkify_signal(fname)
-        # logits = self.chunk_logits(chunks)
-        # return self.basecall_logits(signal_len, logits)
+        chunks, signal_len = self.chunkify_signal(fname)
+        logger.debug(f"Split {fname} into {len(chunks)} overlapping chunks")
+        logits, ratio = self.chunk_logits(chunks)
+        logger.debug(f"Split {fname} ratio is {ratio}")
+        return self.basecall_logits(signal_len, logits, ratio)
 
+    def basecall_full(self, fname:str, ratio: int):
         raw_signal = read_fast5_signal(fname)
         vals = self.sess.run(
             self.predict[0][0].values,
             feed_dict={
-                self.seq_len_ph: np.array([len(raw_signal) // 4]),  # 4 is the ratio, hardcoded for now!
+                self.seq_len_ph: np.array([len(raw_signal) // ratio]),
                 self.signal_batch: raw_signal[np.newaxis, :, np.newaxis]
             }
         )
