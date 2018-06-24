@@ -12,6 +12,8 @@ from mincall.train.models import custom_layers
 from mincall.common import TOTAL_BASE_PAIRS, decode
 from ._types import *
 import scrappy
+from threading import Thread
+from queue import Queue
 
 from tqdm import tqdm
 
@@ -31,10 +33,58 @@ def read_fast5_signal(fname: str) -> np.ndarray:
         logger.debug(f"Read {fname} size: {len(raw_signal)}")
         return raw_signal
 
+class BeamSearch:
+    def __init__(self, sess: tf.Session, surrogate_base_pair, total_bases):
+        self.sess = sess
+        self.q = Queue()
+        # self.tfq = tf.FIFOQueue(
+        #     capacity=10,
+        #     dtypes=[tf.string, tf.float32],
+        # )
+        self.t = Thread(target=self._start, daemon=True)
+        self.t.start()
+
+        with tf.name_scope("logits_to_bases"):
+            self.logits_ph = tf.placeholder(tf.float32, shape=(1, None, total_bases))
+            self.seq_len_ph = tf.placeholder(tf.int32, shape=(1,))
+            self.predict = tf.nn.ctc_beam_search_decoder(
+                inputs=tf.transpose(self.logits_ph, [1, 0, 2]),
+                sequence_length=self.seq_len_ph,
+                merge_repeated=surrogate_base_pair,
+                top_paths=1,
+                beam_width=50
+            )
+
+    def _start(self):
+        while True:
+            it = self.q.get()
+            if it is None:
+                return
+
+    def beam_search(self, logits) -> Future:
+        f = Future()
+        res = self.sess.run(
+                self.predict[0][0].values,
+                feed_dict={
+                    self.logits_ph: logits[np.newaxis, :, :],
+                    self.seq_len_ph: np.array([logits.shape[0]]),
+                },
+            )
+        f.set_result(res)
+        return f
+
+    def stop(self):
+        self.q.put(None)
+        self.t.join(timeout=10)
+        if self.t.is_alive():
+            raise ValueError("Thread still alive")
+
+
 class BasecallMe:
-    def __init__(self, cfg: BasecallCfg, sess: tf.Session, model: models.Model):
+    def __init__(self, cfg: BasecallCfg, sess: tf.Session, model: models.Model, beam_search_fn):
         self.cfg = cfg
         self.sess = sess
+        self.beam_seach_fn = beam_search_fn
 
         with tf.name_scope("signal_to_logits"):
             self.signal_batch = tf.placeholder(
@@ -114,13 +164,7 @@ class BasecallMe:
         ):
             logits[i:i + l.shape[0], :] = l
 
-        vals = self.sess.run(
-            self.predict[0][0].values,
-            feed_dict={
-                self.logits: logits[np.newaxis, :, :],
-                self.seq_len_ph: np.array([raw_signal_len // ratio])
-            }
-        )
+        vals = self.beam_seach_fn(logits).result()
         return decode(vals)
 
     def basecall(self, fname: str):
@@ -164,10 +208,17 @@ def run(cfg: BasecallCfg):
         sum = "\n".join(sum)
         logger.info(f"Model summary:\n{sum}")
 
+        bs = BeamSearch(
+            sess=sess,
+            surrogate_base_pair=True,
+            total_bases=9,
+        )
+
         basecaller=BasecallMe(
             cfg=cfg,
             sess=sess,
             model=model,
+            beam_search_fn=bs.beam_search,
         )
 
         fasta_out_ctor = open
