@@ -21,6 +21,16 @@ logger = logging.getLogger("mincall.basecall")
 # Real code starts
 #######################
 
+def read_fast5_signal(fname: str) -> np.ndarray:
+    with h5py.File(fname, 'r') as input_data:
+        raw_attr = input_data['Raw/Reads/']
+        read_name = list(raw_attr.keys())[0]
+        raw_signal = np.array(raw_attr[read_name + "/Signal"].value)
+        raw_signal = scrappy.RawTable(raw_signal).trim().scale(
+        ).data(as_numpy=True)
+        logger.debug(f"Read {fname} size: {len(raw_signal)}")
+        return raw_signal
+
 class BasecallMe:
     def __init__(self, cfg: BasecallCfg, sess: tf.Session, model: models.Model):
         self.cfg = cfg
@@ -52,16 +62,11 @@ class BasecallMe:
 
     def chunkify_signal(self, fname: str):
         cfg = self.cfg
-        with h5py.File(fname, 'r') as input_data:
-            raw_attr = input_data['Raw/Reads/']
-            read_name = list(raw_attr.keys())[0]
-            raw_signal = np.array(raw_attr[read_name + "/Signal"].value)
-            raw_signal = scrappy.RawTable(raw_signal).trim().scale(
-            ).data(as_numpy=True)
-            signal_chunks = []
-            for i in range(0, len(raw_signal), cfg.jump):
-                signal_chunks.append(raw_signal[i:i + cfg.seq_length])
-            return signal_chunks, len(raw_signal)
+        raw_signal = read_fast5_signal(fname)
+        signal_chunks = []
+        for i in range(0, len(raw_signal), cfg.jump):
+            signal_chunks.append(raw_signal[i:i + cfg.seq_length])
+        return signal_chunks, len(raw_signal)
 
     def chunk_logits(self, chunks: List[np.ndarray], batch_size: int = 10) -> List[np.ndarray]:
         cfg = self.cfg
@@ -80,10 +85,10 @@ class BasecallMe:
                 batch.append(ch)
             batch = np.vstack(batch)
             all_logits = self.batch_to_logits(batch)
+            ratio = cfg.seq_length // len(all_logits[0])
             for single_logits, ll in zip(all_logits, lens):
-                ratio = cfg.seq_length // len(single_logits)
                 logits.append(single_logits[:ll//ratio])
-        return logits
+        return logits, ratio
 
 
     def batch_to_logits(self, batch):
@@ -98,13 +103,13 @@ class BasecallMe:
             }
         )
 
-    def basecall_logits(self, raw_signal_len: int, logits_arr: List[np.ndarray]):
+    def basecall_logits(self, raw_signal_len: int, logits_arr: List[np.ndarray], ratio):
         logits = np.zeros(
-            shape=(raw_signal_len, self.n_classes), dtype=np.float32
+            shape=(raw_signal_len // ratio, self.n_classes), dtype=np.float32
         )
 
         for i, l in zip(
-            reversed(range(0, raw_signal_len, self.cfg.jump)),
+            reversed(range(0, raw_signal_len // ratio, self.cfg.jump // ratio)),
             reversed(logits_arr),
         ):
             logits[i:i + l.shape[0], :] = l
@@ -112,17 +117,31 @@ class BasecallMe:
         vals = self.sess.run(
             self.predict[0][0].values,
             feed_dict={
-                self.logits: logits[np.newaxis,:, :],
-                self.seq_len_ph: np.array([raw_signal_len])
+                self.logits: logits[np.newaxis, :, :],
+                self.seq_len_ph: np.array([raw_signal_len // ratio])
             }
         )
         return decode(vals)
 
     def basecall(self, fname: str):
         chunks, signal_len = self.chunkify_signal(fname)
-        logits = self.chunk_logits(chunks)
-        return self.basecall_logits(signal_len, logits)
+        logger.debug(f"Split {fname} into {len(chunks)} overlapping chunks")
+        logits, ratio = self.chunk_logits(chunks)
+        logger.debug(f"Split {fname} ratio is {ratio}")
+        sol = self.basecall_logits(signal_len, logits, ratio)
+        logger.debug(f"Basecalled {fname} finalized")
+        return sol
 
+    def basecall_full(self, fname:str, ratio: int):
+        raw_signal = read_fast5_signal(fname)
+        vals = self.sess.run(
+            self.predict[0][0].values,
+            feed_dict={
+                self.seq_len_ph: np.array([len(raw_signal) // ratio]),
+                self.signal_batch: raw_signal[np.newaxis, :, np.newaxis]
+            }
+        )
+        return decode(vals)
 
 
 def run(cfg: BasecallCfg):
@@ -155,7 +174,7 @@ def run(cfg: BasecallCfg):
         if cfg.gzip:
             fasta_out_ctor = gzip.open
 
-        with ThreadPoolExecutor(max_workers=5) as executor, fasta_out_ctor(cfg.output_fasta, 'wb') as fasta_out:
+        with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as executor, fasta_out_ctor(cfg.output_fasta, 'wb') as fasta_out:
             for fname, fasta in zip(
                     fnames,
                     tqdm(executor.map(basecaller.basecall, fnames), total=len(fnames), desc="basecalling files")

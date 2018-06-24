@@ -1,4 +1,5 @@
 from typing import *
+from mincall.common import named_tuple_helper
 import voluptuous
 
 __all__ = ["BasecallCfg"]
@@ -6,46 +7,27 @@ __all__ = ["BasecallCfg"]
 
 class BasecallCfg(NamedTuple):
     input_dir: List[str]
-    recursive: bool
     output_fasta: str
     model: str
-    batch_size: int
-    seq_length: int
-    beam_width: int
-    logdir: str
-    jump: int
-    gzip: bool
+    logdir: str = None
+    jump: int = 80000
+    gzip: bool = False
+    recursive: bool = False
+    batch_size: int = 1
+    seq_length: int = 100000
+    beam_width: int = 50
 
     @classmethod
     def schema(cls, data):
-        return cls(
-            **voluptuous.Schema({
-                'input_dir':
-                    voluptuous.All(
-                        voluptuous.validators.Length(min=1),
-                        [
-                            voluptuous.
-                                Any(voluptuous.IsDir(), voluptuous.IsFile())
-                        ],
-                                ),
-                voluptuous.Optional('recursive', default=False):
-                    bool,
-                'output_fasta':
-                    str,
-                'model':
-                    voluptuous.validators.IsFile(),
-                voluptuous.Optional('batch_size', default=1100):
-                    int,
-                voluptuous.Optional('seq_length', default=300):
-                    int,
-                voluptuous.Optional('beam_width', default=50):
-                    int,
-                voluptuous.Optional('jump', default=30):
-                    int,
-                voluptuous.Optional('logdir', default=None):
-                    voluptuous.Any(str, None),
-                voluptuous.Optional('gzip', default=False):
-                    bool,
-            },
-                required=True)(data)
-        )
+        return named_tuple_helper(cls, {
+            'input_dir':
+                voluptuous.All(
+                    voluptuous.validators.Length(min=1),
+                    [
+                        voluptuous.
+                            Any(voluptuous.IsDir(), voluptuous.IsFile())
+                    ],
+                            ),
+            'model':
+                voluptuous.validators.IsFile(),
+        }, data)
