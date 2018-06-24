@@ -28,6 +28,7 @@ def read_fast5_signal(fname: str) -> np.ndarray:
         raw_signal = np.array(raw_attr[read_name + "/Signal"].value)
         raw_signal = scrappy.RawTable(raw_signal).trim().scale(
         ).data(as_numpy=True)
+        logger.debug(f"Read {fname} size: {len(raw_signal)}")
         return raw_signal
 
 class BasecallMe:
@@ -86,7 +87,6 @@ class BasecallMe:
             all_logits = self.batch_to_logits(batch)
             for single_logits, ll in zip(all_logits, lens):
                 ratio = cfg.seq_length // len(single_logits)
-                print("Ratio", ratio)
                 logits.append(single_logits[:ll//ratio])
         return logits
 
@@ -117,18 +117,18 @@ class BasecallMe:
         vals = self.sess.run(
             self.predict[0][0].values,
             feed_dict={
-                self.logits: logits[np.newaxis,:, :],
-                self.seq_len_ph: np.array([raw_signal_len])
+                self.logits: logits[np.newaxis, :, :],
+                self.seq_len_ph: np.array([raw_signal_len // 4])
             }
         )
         return decode(vals)
 
     def basecall(self, fname: str):
-        raw_signal = read_fast5_signal(fname)
         # chunks, signal_len = self.chunkify_signal(fname)
         # logits = self.chunk_logits(chunks)
         # return self.basecall_logits(signal_len, logits)
 
+        raw_signal = read_fast5_signal(fname)
         vals = self.sess.run(
             self.predict[0][0].values,
             feed_dict={
