@@ -213,13 +213,14 @@ def run(cfg: TrainConfig) -> pd.DataFrame:
         train_model.summary = tf.summary.merge(train_model.summaries)
         train_model.ext_summary = tf.summary.merge(train_model.ext_summaries)
 
-    optimizer = tf.train.AdamOptimizer(learning_rate)
-    grads_and_vars = optimizer.compute_gradients(train_model.total_loss)
-    train_op = optimizer.apply_gradients(
-        [(tf.clip_by_norm(grad, cfg.grad_clipping), var)
-         for grad, var in grads_and_vars],
-        global_step=global_step
-    )
+    with tf.name_scope("optimizer"):
+        optimizer = tf.train.AdamOptimizer(learning_rate)
+        grads_and_vars = optimizer.compute_gradients(train_model.total_loss)
+        train_op = optimizer.apply_gradients(
+            [(tf.clip_by_norm(grad, cfg.grad_clipping), var)
+             for grad, var in grads_and_vars],
+            global_step=global_step
+        )
 
     with tf.name_scope("test"):
         test_model = model.bind(
@@ -284,15 +285,15 @@ def run(cfg: TrainConfig) -> pd.DataFrame:
                     opts = {
                         'options':
                             tf.RunOptions(
-                                timeout_in_ms=10 *
-                                1000,  # Single op should complete in 10s
+                                timeout_in_ms=100 *
+                                1000,  # Single op should complete in 100s
                             )
                     }
                     if do_trace:
                         logger.debug("Adding trace options")
                         opts['options'] = tf.RunOptions(
                             trace_level=tf.RunOptions.FULL_TRACE,
-                            timeout_in_ms=20 * 1000,
+                            timeout_in_ms=200 * 1000,
                         )
                         opts['run_metadata'] = tf.RunMetadata()
 
@@ -368,7 +369,7 @@ def final_validation(
                 test_model.learning_phase: 0,
             },
             options=tf.RunOptions(
-                timeout_in_ms=20 * 1000,  # Single op should complete in 20s
+                timeout_in_ms=200 * 1000,  # Single op should complete in 200s
             ),
         )
 

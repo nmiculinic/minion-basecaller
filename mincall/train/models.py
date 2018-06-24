@@ -23,7 +23,7 @@ class AbstractModel:
     autoencoder_model: Optional[models.Model] = None
     autoenc_coeff: float = 1.0
 
-    def __init__(self, forward_model, ratio, autoencoder_model=None, autoenc_coeff=1):
+    def __init__(self, forward_model, ratio, autoencoder_model=None, autoenc_coeff: float =1.0):
         self.ratio = ratio
         self.forward_model = forward_model
         self.autoencoder_model = autoencoder_model
@@ -44,7 +44,9 @@ class AbstractModel:
         p = os.path.join(folder, f"full-model-{step:05}.save")
         self.forward_model.save(p, overwrite=True, include_optimizer=False)
 
-        with tf.Graph().as_default(), tf.Session() as sess, sess.as_default():
+        config = tf.ConfigProto(allow_soft_placement=True)
+        config.gpu_options.allow_growth = True
+        with tf.Graph().as_default(), tf.Session(config=config) as sess, sess.as_default():
             model = models.load_model(p, custom_objects=custom_layers, compile=False)
             with tf.name_scope("export"):
                 x = tf.placeholder(tf.float32, shape=(None, None, 1))
@@ -116,7 +118,8 @@ class BindedModel:
 
         self.labels = labels
 
-        untransposed_logits = forward_model(input_signal)
+        with K.name_scope("forward_model"):
+            untransposed_logits = forward_model(input_signal)
         self.logits = tf.transpose(untransposed_logits, [1, 0, 2]
                                   )  # [max_time, batch_size, class_num]
         self._logger.info(f"Logits shape: {self.logits.shape}")
@@ -208,7 +211,8 @@ class BindedModel:
             )
             self.total_loss.append(regularization_loss)
 
-            signal_reconstruction = autoencoder_model(untransposed_logits)
+            with K.name_scope("backward_model"):
+                signal_reconstruction = autoencoder_model(untransposed_logits)
             autoencoder_loss = autoenc_coeff * ops.autoencoder_loss(
                 signal=input_signal,
                 signal_reconstruction=signal_reconstruction,
@@ -309,7 +313,7 @@ class DummyModel(AbstractModel):
         cfg: DummyCfg = DummyCfg.scheme(hparams)
         super().__init__(
             forward_model=self._foraward_model(n_classes, cfg),
-            ratio= 1,
+            ratio=1,
             autoencoder_model=self._backwards(n_classes, cfg),
         )
 
@@ -368,7 +372,7 @@ class Big01(AbstractModel):
     def __init__(self, n_classes: int, hparams: Dict):
         cfg: Big01Cfg = Big01Cfg.scheme(hparams)
         input = layers.Input(shape=(None, 1))
-        net = input
+        net = layers.BatchNormalization()(input)
         for i in range(cfg.num_blocks):
             channels = 2**i * cfg.block_init_channels
             net = layers.Conv1D(
@@ -399,7 +403,91 @@ class Big01(AbstractModel):
         self.ratio = 2**cfg.num_blocks
 
 
+class FunnyFermatCfg(NamedTuple):
+    num_blocks: int
+    block_elem: int
+    autoenc_coeff: float
+    block_init_channels: int = 32
+    receptive_width: int = 5
+    dilation: int = 1
+
+    @classmethod
+    def scheme(cls, data) -> 'FunnyFermatCfg':
+        return named_tuple_helper(cls, {}, data)
+
+class FunnyFermat(AbstractModel):
+    cfg_class = FunnyFermatCfg
+
+    def __init__(self, n_classes: int, hparams: Dict):
+        cfg = FunnyFermatCfg.scheme(hparams)
+        super().__init__(
+            forward_model=self._foraward_model(n_classes, cfg),
+            ratio=2**cfg.block_elem,
+            autoencoder_model=self._backwards(n_classes, cfg),
+            autoenc_coeff=cfg.autoenc_coeff,
+        )
+
+    @staticmethod
+    def _foraward_model(n_classes, cfg: FunnyFermatCfg) -> models.Model:
+        input = layers.Input(shape=(None, 1))
+        net = input
+        net = layers.BatchNormalization()(net)
+        for i in range(cfg.num_blocks):
+            channels = cfg.block_init_channels * 2**i
+            net = layers.Conv1D(
+                channels, cfg.receptive_width, padding='same'
+            )(net)
+            with K.name_scope(f"block_{i}"):
+                for _ in range(cfg.block_elem):
+                    x = net
+                    net = layers.Conv1D(
+                        channels, cfg.receptive_width, padding='same'
+                    )(net)
+                    net = layers.BatchNormalization()(net)
+                    net = layers.Activation('relu')(net)
+                    net = layers.Conv1D(
+                        channels, cfg.receptive_width, padding='same'
+                    )(net)
+                    net = layers.BatchNormalization()(net)
+                    net = layers.Activation('relu')(net)
+                    net = ConstMultiplierLayer()(net)
+                    net = layers.add([x, net])
+            net = layers.MaxPool1D(padding="same", pool_size=2)(net)
+
+        net = layers.Conv1D(n_classes, cfg.receptive_width, padding="same")(net)
+        return models.Model(inputs=[input], outputs=[net])
+
+    @staticmethod
+    def _backwards(n_classes, cfg: FunnyFermatCfg) -> models.Model:
+        input = layers.Input(shape=(None, n_classes))
+        net = input
+        for i in reversed(range(cfg.num_blocks)):
+            net = layers.UpSampling1D(size=2)(net)
+            channels = cfg.block_init_channels * 2**i
+            net = layers.Conv1D(
+                channels, cfg.receptive_width, padding='same'
+            )(net)
+            with K.name_scope(f"rev_block_{i}"):
+                for _ in range(cfg.block_elem):
+                    x = net
+                    net = layers.Conv1D(
+                        channels, cfg.receptive_width, padding='same'
+                    )(net)
+                    net = layers.BatchNormalization()(net)
+                    net = layers.Activation('relu')(net)
+                    net = layers.Conv1D(
+                        channels, cfg.receptive_width, padding='same'
+                    )(net)
+                    net = layers.BatchNormalization()(net)
+                    net = layers.Activation('relu')(net)
+                    net = ConstMultiplierLayer()(net)
+                    net = layers.add([x, net])
+        net = layers.Conv1D(1, cfg.receptive_width, padding="same")(net)
+        return models.Model(inputs=[input], outputs=[net])
+
+
 all_models: Dict[str, Callable[[str], AbstractModel]] = {
     'dummy': DummyModel,
     'big_01': Big01,
+    'funny_fermat': FunnyFermat,
 }
