@@ -8,6 +8,7 @@ import tensorflow as tf
 import voluptuous
 from mincall import bioinf_utils
 import random
+import numpy as np
 
 __all__ = [
     "decode", "tensor_default_summaries", "squggle", "named_tuple_helper",
@@ -20,7 +21,7 @@ TOTAL_BASE_PAIRS = 4  # Total number of bases (A, C, T, G)  # Total number of ba
 
 def decode(x):
     return "".join([
-        dataset_pb2.BasePair.Name(int(yy) % TOTAL_BASE_PAIRS) for yy in x
+        dataset_pb2.BasePair.Name(yy) for yy in np.array(np.mod(x.ravel(), TOTAL_BASE_PAIRS), dtype=int)
     ])
 
 
