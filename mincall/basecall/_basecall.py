@@ -113,7 +113,7 @@ class BeamSearch:
 class BasecallMe:
     def __init__(
         self, cfg: BasecallCfg, sess: tf.Session, model: models.Model,
-        beam_search_fn
+        beam_search_fn: Callable[[np.ndarray], Future]
     ):
         self.cfg = cfg
         self.sess = sess
