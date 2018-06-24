@@ -116,7 +116,8 @@ class BindedModel:
 
         self.labels = labels
 
-        untransposed_logits = forward_model(input_signal)
+        with K.name_scope("forward_model"):
+            untransposed_logits = forward_model(input_signal)
         self.logits = tf.transpose(untransposed_logits, [1, 0, 2]
                                   )  # [max_time, batch_size, class_num]
         self._logger.info(f"Logits shape: {self.logits.shape}")
@@ -208,7 +209,8 @@ class BindedModel:
             )
             self.total_loss.append(regularization_loss)
 
-            signal_reconstruction = autoencoder_model(untransposed_logits)
+            with K.name_scope("backward_model"):
+                signal_reconstruction = autoencoder_model(untransposed_logits)
             autoencoder_loss = autoenc_coeff * ops.autoencoder_loss(
                 signal=input_signal,
                 signal_reconstruction=signal_reconstruction,
