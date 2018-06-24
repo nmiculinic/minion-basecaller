@@ -435,21 +435,22 @@ class FunnyFermat(AbstractModel):
             net = layers.Conv1D(
                 channels, cfg.receptive_width, padding='same'
             )(net)
-            for _ in range(cfg.block_elem):
-                x = net
-                net = layers.Conv1D(
-                    channels, cfg.receptive_width, padding='same'
-                )(net)
-                net = layers.BatchNormalization()(net)
-                net = layers.Activation('relu')(net)
-                net = layers.Conv1D(
-                    channels, cfg.receptive_width, padding='same'
-                )(net)
-                net = layers.BatchNormalization()(net)
-                net = layers.Activation('relu')(net)
-                net = ConstMultiplierLayer()(net)
-                net = layers.add([x, net])
-            net = layers.MaxPool1D()(net)
+            with K.name_scope(f"block_{i}"):
+                for _ in range(cfg.block_elem):
+                    x = net
+                    net = layers.Conv1D(
+                        channels, cfg.receptive_width, padding='same'
+                    )(net)
+                    net = layers.BatchNormalization()(net)
+                    net = layers.Activation('relu')(net)
+                    net = layers.Conv1D(
+                        channels, cfg.receptive_width, padding='same'
+                    )(net)
+                    net = layers.BatchNormalization()(net)
+                    net = layers.Activation('relu')(net)
+                    net = ConstMultiplierLayer()(net)
+                    net = layers.add([x, net])
+            net = layers.MaxPool1D(padding="same", pool_size=2)(net)
 
         net = layers.Conv1D(n_classes, cfg.receptive_width, padding="same")(net)
         return models.Model(inputs=[input], outputs=[net])
@@ -459,26 +460,26 @@ class FunnyFermat(AbstractModel):
         input = layers.Input(shape=(None, n_classes))
         net = input
         for i in reversed(range(cfg.num_blocks)):
-            net = layers.UpSampling1D()(net)
+            net = layers.UpSampling1D(size=2)(net)
             channels = cfg.block_init_channels * 2**i
             net = layers.Conv1D(
                 channels, cfg.receptive_width, padding='same'
             )(net)
-            for _ in range(cfg.block_elem):
-                x = net
-                net = layers.Conv1D(
-                    channels, cfg.receptive_width, padding='same'
-                )(net)
-                net = layers.BatchNormalization()(net)
-                net = layers.Activation('relu')(net)
-                net = layers.Conv1D(
-                    channels, cfg.receptive_width, padding='same'
-                )(net)
-                net = layers.BatchNormalization()(net)
-                net = layers.Activation('relu')(net)
-                net = ConstMultiplierLayer()(net)
-                net = layers.add([x, net])
-
+            with K.name_scope(f"rev_block_{i}"):
+                for _ in range(cfg.block_elem):
+                    x = net
+                    net = layers.Conv1D(
+                        channels, cfg.receptive_width, padding='same'
+                    )(net)
+                    net = layers.BatchNormalization()(net)
+                    net = layers.Activation('relu')(net)
+                    net = layers.Conv1D(
+                        channels, cfg.receptive_width, padding='same'
+                    )(net)
+                    net = layers.BatchNormalization()(net)
+                    net = layers.Activation('relu')(net)
+                    net = ConstMultiplierLayer()(net)
+                    net = layers.add([x, net])
         net = layers.Conv1D(1, cfg.receptive_width, padding="same")(net)
         return models.Model(inputs=[input], outputs=[net])
 

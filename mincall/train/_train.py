@@ -213,13 +213,14 @@ def run(cfg: TrainConfig) -> pd.DataFrame:
         train_model.summary = tf.summary.merge(train_model.summaries)
         train_model.ext_summary = tf.summary.merge(train_model.ext_summaries)
 
-    optimizer = tf.train.AdamOptimizer(learning_rate)
-    grads_and_vars = optimizer.compute_gradients(train_model.total_loss)
-    train_op = optimizer.apply_gradients(
-        [(tf.clip_by_norm(grad, cfg.grad_clipping), var)
-         for grad, var in grads_and_vars],
-        global_step=global_step
-    )
+    with tf.name_scope("optimizer"):
+        optimizer = tf.train.AdamOptimizer(learning_rate)
+        grads_and_vars = optimizer.compute_gradients(train_model.total_loss)
+        train_op = optimizer.apply_gradients(
+            [(tf.clip_by_norm(grad, cfg.grad_clipping), var)
+             for grad, var in grads_and_vars],
+            global_step=global_step
+        )
 
     with tf.name_scope("test"):
         test_model = model.bind(
