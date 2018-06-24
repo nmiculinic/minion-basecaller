@@ -172,7 +172,7 @@ def run(cfg: BasecallCfg):
         if cfg.gzip:
             fasta_out_ctor = gzip.open
 
-        with ThreadPoolExecutor(max_workers=5) as executor, fasta_out_ctor(cfg.output_fasta, 'wb') as fasta_out:
+        with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as executor, fasta_out_ctor(cfg.output_fasta, 'wb') as fasta_out:
             for fname, fasta in zip(
                     fnames,
                     tqdm(executor.map(basecaller.basecall, fnames), total=len(fnames), desc="basecalling files")
