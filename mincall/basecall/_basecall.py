@@ -86,6 +86,7 @@ class BasecallMe:
             all_logits = self.batch_to_logits(batch)
             for single_logits, ll in zip(all_logits, lens):
                 ratio = cfg.seq_length // len(single_logits)
+                print("Ratio", ratio)
                 logits.append(single_logits[:ll//ratio])
         return logits
 
@@ -123,10 +124,19 @@ class BasecallMe:
         return decode(vals)
 
     def basecall(self, fname: str):
-        chunks, signal_len = self.chunkify_signal(fname)
-        logits = self.chunk_logits(chunks)
-        return self.basecall_logits(signal_len, logits)
+        raw_signal = read_fast5_signal(fname)
+        # chunks, signal_len = self.chunkify_signal(fname)
+        # logits = self.chunk_logits(chunks)
+        # return self.basecall_logits(signal_len, logits)
 
+        vals = self.sess.run(
+            self.predict[0][0].values,
+            feed_dict={
+                self.seq_len_ph: np.array([len(raw_signal) // 4]),  # 4 is the ratio, hardcoded for now!
+                self.signal_batch: raw_signal[np.newaxis, :, np.newaxis]
+            }
+        )
+        return decode(vals)
 
 
 def run(cfg: BasecallCfg):
