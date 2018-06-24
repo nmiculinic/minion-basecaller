@@ -128,7 +128,9 @@ class BasecallMe:
         logger.debug(f"Split {fname} into {len(chunks)} overlapping chunks")
         logits, ratio = self.chunk_logits(chunks)
         logger.debug(f"Split {fname} ratio is {ratio}")
-        return self.basecall_logits(signal_len, logits, ratio)
+        sol = self.basecall_logits(signal_len, logits, ratio)
+        logger.debug(f"Basecalled {fname} finalized")
+        return sol
 
     def basecall_full(self, fname:str, ratio: int):
         raw_signal = read_fast5_signal(fname)
