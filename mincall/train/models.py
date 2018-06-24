@@ -44,7 +44,9 @@ class AbstractModel:
         p = os.path.join(folder, f"full-model-{step:05}.save")
         self.forward_model.save(p, overwrite=True, include_optimizer=False)
 
-        with tf.Graph().as_default(), tf.Session() as sess, sess.as_default():
+        config = tf.ConfigProto(allow_soft_placement=True)
+        config.gpu_options.allow_growth = True
+        with tf.Graph().as_default(), tf.Session(config=config) as sess, sess.as_default():
             model = models.load_model(p, custom_objects=custom_layers, compile=False)
             with tf.name_scope("export"):
                 x = tf.placeholder(tf.float32, shape=(None, None, 1))
