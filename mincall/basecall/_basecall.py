@@ -21,6 +21,15 @@ logger = logging.getLogger("mincall.basecall")
 # Real code starts
 #######################
 
+def read_fast5_signal(fname: str) -> np.ndarray:
+    with h5py.File(fname, 'r') as input_data:
+        raw_attr = input_data['Raw/Reads/']
+        read_name = list(raw_attr.keys())[0]
+        raw_signal = np.array(raw_attr[read_name + "/Signal"].value)
+        raw_signal = scrappy.RawTable(raw_signal).trim().scale(
+        ).data(as_numpy=True)
+        return raw_signal
+
 class BasecallMe:
     def __init__(self, cfg: BasecallCfg, sess: tf.Session, model: models.Model):
         self.cfg = cfg
@@ -52,16 +61,11 @@ class BasecallMe:
 
     def chunkify_signal(self, fname: str):
         cfg = self.cfg
-        with h5py.File(fname, 'r') as input_data:
-            raw_attr = input_data['Raw/Reads/']
-            read_name = list(raw_attr.keys())[0]
-            raw_signal = np.array(raw_attr[read_name + "/Signal"].value)
-            raw_signal = scrappy.RawTable(raw_signal).trim().scale(
-            ).data(as_numpy=True)
-            signal_chunks = []
-            for i in range(0, len(raw_signal), cfg.jump):
-                signal_chunks.append(raw_signal[i:i + cfg.seq_length])
-            return signal_chunks, len(raw_signal)
+        raw_signal = read_fast5_signal(fname)
+        signal_chunks = []
+        for i in range(0, len(raw_signal), cfg.jump):
+            signal_chunks.append(raw_signal[i:i + cfg.seq_length])
+        return signal_chunks, len(raw_signal)
 
     def chunk_logits(self, chunks: List[np.ndarray], batch_size: int = 10) -> List[np.ndarray]:
         cfg = self.cfg
