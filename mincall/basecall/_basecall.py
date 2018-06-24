@@ -10,7 +10,7 @@ from glob import glob
 from keras import models
 import h5py
 from mincall.train.models import custom_layers
-from mincall.common import TOTAL_BASE_PAIRS, decode
+from mincall.common import TOTAL_BASE_PAIRS, decode, timing_handler
 from ._types import *
 import scrappy
 from threading import Thread
@@ -199,7 +199,8 @@ class BasecallMe:
         ):
             logits[i:i + l.shape[0], :] = l
 
-        vals = self.beam_seach_fn(logits).result()
+        with timing_handler(logger, "beam search"):
+            vals = self.beam_seach_fn(logits).result()
         return decode(vals)
 
     def basecall(self, fname: str):
