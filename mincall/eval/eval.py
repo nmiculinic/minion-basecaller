@@ -9,6 +9,8 @@ import pysam
 import matplotlib.pyplot as plt
 import seaborn as sns
 import cytoolz as toolz
+import pandas as pd
+import numpy as np
 
 from mincall.eval.align_utils import filter_aligments_in_sam, read_len_filter, secondary_aligments_filter, only_mapped_filter, supplementary_aligments_filter
 from mincall.bioinf_utils import error_rates_for_sam
@@ -71,7 +73,7 @@ def run(cfg: EvalCfg):
     ### Analize error rates
 
     df = error_rates_for_sam(cfg.sam_path)
-    logger.info(f"Error rates:\n{df.describe(percentiles=[]).transpose()}")
+    export_dataframe(df.describe(percentiles=[]).transpose(), cfg.work_dir, "error rates")
 
     position_report = error_positions_report(cfg.sam_path)
     logger.info(f"Error position report\n{position_report.head(20)}")
@@ -80,7 +82,7 @@ def run(cfg: EvalCfg):
     fig.savefig(os.path.join(cfg.work_dir, "position_report.png"))
 
     report = get_consensus_report('mincall', cfg.sam_path, cfg.reference, cfg.is_circular, cfg.coverage_threshold)
-    logger.info(f"Consensus report:\n{report.transpose()}")
+    export_dataframe(report.transpose(), cfg.work_dir, "consensus_report")
 
 
 def plot_error_distributions(position_report) -> plt.Figure:
@@ -104,3 +106,12 @@ def plot_error_distributions(position_report) -> plt.Figure:
         ax.set_ylabel('percentage %')
         ax.set_title(label[op])
     return fig
+
+def export_dataframe(df: pd.DataFrame, workdir: str, name: str):
+    logger.info(f"{name}:\n{df}")
+    df.to_latex(os.path.join(workdir, f"{name}.tex"))
+    with open(os.path.join(workdir, f"{name}.txt"), "w") as f:
+        df.to_string(f)
+    with open(os.path.join(workdir, f"{name}.csv"), "w") as f:
+        df.to_csv(f)
+    df.to_pickle(os.path.join(workdir, f"{name}.pickle"))
