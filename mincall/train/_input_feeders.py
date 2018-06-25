@@ -318,7 +318,8 @@ def produce_datapoints(cfg: InputFeederCfg, fnames: List[str], repeat=True):
                         yield ValueError("Empty labels")
                     elif len(signal_segment) / cfg.ratio < len(buff):
                         yield ValueError(
-                            f"max possible labels {signal_segment/cfg.ratio}, have {len(buff)} labels"
+                            f"max possible labels {len(signal_segment)/cfg.ratio}, have {len(buff)} labels.\n"
+                            f"Signal len: {len(signal_segment)}, ratio: {cfg.ratio}"
                         )
                     else:
                         logging.debug(f"produce_datapoints: yielding datapoint")
