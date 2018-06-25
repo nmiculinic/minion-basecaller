@@ -11,7 +11,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import cytoolz as toolz
 import pandas as pd
-import numpy as np
 
 from mincall.eval.align_utils import filter_aligments_in_sam, read_len_filter, secondary_aligments_filter, only_mapped_filter, supplementary_aligments_filter
 from mincall.bioinf_utils import error_rates_for_sam
@@ -77,7 +76,6 @@ def run(cfg: EvalCfg):
         logger.info(f"{basename} Kept {n_kept}, discarded {n_discarded} after .sam filtering")
 
         ### Analize error rates
-
         error_rates_df = error_rates_for_sam(filtered_sam)
         export_dataframe(error_rates_df.describe(percentiles=[]).transpose(), cfg.work_dir, "error rates")
         error_rates_dfs[basename] = error_rates_df
@@ -95,6 +93,7 @@ def run(cfg: EvalCfg):
     for name, fig in plot_read_error_stats(error_rates_dfs).items():
         fig.savefig(os.path.join(cfg.work_dir, f"read_{name}.png"))
 
+    # TODO: Add group consensus
 
 def plot_error_distributions(position_report) -> plt.Figure:
     n_cols = 2
