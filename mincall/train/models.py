@@ -422,7 +422,7 @@ class FunnyFermat(AbstractModel):
         cfg = FunnyFermatCfg.scheme(hparams)
         super().__init__(
             forward_model=self._foraward_model(n_classes, cfg),
-            ratio=2**cfg.block_elem,
+            ratio=2**cfg.num_blocks,
             autoencoder_model=self._backwards(n_classes, cfg),
             autoenc_coeff=cfg.autoenc_coeff,
         )
