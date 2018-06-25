@@ -1,9 +1,10 @@
 import argparse
 import logging
-from typing import *
 import voluptuous
-from voluptuous.humanize import humanize_error
 import os
+from collections import defaultdict
+from typing import *
+from voluptuous.humanize import humanize_error
 
 import pysam
 import matplotlib.pyplot as plt
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 class EvalCfg(NamedTuple):
-    sam_path: str
+    sam_path: List[str]
     work_dir: str
     reference: str
     is_circular:bool = False
@@ -31,7 +32,7 @@ class EvalCfg(NamedTuple):
     @classmethod
     def schema(cls, data):
         return named_tuple_helper(
-            cls, {}, data
+            cls, {"sam_path": [str]}, data
         )
 
 
@@ -40,8 +41,8 @@ def run_args(args):
     for k, v in vars(args).items():
         if v is not None and "." in k:
             config = toolz.assoc_in(config, k.split("."), v)
-            print(k, v)
     try:
+        print(config)
         cfg = voluptuous.Schema({"eval": EvalCfg.schema},
                 extra=voluptuous.REMOVE_EXTRA,
               required=True)(config)
@@ -51,38 +52,48 @@ def run_args(args):
         raise
 
 def add_args(parser: argparse.ArgumentParser):
-    parser.add_argument("eval.sam_path")
+    parser.add_argument("eval.sam_path", nargs="+")
     parser.add_argument("-r", "--reference", dest="eval.reference", type=voluptuous.IsFile(), required=True)
     parser.add_argument("-w", "--work-dir", dest="eval.work_dir", type=voluptuous.IsDir())
     parser.set_defaults(func=run_args)
 
 def run(cfg: EvalCfg):
-    print(cfg)
-    filtered_path = os.path.join(cfg.work_dir, "filtered.sam")
+    error_rates_dfs = {}
+    consensus_reports = []
+    for sam_path in cfg.sam_path:
+        basename, ext = os.path.splitext(os.path.basename(sam_path))
+        filtered_sam = os.path.join(cfg.work_dir, f"{basename}_filtered.sam")
 
-    ### Filtering
-    # define list of filters (functions that take pysam.AlignedSegment and return boolean)
-    filters: List[Callable[[pysam.AlignedSegment]], bool] = [
-        #read_len_filter(max_len=400),# read_len_filter(max_len=400),
-        only_mapped_filter(), #secondary_aligments_filter(), supplementary_aligments_filter(),
-    ]
+        ### Filtering
+        # define list of filters (functions that take pysam.AlignedSegment and return boolean)
+        filters: List[Callable[[pysam.AlignedSegment]], bool] = [
+            # read_len_filter(max_len=400),
+            # read_len_filter(max_len=400),
+            # secondary_aligments_filter(),
+            # supplementary_aligments_filter(),
+            only_mapped_filter(),
+        ]
+        n_kept, n_discarded = filter_aligments_in_sam(sam_path, filtered_sam, filters)
+        logger.info(f"{basename} Kept {n_kept}, discarded {n_discarded} after .sam filtering")
 
-    n_kept, n_discarded = filter_aligments_in_sam(cfg.sam_path, filtered_path, filters)
-    logger.info(f"Kept {n_kept}, discarded {n_discarded}")
+        ### Analize error rates
 
-    ### Analize error rates
+        error_rates_df = error_rates_for_sam(filtered_sam)
+        export_dataframe(error_rates_df.describe(percentiles=[]).transpose(), cfg.work_dir, "error rates")
+        error_rates_dfs[basename] = error_rates_df
 
-    df = error_rates_for_sam(cfg.sam_path)
-    export_dataframe(df.describe(percentiles=[]).transpose(), cfg.work_dir, "error rates")
+        position_report = error_positions_report(filtered_sam)
+        logger.info(f"{basename} Error position report\n{position_report.head(20)}")
 
-    position_report = error_positions_report(cfg.sam_path)
-    logger.info(f"Error position report\n{position_report.head(20)}")
+        fig = plot_error_distributions(position_report)
+        fig.savefig(os.path.join(cfg.work_dir, f"{basename}_position_report.png"))
 
-    fig = plot_error_distributions(position_report)
-    fig.savefig(os.path.join(cfg.work_dir, "position_report.png"))
+        report = get_consensus_report(basename, filtered_sam, cfg.reference, cfg.is_circular, cfg.coverage_threshold)
+        export_dataframe(report.transpose(), cfg.work_dir, f"{basename}_consensus_report")
+        consensus_reports.append(report)
 
-    report = get_consensus_report('mincall', cfg.sam_path, cfg.reference, cfg.is_circular, cfg.coverage_threshold)
-    export_dataframe(report.transpose(), cfg.work_dir, "consensus_report")
+    for name, fig in plot_read_error_stats(error_rates_dfs).items():
+        fig.savefig(os.path.join(cfg.work_dir, f"read_{name}.png"))
 
 
 def plot_error_distributions(position_report) -> plt.Figure:
@@ -107,6 +118,7 @@ def plot_error_distributions(position_report) -> plt.Figure:
         ax.set_title(label[op])
     return fig
 
+
 def export_dataframe(df: pd.DataFrame, workdir: str, name: str):
     logger.info(f"{name}:\n{df}")
     df.to_latex(os.path.join(workdir, f"{name}.tex"))
@@ -115,3 +127,28 @@ def export_dataframe(df: pd.DataFrame, workdir: str, name: str):
     with open(os.path.join(workdir, f"{name}.csv"), "w") as f:
         df.to_csv(f)
     df.to_pickle(os.path.join(workdir, f"{name}.pickle"))
+
+
+def plot_read_error_stats(error_rates: Dict[str, pd.DataFrame]) -> Dict[str, plt.Figure]:
+    """
+
+    :param error_rates: dictionary of name -> dataframe describing the stats.
+        columns are the interesting fields, Error %, Match %, etc.
+    :return:
+    """
+    figs = defaultdict(plt.figure)
+    skip_colums = ["Query name"]
+    for name, df in error_rates.items():
+        for idx, row in df.transpose().iterrows():
+            if idx in skip_colums:
+                continue
+            fig: plt.Figure = figs[idx]
+            ax = fig.subplots(1, 1)
+            ax.set_title(idx)
+            try:
+                sns.kdeplot(data=row, ax=ax, label=name)
+            except ValueError as e:
+                logger.warning(f"{e} occured during plotting read error stats")
+                pass
+    return figs
+
