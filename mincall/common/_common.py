@@ -19,7 +19,7 @@ __all__ = [
 TOTAL_BASE_PAIRS = 4  # Total number of bases (A, C, T, G)  # Total number of bases (A, C, T, G)
 
 
-def decode(x):
+def decode(x: np.ndarray):
     return "".join([
         dataset_pb2.BasePair.Name(yy) for yy in np.array(np.mod(x.ravel(), TOTAL_BASE_PAIRS), dtype=int)
     ])

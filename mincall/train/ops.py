@@ -64,8 +64,8 @@ def alignment_stats(
     sol = defaultdict(list)
     identities = []
     for x in range(batch_size):
-        query = decode(yp[x])
-        target = decode(yt[x])
+        query = decode(np.array(yp[x], dtype=int))
+        target = decode(np.array(yt[x], dtype=int))
         if len(target) == 0:
             raise ValueError("Empty target sequence")
         if len(query) == 0:
