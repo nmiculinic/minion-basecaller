@@ -2,31 +2,61 @@ import argparse
 import logging
 from typing import *
 import voluptuous
+from voluptuous.humanize import humanize_error
 import os
 
 import pysam
 import matplotlib.pyplot as plt
 import seaborn as sns
+import cytoolz as toolz
 
 from mincall.eval.align_utils import filter_aligments_in_sam, read_len_filter, secondary_aligments_filter, only_mapped_filter, supplementary_aligments_filter
 from mincall.bioinf_utils import error_rates_for_sam
 from mincall.bioinf_utils import error_positions_report
 from .consensus import get_consensus_report
+from mincall.common import named_tuple_helper
 
 logger = logging.getLogger(__name__)
 
 
-def add_args(parser: argparse.ArgumentParser):
-    parser.add_argument("sam_file")
-    parser.add_argument("-r", "--reference", type=voluptuous.IsFile(), required=True)
-    parser.add_argument("-w", "--work-dir", default=".", type=voluptuous.IsDir())
-    parser.set_defaults(func=run_args)
+class EvalCfg(NamedTuple):
+    sam_path: str
+    work_dir: str
+    reference: str
+    is_circular:bool = False
+    coverage_threshold: int = 0
+
+    @classmethod
+    def schema(cls, data):
+        return named_tuple_helper(
+            cls, {}, data
+        )
 
 
 def run_args(args):
-    print(args)
-    sam_path = args.sam_file
-    filtered_path = os.path.join(args.work_dir, "filtered.sam")
+    config = {}
+    for k, v in vars(args).items():
+        if v is not None and "." in k:
+            config = toolz.assoc_in(config, k.split("."), v)
+            print(k, v)
+    try:
+        cfg = voluptuous.Schema({"eval": EvalCfg.schema},
+                extra=voluptuous.REMOVE_EXTRA,
+              required=True)(config)
+        run(cfg['eval'])
+    except voluptuous.error.Error as e:
+        logger.error(humanize_error(config, e))
+        raise
+
+def add_args(parser: argparse.ArgumentParser):
+    parser.add_argument("eval.sam_path")
+    parser.add_argument("-r", "--reference", dest="eval.reference", type=voluptuous.IsFile(), required=True)
+    parser.add_argument("-w", "--work-dir", dest="eval.work_dir", type=voluptuous.IsDir())
+    parser.set_defaults(func=run_args)
+
+def run(cfg: EvalCfg):
+    print(cfg)
+    filtered_path = os.path.join(cfg.work_dir, "filtered.sam")
 
     ### Filtering
     # define list of filters (functions that take pysam.AlignedSegment and return boolean)
@@ -35,19 +65,22 @@ def run_args(args):
         only_mapped_filter(), #secondary_aligments_filter(), supplementary_aligments_filter(),
     ]
 
-    n_kept, n_discarded = filter_aligments_in_sam(sam_path, filtered_path, filters)
+    n_kept, n_discarded = filter_aligments_in_sam(cfg.sam_path, filtered_path, filters)
     logger.info(f"Kept {n_kept}, discarded {n_discarded}")
 
     ### Analize error rates
 
-    df = error_rates_for_sam(sam_path)
+    df = error_rates_for_sam(cfg.sam_path)
     logger.info(f"Error rates:\n{df.describe(percentiles=[]).transpose()}")
 
-    position_report = error_positions_report(sam_path)
+    position_report = error_positions_report(cfg.sam_path)
     logger.info(f"Error position report\n{position_report.head(20)}")
 
     fig = plot_error_distributions(position_report)
-    fig.savefig(os.path.join(args.work_dir, "position_report.png"))
+    fig.savefig(os.path.join(cfg.work_dir, "position_report.png"))
+
+    report = get_consensus_report('mincall', cfg.sam_path, cfg.reference, cfg.is_circular, cfg.coverage_threshold)
+    logger.info(f"Consensus report:\n{report.transpose()}")
 
 
 def plot_error_distributions(position_report) -> plt.Figure:
