@@ -93,7 +93,8 @@ def run(cfg: EvalCfg):
     for name, fig in plot_read_error_stats(error_rates_dfs).items():
         fig.savefig(os.path.join(cfg.work_dir, f"read_{name}.png"))
 
-    # TODO: Add group consensus
+    consensus = pd.concat(consensus_reports)
+    export_dataframe(consensus.transpose(), cfg.work_dir, f"all_consensus_report")
 
 def plot_error_distributions(position_report) -> plt.Figure:
     n_cols = 2
@@ -135,15 +136,20 @@ def plot_read_error_stats(error_rates: Dict[str, pd.DataFrame]) -> Dict[str, plt
         columns are the interesting fields, Error %, Match %, etc.
     :return:
     """
-    figs = defaultdict(plt.figure)
+    figs = {}
+    axes = {}
     skip_colums = ["Query name"]
     for name, df in error_rates.items():
         for idx, row in df.transpose().iterrows():
             if idx in skip_colums:
                 continue
-            fig: plt.Figure = figs[idx]
-            ax = fig.subplots(1, 1)
-            ax.set_title(idx)
+            if idx not in axes:
+                fig, ax = plt.subplots()
+                figs[idx] = fig
+                axes[idx] = ax
+                ax.set_title(idx)
+            else:
+                ax = axes[idx]
             try:
                 sns.kdeplot(data=row, ax=ax, label=name)
             except ValueError as e:
