@@ -231,7 +231,7 @@ class DataQueue():
                                 )
                     except Exception as e:
                         self.logger.critical(
-                            f"{type(e).__name__}: {e}", exc_info=True
+                            f"Error in input feeders! {type(e).__name__}: {e}", exc_info=True
                         )
                         coord.request_stop(e)
                         raise

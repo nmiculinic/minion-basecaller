@@ -227,18 +227,7 @@ def run(cfg: TrainConfig) -> pd.DataFrame:
             cfg=input_feeder_cfg,
             data_dir=cfg.test_data,
         )
-        var_summaries = []
-        for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
-            name = var.name.split(":")[0]
-            var_summaries.extend(tensor_default_summaries(name, var))
-
-        for grad, var in grads_and_vars:
-            if grad is not None:
-                name = var.name.split(":")[0]
-                var_summaries.extend(
-                    tensor_default_summaries(name + "/grad", grad)
-                )
-
+        var_summaries = grad_and_vars_summary(grads_and_vars)
         test_model.summary = tf.summary.merge(
             test_model.ext_summaries + var_summaries
         )
@@ -248,7 +237,7 @@ def run(cfg: TrainConfig) -> pd.DataFrame:
     saver = tf.train.Saver(max_to_keep=10)
     config = tf.ConfigProto(allow_soft_placement=True)
     config.gpu_options.allow_growth = True
-    with tf.Session(config=config) as sess:
+    with tf.Session(config=config) as sess, sess.as_default():
         if cfg.debug:
             if cfg.tensorboard_debug:
                 sess = tf_debug.LocalCLIDebugWrapperSession(sess)
@@ -348,7 +337,24 @@ def run(cfg: TrainConfig) -> pd.DataFrame:
             )
         finally:
             coord.request_stop()
-            coord.join(stop_grace_period_secs=5)
+            try:
+                coord.join()
+            except:
+                logger.critical(f"Join unsuccessful, some threads are still alive!")
+
+
+def grad_and_vars_summary(grads_and_vars):
+    var_summaries = []
+    for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
+        name = var.name.split(":")[0]
+        var_summaries.extend(tensor_default_summaries(name, var))
+    for grad, var in grads_and_vars:
+        if grad is not None:
+            name = var.name.split(":")[0]
+            var_summaries.extend(
+                tensor_default_summaries(name + "/grad", grad)
+            )
+    return var_summaries
 
 
 def final_validation(
