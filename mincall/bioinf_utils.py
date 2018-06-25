@@ -301,7 +301,7 @@ def error_rates_for_sam(sam_path):
     return pd.DataFrame(all_errors, columns=ERROR_RATES_COLUMNS)
 
 
-def error_positions_report(sam_path, n_buckets=1000):
+def error_positions_report_bucketed(sam_path, n_buckets=1000):
     bucket_width = 1 / n_buckets
 
     def _update_positions(cigar_str, positions_dict):
@@ -330,6 +330,31 @@ def error_positions_report(sam_path, n_buckets=1000):
 
     df = pd.DataFrame(
         data, columns=['relative_position', 'operation', 'op_count']
+    )
+    df.sort_values(by='relative_position', inplace=True)
+    df.reset_index(inplace=True, drop=True)
+    return df
+
+def error_positions_report(sam_path):
+    data = []
+
+    def _update_positions(cigar_str):
+        cigar_len = len(cigar_str)
+        for i, c in enumerate(cigar_str.upper()):
+            relative_pos = i / cigar_len
+            data.append([relative_pos, c])
+
+    with pysam.AlignmentFile(sam_path, "r") as samfile:
+        for x in samfile.fetch():
+            cigar_pairs = x.cigartuples
+            if not cigar_pairs:
+                logging.error("%s No cigar string found", x.query_name)
+                continue
+            full_cigar = decompress_cigar_pairs(cigar_pairs, mode='ints')
+            _update_positions(full_cigar)
+
+    df = pd.DataFrame(
+        data, columns=['relative_position', 'operation']
     )
     df.sort_values(by='relative_position', inplace=True)
     df.reset_index(inplace=True, drop=True)
