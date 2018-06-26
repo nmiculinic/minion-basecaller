@@ -23,6 +23,7 @@ logger = logging.getLogger("mincall.basecall")
 # Real code starts
 #######################
 
+
 def read_fast5_signal(fname: str) -> np.ndarray:
     with h5py.File(fname, 'r') as input_data:
         raw_attr = input_data['Raw/Reads/']
@@ -32,6 +33,7 @@ def read_fast5_signal(fname: str) -> np.ndarray:
         ).data(as_numpy=True)
         logger.debug(f"Read {fname} size: {len(raw_signal)}")
         return raw_signal
+
 
 class BasecallMe:
     def __init__(self,
