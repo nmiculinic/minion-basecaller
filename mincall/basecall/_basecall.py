@@ -1,21 +1,16 @@
 import gzip
-from concurrent.futures import ThreadPoolExecutor, Future, as_completed
-import tensorflow as tf
-import numpy as np
-import os
+from concurrent.futures import ThreadPoolExecutor, Future
 from typing import *
 import logging
 from glob import glob
-from keras import models
 import h5py
 from mincall.train.models import custom_layers
-from mincall.common import TOTAL_BASE_PAIRS, decode, timing_handler
+from mincall.common import decode, timing_handler
 from ._types import *
 import scrappy
 from mincall.basecall.strategies import *
 
 from tqdm import tqdm
-from tensorflow.python.client import timeline
 
 logger = logging.getLogger("mincall.basecall")
 

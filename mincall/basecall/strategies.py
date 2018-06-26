@@ -7,7 +7,6 @@ from threading import Thread
 import os
 from mincall.common import TOTAL_BASE_PAIRS
 from keras import models
-import math
 
 
 class BeamSearchStrategy:
