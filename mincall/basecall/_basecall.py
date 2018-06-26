@@ -56,7 +56,7 @@ class BasecallMe:
 
     def chunk_logits(self, chunks: List[np.ndarray]) -> List[np.ndarray]:
         logits = [self.signal_2_logit_fn(ch) for ch in chunks]
-        return [l.result() for l in as_completed(logits)]
+        return [l.result() for l in logits]
 
     def basecall_logits(self, raw_signal_len: int, logits_arr: List[np.ndarray]):
         logits = np.zeros(
@@ -72,15 +72,19 @@ class BasecallMe:
         return decode(vals)
 
     def basecall(self, fname: str):
-        raw_signal = read_fast5_signal(fname)
-        with timing_handler(logger, f"{fname[-10:]}_signal2chunks"):
-            chunks = self.chunkify_signal(raw_signal)
-            logger.debug(f"Split {fname} into {len(chunks)} overlapping chunks")
-        with timing_handler(logger, f"{fname[-10:]}_signal2logits"):
-            logits = self.chunk_logits(chunks)
-        with timing_handler(logger, f"{fname[-10:]}_ctc_decoding"):
-            sol = self.basecall_logits(len(raw_signal), logits)
-        return sol
+        try:
+            raw_signal = read_fast5_signal(fname)
+            with timing_handler(logger, f"{fname[-10:]}_signal2chunks"):
+                chunks = self.chunkify_signal(raw_signal)
+                logger.debug(f"Split {fname} into {len(chunks)} overlapping chunks")
+            with timing_handler(logger, f"{fname[-10:]}_signal2logits"):
+                logits = self.chunk_logits(chunks)
+            with timing_handler(logger, f"{fname[-10:]}_ctc_decoding"):
+                sol = self.basecall_logits(len(raw_signal), logits)
+            return sol
+        except:
+            logger.critical(f"Cannot basecall {fname}", exc_info=True)
+            raise
 
 def run(cfg: BasecallCfg):
     fnames = []
