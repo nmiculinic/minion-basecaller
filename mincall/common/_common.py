@@ -1,4 +1,6 @@
 import edlib
+import time
+from contextlib import contextmanager
 import logging
 import re
 from minion_data import dataset_pb2
@@ -13,7 +15,7 @@ import numpy as np
 __all__ = [
     "decode", "tensor_default_summaries", "squggle", "named_tuple_helper",
     "ext_cigar_stats", "TOTAL_BASE_PAIRS", "expand_cigar", "name_generator",
-    "ExtraFieldsFilter"
+    "ExtraFieldsFilter", "timing_handler"
 ]
 
 TOTAL_BASE_PAIRS = 4  # Total number of bases (A, C, T, G)  # Total number of bases (A, C, T, G)
@@ -21,7 +23,8 @@ TOTAL_BASE_PAIRS = 4  # Total number of bases (A, C, T, G)  # Total number of ba
 
 def decode(x: np.ndarray):
     return "".join([
-        dataset_pb2.BasePair.Name(yy) for yy in np.array(np.mod(x.ravel(), TOTAL_BASE_PAIRS), dtype=int)
+        dataset_pb2.BasePair.Name(yy)
+        for yy in np.array(np.mod(x.ravel(), TOTAL_BASE_PAIRS), dtype=int)
     ])
 
 
@@ -1293,3 +1296,17 @@ class ExtraFieldsFilter(logging.Filter):
             setattr(record, 'exc_type', exc_type.__name__)
             setattr(record, 'exc_value', str(value))
         return True
+
+
+@contextmanager
+def timing_handler(
+        logger: logging._loggerClass,
+        name: str,
+        log_level=logging.DEBUG
+):
+    start_time = time.time()
+    logging.log(log_level, f"Started {name}")
+    yield start_time
+    total_time = time.time() - start_time
+    logger.log(log_level, f"Completed {name} in {total_time}s", extra={'time': total_time})
+

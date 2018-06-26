@@ -8,7 +8,6 @@ import tensorflow as tf
 from tensorflow_serving.apis import predict_pb2
 from tensorflow_serving.apis import prediction_service_pb2
 
-
 host, port = "localhost", 9000
 channel = implementations.insecure_channel(host, int(port))
 stub = prediction_service_pb2.beta_create_PredictionService_stub(channel)
