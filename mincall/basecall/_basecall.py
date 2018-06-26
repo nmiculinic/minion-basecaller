@@ -86,17 +86,7 @@ class BasecallMe:
             raise
 
 def run(cfg: BasecallCfg):
-    fnames = []
-    for x in cfg.input_dir:
-        if os.path.isfile(x):
-            if x.endswith(".fast5"):
-                fnames.append(x)
-            else:
-                raise ValueError(f"Isn't a fast5 {x}")
-        elif os.path.isdir(x):
-            fnames.extend(glob(f"{x}/*.fast5", recursive=cfg.recursive))
-
-
+    fnames = get_fast5_files(cfg)
     config = tf.ConfigProto()
     with tf.Session(config=config) as sess, sess.as_default():
         model: models.Model = models.load_model(
@@ -106,24 +96,7 @@ def run(cfg: BasecallCfg):
         model.summary(print_fn=lambda x: sum.append(x))
         sum = "\n".join(sum)
         logger.info(f"Model summary:\n{sum}")
-
-        test_size = 2**5 * 3**5 * 5**2
-        out_shapes = model.compute_output_shape([
-            [1, test_size, 1],
-        ])
-        _, out_test_size, n_classes = out_shapes
-
-        if n_classes == TOTAL_BASE_PAIRS + 1:
-            surrogate_base_pair = False
-        elif n_classes == 2 * TOTAL_BASE_PAIRS + 1:
-            surrogate_base_pair = True
-        else:
-            raise ValueError(f"Not sure what to do with {n_classes}")
-        logger.info(f"surogate base pair {surrogate_base_pair}")
-
-        ratio, rem = divmod(test_size, out_test_size)
-        assert rem == 0, "Reminder should be 0!"
-        logger.info(f"Ratio is {ratio}")
+        n_classes, ratio, surrogate_base_pair = model_props(model)
 
         s2l = Signal2LogitsSess(
             sess=sess,
@@ -157,4 +130,41 @@ def run(cfg: BasecallCfg):
                 fasta_out.write(f">{fname}\n".encode("ASCII"))
                 for i in range(0, len(fasta), 80):
                     fasta_out.write(f"{fasta[i: i+80]}\n".encode("ASCII"))
+
+
+def get_fast5_files(cfg):
+    fnames = []
+    for x in cfg.input_dir:
+        if os.path.isfile(x):
+            if x.endswith(".fast5"):
+                fnames.append(x)
+            else:
+                raise ValueError(f"Isn't a fast5 {x}")
+        elif os.path.isdir(x):
+            fnames.extend(glob(f"{x}/*.fast5", recursive=cfg.recursive))
+    return fnames
+
+
+def model_props(model):
+    """
+
+    :param model:
+    :return:  n_classes, ratio, surrogate_base_pair
+    """
+    test_size = 2 ** 5 * 3 ** 5 * 5 ** 2
+    out_shapes = model.compute_output_shape([
+        [1, test_size, 1],
+    ])
+    _, out_test_size, n_classes = out_shapes
+    if n_classes == TOTAL_BASE_PAIRS + 1:
+        surrogate_base_pair = False
+    elif n_classes == 2 * TOTAL_BASE_PAIRS + 1:
+        surrogate_base_pair = True
+    else:
+        raise ValueError(f"Not sure what to do with {n_classes}")
+    logger.info(f"surogate base pair {surrogate_base_pair}")
+    ratio, rem = divmod(test_size, out_test_size)
+    assert rem == 0, "Reminder should be 0!"
+    logger.info(f"Ratio is {ratio}")
+    return n_classes, ratio, surrogate_base_pair
 
