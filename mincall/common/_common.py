@@ -1304,7 +1304,7 @@ def timing_handler(
     log_level=logging.DEBUG
 ):
     start_time = time.time()
-    logging.log(log_level, f"Started {name}")
+    logger.log(log_level, f"Started   {name}")
     yield start_time
     total_time = time.time() - start_time
     logger.log(log_level, f"Completed {name} in {total_time}s", extra={'time': total_time})
