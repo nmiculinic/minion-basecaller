@@ -6,6 +6,8 @@ import asyncio
 from threading import Thread
 import os
 from mincall.common import TOTAL_BASE_PAIRS
+from keras import models
+import math
 
 
 class BeamSearchStrategy:
@@ -118,6 +120,26 @@ class BeamSearchQueue:
         self.t.join(timeout=10)
         if self.t.is_alive():
             raise ValueError("Thread still alive")
+
+
+class Logit2SignalSess:
+    def __init__(self, sess: tf.Session, model: models.Model):
+        self.sess = sess
+        with tf.name_scope("signal_to_logits"):
+            self.signal_batch = tf.placeholder(
+                tf.float32, shape=(None, None, 1), name="signal"
+            )
+            self.logits = model(self.signal_batch) # [batch size, max_time, channels]
+
+    def signal2logit_fn(self, signal: np.ndarray) -> concurrent.futures.Future:
+        assert len(signal.shape) == 1, f"Signal should be rank 1, shape: {signal.shape}"
+        f = concurrent.futures.Future()
+        logits = self.sess.run(self.logits, feed_dict={
+            self.signal_batch: signal[np.newaxis, :, np.newaxis],
+        })
+        logits = np.squeeze(logits, axis=0)
+        f.set_result(logits)
+        return f
 
 
 class Logit2SignalQueue:
