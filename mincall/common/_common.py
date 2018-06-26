@@ -9,6 +9,8 @@ import voluptuous
 from mincall import bioinf_utils
 import random
 import numpy as np
+from contextlib import contextmanager
+import time
 
 __all__ = [
     "decode", "tensor_default_summaries", "squggle", "named_tuple_helper",
@@ -1293,3 +1295,16 @@ class ExtraFieldsFilter(logging.Filter):
             setattr(record, 'exc_type', exc_type.__name__)
             setattr(record, 'exc_value', str(value))
         return True
+
+
+@contextmanager
+def timing_handler(
+    logger: logging._loggerClass,
+    name: str,
+    log_level=logging.DEBUG
+):
+    start_time = time.time()
+    logging.log(log_level, f"Started {name}")
+    yield start_time
+    total_time = time.time() - start_time
+    logger.log(log_level, f"Completed {name} in {total_time}s", extra={'time': total_time})

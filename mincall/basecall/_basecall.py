@@ -14,6 +14,7 @@ from ._types import *
 import scrappy
 
 from tqdm import tqdm
+from tensorflow.python.client import timeline
 
 logger = logging.getLogger("mincall.basecall")
 
@@ -136,12 +137,26 @@ class BasecallMe:
 
     def basecall_full(self, fname:str):
         raw_signal = read_fast5_signal(fname)
+        metadata = tf.RunMetadata()
         indeces, vals = self.sess.run(
             [self.predict[0][0].indices, self.predict[0][0].values],
             feed_dict={
                 self.signal_batch: raw_signal[np.newaxis, :, np.newaxis]
-            }
+            },
+            run_metadata=metadata,
+            options=tf.RunOptions(
+                trace_level=tf.RunOptions.FULL_TRACE,
+                timeout_in_ms=200 * 1000,
+            ),
         )
+
+        fetched_timeline = timeline.Timeline(metadata.step_stats)
+        chrome_trace = fetched_timeline.generate_chrome_trace_format(
+            show_memory=True
+        )
+        with open(os.path.join(os.path.dirname(self.cfg.output_fasta), f'timeline_{os.path.basename(fname)}_basecall_full.json'), 'w') as f:
+            f.write(chrome_trace)
+
         return decode(vals)
 
 
