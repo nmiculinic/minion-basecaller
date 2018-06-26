@@ -14,7 +14,7 @@ with tf.Session() as sess:
         method_name=tf.saved_model.signature_constants.PREDICT_METHOD_NAME
     )
 
-    export_path = os.path.join("/tmp", "bs", "1")
+    export_path = os.path.join(os.path.expanduser("~/Desktop/bs_tf_serving"), "1")
     builder = tf.saved_model.builder.SavedModelBuilder(export_path)
     builder.add_meta_graph_and_variables(
         sess,

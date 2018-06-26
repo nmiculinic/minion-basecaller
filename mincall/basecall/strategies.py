@@ -8,6 +8,10 @@ import os
 from mincall.common import TOTAL_BASE_PAIRS
 from keras import models
 
+import tensorflow as tf
+from tensorflow_serving.apis import predict_pb2
+from tensorflow_serving.apis import prediction_service_pb2
+from grpc.beta import implementations
 
 class BeamSearchStrategy:
     def beam_search(self, logits) -> concurrent.futures.Future:
@@ -121,6 +125,36 @@ class BeamSearchQueue:
         self.t.join(timeout=10)
         if self.t.is_alive():
             raise ValueError("Thread still alive")
+
+
+class BeamSearchTFServing(BeamSearchStrategy):
+    def __init__(self,
+                 host="localhost",
+                 port=9001,
+                 name="default",
+                 signature_name = tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY):
+        self.channel = implementations.insecure_channel(host, int(port))
+        self.stub = prediction_service_pb2.beta_create_PredictionService_stub(self.channel)
+
+        # Send request
+        request = predict_pb2.PredictRequest()
+        request.model_spec.name = name
+        request.model_spec.signature_name = signature_name
+        self.req = request
+
+    def beam_search(self, logits):
+        assert len(logits.shape) == 2, f"Logits should be rank 2, got shape {logits.shape}"
+        f = concurrent.futures.Future()
+
+        request = predict_pb2.PredictRequest()
+        request.CopyFrom(self.req)
+        request.inputs['logits'].CopyFrom(
+            tf.make_tensor_proto(logits[np.newaxis, :, :]),
+        )
+
+        result = self.stub.Predict(request, 10.0)  # 10 secs timeout
+        f.set_result(np.array(result.outputs['path'].int64_val))
+        return f
 
 
 class Signal2LogitsSess:
