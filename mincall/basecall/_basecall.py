@@ -51,7 +51,9 @@ class BasecallMe:
                 raise ValueError(f"Not sure what to do with {self.n_classes}")
 
         with tf.name_scope("logits_to_bases"):
-            self.seq_len_ph = tf.placeholder(tf.int32, shape=(1,))
+            self.seq_len_ph = tf.placeholder_with_default(
+                [tf.shape(self.logits)[1]], shape=(1,)
+            )  # TODO: Write this sanely
             self.predict = tf.nn.ctc_beam_search_decoder(
                 inputs=tf.transpose(self.logits, [1, 0, 2]),
                 sequence_length=self.seq_len_ph,
@@ -132,12 +134,11 @@ class BasecallMe:
         logger.debug(f"Basecalled {fname} finalized")
         return sol
 
-    def basecall_full(self, fname:str, ratio: int):
+    def basecall_full(self, fname:str):
         raw_signal = read_fast5_signal(fname)
-        vals = self.sess.run(
-            self.predict[0][0].values,
+        indeces, vals = self.sess.run(
+            [self.predict[0][0].indices, self.predict[0][0].values],
             feed_dict={
-                self.seq_len_ph: np.array([len(raw_signal) // ratio]),
                 self.signal_batch: raw_signal[np.newaxis, :, np.newaxis]
             }
         )
@@ -177,7 +178,7 @@ def run(cfg: BasecallCfg):
         with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as executor, fasta_out_ctor(cfg.output_fasta, 'wb') as fasta_out:
             for fname, fasta in zip(
                     fnames,
-                    tqdm(executor.map(basecaller.basecall, fnames), total=len(fnames), desc="basecalling files")
+                    tqdm(executor.map(basecaller.basecall_full, fnames), total=len(fnames), desc="basecalling files")
             ):
                 fasta_out.write(f">{fname}\n".encode("ASCII"))
                 for i in range(0, len(fasta), 80):
