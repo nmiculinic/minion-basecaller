@@ -76,7 +76,7 @@ class BasecallMe:
     def basecall(self, fname: str):
         try:
             raw_signal = read_fast5_signal(fname)
-            log_fname = os.path.splitext(fname)[0][-20:]
+            log_fname = f"{os.path.splitext(fname)[0][-20:]}[{len(raw_signal)}]"
             chunks = self.chunkify_signal(raw_signal)
             logger.debug(f"Split {fname} into {len(chunks)} overlapping chunks")
             with timing_handler(logger, f"{log_fname}_signal2logits"):
