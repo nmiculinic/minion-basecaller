@@ -4,6 +4,7 @@ import voluptuous
 
 __all__ = ["BasecallCfg"]
 
+default_seq_len = 10_000_000
 
 class BasecallCfg(NamedTuple):
     input_dir: List[str]
@@ -13,8 +14,8 @@ class BasecallCfg(NamedTuple):
     gzip: bool = False
     recursive: bool = False
     batch_size: int = 1
-    seq_length: int = 100000
-    jump: int = 100000 - 3000
+    seq_length: int = default_seq_len
+    jump: int = default_seq_len - 3000
     beam_width: int = 50
 
     @classmethod
