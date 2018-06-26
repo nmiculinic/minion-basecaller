@@ -33,12 +33,13 @@ class BeamSearchSess(BeamSearchStrategy):
                 top_paths=1,
                 beam_width=50
             )
+            self.predict_values = self.predict[0][0].values
 
     def beam_search(self, logits: np.ndarray, loop=None):
         assert len(logits.shape) == 2, f"Logits should be rank 2, got shape {logits.shape}"
         f = concurrent.futures.Future()
         f.set_result(self.sess.run(
-            self.predict[0][0].values,
+            self.predict_values,
             feed_dict={
                 self.logits_ph: logits[np.newaxis, :, :],
             }
