@@ -9,11 +9,12 @@ from glob import glob
 from keras import models
 import h5py
 from mincall.train.models import custom_layers
-from mincall.common import TOTAL_BASE_PAIRS, decode
+from mincall.common import TOTAL_BASE_PAIRS, decode, timing_handler
 from ._types import *
 import scrappy
 
 from tqdm import tqdm
+from tensorflow.python.client import timeline
 
 logger = logging.getLogger("mincall.basecall")
 
@@ -51,7 +52,9 @@ class BasecallMe:
                 raise ValueError(f"Not sure what to do with {self.n_classes}")
 
         with tf.name_scope("logits_to_bases"):
-            self.seq_len_ph = tf.placeholder(tf.int32, shape=(1,))
+            self.seq_len_ph = tf.placeholder_with_default(
+                [tf.shape(self.logits)[1]], shape=(1,)
+            )  # TODO: Write this sanely
             self.predict = tf.nn.ctc_beam_search_decoder(
                 inputs=tf.transpose(self.logits, [1, 0, 2]),
                 sequence_length=self.seq_len_ph,
@@ -124,22 +127,22 @@ class BasecallMe:
         return decode(vals)
 
     def basecall(self, fname: str):
-        chunks, signal_len = self.chunkify_signal(fname)
-        logger.debug(f"Split {fname} into {len(chunks)} overlapping chunks")
-        logits, ratio = self.chunk_logits(chunks)
-        logger.debug(f"Split {fname} ratio is {ratio}")
-        sol = self.basecall_logits(signal_len, logits, ratio)
-        logger.debug(f"Basecalled {fname} finalized")
+        with timing_handler(logger, f"{fname[-10:]}_signal2chunks"):
+            chunks, signal_len = self.chunkify_signal(fname)
+            logger.debug(f"Split {fname} into {len(chunks)} overlapping chunks")
+        with timing_handler(logger, f"{fname[-10:]}_signal2logits"):
+            logits, ratio = self.chunk_logits(chunks)
+        with timing_handler(logger, f"{fname[-10:]}_ctc_decoding"):
+            sol = self.basecall_logits(signal_len, logits, ratio)
         return sol
 
-    def basecall_full(self, fname:str, ratio: int):
+    def basecall_full(self, fname:str):
         raw_signal = read_fast5_signal(fname)
-        vals = self.sess.run(
-            self.predict[0][0].values,
+        indeces, vals = self.sess.run(
+            [self.predict[0][0].indices, self.predict[0][0].values],
             feed_dict={
-                self.seq_len_ph: np.array([len(raw_signal) // ratio]),
                 self.signal_batch: raw_signal[np.newaxis, :, np.newaxis]
-            }
+            },
         )
         return decode(vals)
 
@@ -155,7 +158,9 @@ def run(cfg: BasecallCfg):
         elif os.path.isdir(x):
             fnames.extend(glob(f"{x}/*.fast5", recursive=cfg.recursive))
 
-    with tf.Session() as sess, sess.as_default():
+
+    config = tf.ConfigProto()
+    with tf.Session(config=config) as sess, sess.as_default():
         model: models.Model = models.load_model(
             cfg.model, custom_objects=custom_layers
         )
@@ -174,7 +179,11 @@ def run(cfg: BasecallCfg):
         if cfg.gzip:
             fasta_out_ctor = gzip.open
 
-        with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as executor, fasta_out_ctor(cfg.output_fasta, 'wb') as fasta_out:
+        num_workers = os.cpu_count() or 10
+        logger.info(f"Starting execution with {num_workers} workers")
+        with timing_handler(logger, "Basecalling all"), \
+                ThreadPoolExecutor(max_workers=num_workers) as executor, \
+                fasta_out_ctor(cfg.output_fasta, 'wb') as fasta_out:
             for fname, fasta in zip(
                     fnames,
                     tqdm(executor.map(basecaller.basecall, fnames), total=len(fnames), desc="basecalling files")
