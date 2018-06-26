@@ -126,13 +126,10 @@ def run(cfg: BasecallCfg):
             sess=sess,
             model=model,
         )
-
         bs = BeamSearchSess(
             sess=sess,
             surrogate_base_pair=surrogate_base_pair,
         )
-
-
         basecaller=BasecallMe(
             cfg=cfg,
             beam_search_fn=bs.beam_search,
