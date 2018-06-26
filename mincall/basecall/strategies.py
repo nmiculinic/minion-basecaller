@@ -5,8 +5,46 @@ import concurrent.futures
 import asyncio
 from threading import Thread
 import os
+from mincall.common import TOTAL_BASE_PAIRS
 
-class BeamSearch:
+
+class BeamSearchStrategy:
+    def beam_search(self, logits) -> concurrent.futures.Future:
+        raise NotImplemented
+
+class BeamSearchSess(BeamSearchStrategy):
+    def __init__(self, sess: tf.Session, surrogate_base_pair):
+        self.sess = sess
+
+        if surrogate_base_pair:
+            self.logits_ph = tf.placeholder(tf.float32, shape=(1, None, 2 * TOTAL_BASE_PAIRS + 1))
+        else:
+            self.logits_ph = tf.placeholder(tf.float32, shape=(1, None, TOTAL_BASE_PAIRS + 1))
+        self.seq_len_ph = tf.placeholder_with_default(
+            [tf.shape(self.logits_ph)[1]], shape=(1,)
+        )  # TODO: Write this sanely
+
+        with tf.name_scope("logits_to_bases"):
+            self.predict = tf.nn.ctc_beam_search_decoder(
+                inputs=tf.transpose(self.logits_ph, [1, 0, 2]),
+                sequence_length=self.seq_len_ph,
+                merge_repeated=surrogate_base_pair,
+                top_paths=1,
+                beam_width=50
+            )
+
+    def beam_search(self, logits: np.ndarray, loop=None):
+        f = concurrent.futures.Future()
+        f.set_result(self.sess.run(
+            self.predict[0][0].values,
+            feed_dict={
+                self.logits_ph: logits[np.newaxis, :, :],
+            }
+        ))
+        return f
+
+
+class BeamSearchQueue:
     def __init__(self, sess: tf.Session, coord: tf.train.Coordinator, surrogate_base_pair):
         self.sess = sess
         self.coord = coord
@@ -82,7 +120,7 @@ class BeamSearch:
             raise ValueError("Thread still alive")
 
 
-class Logit2Signal:
+class Logit2SignalQueue:
     def __init__(self, sess: tf.Session, coord: tf.train.Coordinator, model, max_batch_size: int = 10):
         self.sess = sess
         self.coord = coord
@@ -116,7 +154,7 @@ class Logit2Signal:
         self.out_dequeue = self.tf_outq.dequeue()
         self.t = Thread(target=self._start, daemon=True)
         self.t.start()
-        
+
     def _start(self):
         try:
             while True:

@@ -12,6 +12,7 @@ from mincall.train.models import custom_layers
 from mincall.common import TOTAL_BASE_PAIRS, decode, timing_handler
 from ._types import *
 import scrappy
+from mincall.basecall.strategies import *
 
 from tqdm import tqdm
 from tensorflow.python.client import timeline
@@ -33,9 +34,10 @@ def read_fast5_signal(fname: str) -> np.ndarray:
         return raw_signal
 
 class BasecallMe:
-    def __init__(self, cfg: BasecallCfg, sess: tf.Session, model: models.Model):
+    def __init__(self, cfg: BasecallCfg, sess: tf.Session, model: models.Model, beam_search_fn: Callable[[np.ndarray], Future]):
         self.cfg = cfg
         self.sess = sess
+        self.beam_search = beam_search_fn
 
         with tf.name_scope("signal_to_logits"):
             self.signal_batch = tf.placeholder(
@@ -51,17 +53,6 @@ class BasecallMe:
             else:
                 raise ValueError(f"Not sure what to do with {self.n_classes}")
 
-        with tf.name_scope("logits_to_bases"):
-            self.seq_len_ph = tf.placeholder_with_default(
-                [tf.shape(self.logits)[1]], shape=(1,)
-            )  # TODO: Write this sanely
-            self.predict = tf.nn.ctc_beam_search_decoder(
-                inputs=tf.transpose(self.logits, [1, 0, 2]),
-                sequence_length=self.seq_len_ph,
-                merge_repeated=self.surrogate_base_pair,
-                top_paths=1,
-                beam_width=50
-            )
 
     def chunkify_signal(self, fname: str):
         cfg = self.cfg
@@ -116,14 +107,7 @@ class BasecallMe:
             reversed(logits_arr),
         ):
             logits[i:i + l.shape[0], :] = l
-
-        vals = self.sess.run(
-            self.predict[0][0].values,
-            feed_dict={
-                self.logits: logits[np.newaxis, :, :],
-                self.seq_len_ph: np.array([raw_signal_len // ratio])
-            }
-        )
+        vals = self.beam_search(logits).result()
         return decode(vals)
 
     def basecall(self, fname: str):
@@ -169,10 +153,15 @@ def run(cfg: BasecallCfg):
         sum = "\n".join(sum)
         logger.info(f"Model summary:\n{sum}")
 
+        bs = BeamSearchSess(
+            sess=sess,
+            surrogate_base_pair=True,
+        )
         basecaller=BasecallMe(
             cfg=cfg,
             sess=sess,
             model=model,
+            beam_search_fn=bs.beam_search,
         )
 
         fasta_out_ctor = open
