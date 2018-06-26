@@ -60,7 +60,7 @@ class BasecallMe:
 
     def basecall_logits(self, raw_signal_len: int, logits_arr: List[np.ndarray]):
         logits = np.zeros(
-            shape=((raw_signal_len + self.ratio - 1)// self.ratio, self.n_classes), dtype=np.float32
+            shape=((raw_signal_len + self.ratio - 1) // self.ratio, self.n_classes), dtype=np.float32
         )
 
         for i, l in zip(
@@ -81,17 +81,6 @@ class BasecallMe:
         with timing_handler(logger, f"{fname[-10:]}_ctc_decoding"):
             sol = self.basecall_logits(len(raw_signal), logits)
         return sol
-
-    def basecall_full(self, fname:str):
-        raw_signal = read_fast5_signal(fname)
-        indeces, vals = self.sess.run(
-            [self.predict[0][0].indices, self.predict[0][0].values],
-            feed_dict={
-                self.signal_batch: raw_signal[np.newaxis, :, np.newaxis]
-            },
-        )
-        return decode(vals)
-
 
 def run(cfg: BasecallCfg):
     fnames = []
@@ -133,7 +122,7 @@ def run(cfg: BasecallCfg):
         assert rem == 0, "Reminder should be 0!"
         logger.info(f"Ratio is {ratio}")
 
-        s2l = Logit2SignalSess(
+        s2l = Signal2LogitsSess(
             sess=sess,
             model=model,
         )

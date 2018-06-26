@@ -122,7 +122,7 @@ class BeamSearchQueue:
             raise ValueError("Thread still alive")
 
 
-class Logit2SignalSess:
+class Signal2LogitsSess:
     def __init__(self, sess: tf.Session, model: models.Model):
         self.sess = sess
         with tf.name_scope("signal_to_logits"):
