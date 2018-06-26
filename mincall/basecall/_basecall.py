@@ -127,37 +127,23 @@ class BasecallMe:
         return decode(vals)
 
     def basecall(self, fname: str):
-        with timing_handler(logger, f"{fname}_signal2chunks"):
+        with timing_handler(logger, f"{fname[-10:]}_signal2chunks"):
             chunks, signal_len = self.chunkify_signal(fname)
             logger.debug(f"Split {fname} into {len(chunks)} overlapping chunks")
-        with timing_handler(logger, f"{fname}_signal2logits"):
+        with timing_handler(logger, f"{fname[-10:]}_signal2logits"):
             logits, ratio = self.chunk_logits(chunks)
-        with timing_handler(logger, f"{fname}_ctc_decoding"):
+        with timing_handler(logger, f"{fname[-10:]}_ctc_decoding"):
             sol = self.basecall_logits(signal_len, logits, ratio)
         return sol
 
     def basecall_full(self, fname:str):
         raw_signal = read_fast5_signal(fname)
-        metadata = tf.RunMetadata()
         indeces, vals = self.sess.run(
             [self.predict[0][0].indices, self.predict[0][0].values],
             feed_dict={
                 self.signal_batch: raw_signal[np.newaxis, :, np.newaxis]
             },
-            # run_metadata=metadata,
-            # options=tf.RunOptions(
-            #     trace_level=tf.RunOptions.FULL_TRACE,
-            #     timeout_in_ms=200 * 1000,
-            # ),
         )
-
-        # fetched_timeline = timeline.Timeline(metadata.step_stats)
-        # chrome_trace = fetched_timeline.generate_chrome_trace_format(
-        #     show_memory=True
-        # )
-        # with open(os.path.join(os.path.dirname(self.cfg.output_fasta), f'timeline_{os.path.basename(fname)}_basecall_full.json'), 'w') as f:
-        #     f.write(chrome_trace)
-
         return decode(vals)
 
 
@@ -174,8 +160,6 @@ def run(cfg: BasecallCfg):
 
 
     config = tf.ConfigProto()
-    config.intra_op_parallelism_threads = 32
-    config.inter_op_parallelism_threads = 32
     with tf.Session(config=config) as sess, sess.as_default():
         model: models.Model = models.load_model(
             cfg.model, custom_objects=custom_layers

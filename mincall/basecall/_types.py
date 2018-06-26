@@ -13,8 +13,8 @@ class BasecallCfg(NamedTuple):
     gzip: bool = False
     recursive: bool = False
     batch_size: int = 1
-    seq_length: int = 1000000
-    jump: int = 1000000 - 3000
+    seq_length: int = 100000
+    jump: int = 100000 - 3000
     beam_width: int = 50
 
     @classmethod
