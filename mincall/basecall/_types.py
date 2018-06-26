@@ -1,6 +1,7 @@
 from typing import *
 from mincall.common import named_tuple_helper
 import voluptuous
+import os
 
 __all__ = ["BasecallCfg"]
 
@@ -13,6 +14,7 @@ class BasecallCfg(NamedTuple):
     logdir: str = None
     gzip: bool = False
     recursive: bool = False
+    threads: int = os.cpu_count() or 4
     batch_size: int = 1
     seq_length: int = default_seq_len
     jump: int = default_seq_len - 3000

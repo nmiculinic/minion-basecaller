@@ -23,6 +23,9 @@ def add_args(parser: argparse.ArgumentParser):
         "--batch_size", "-b", dest='basecall.batch_size', type=int
     )
     parser.add_argument(
+        "--num-threads", "-t", dest='basecall.threads', type=int
+    )
+    parser.add_argument(
         "--seq_length",
         "-l",
         dest='basecall.seq_length',

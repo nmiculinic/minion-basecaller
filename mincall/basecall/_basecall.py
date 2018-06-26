@@ -121,10 +121,9 @@ def run(cfg: BasecallCfg):
         if cfg.gzip:
             fasta_out_ctor = gzip.open
 
-        num_workers = os.cpu_count() or 10
-        logger.info(f"Starting execution with {num_workers} workers")
+        logger.info(f"Starting execution with {cfg.threads} workers")
         with timing_handler(logger, "Basecalling all"), \
-                ThreadPoolExecutor(max_workers=num_workers) as executor, \
+                ThreadPoolExecutor(max_workers=cfg.threads) as executor, \
                 fasta_out_ctor(cfg.output_fasta, 'wb') as fasta_out:
             for fname, fasta in zip(
                     fnames,
