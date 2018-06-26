@@ -9,7 +9,7 @@ from glob import glob
 from keras import models
 import h5py
 from mincall.train.models import custom_layers
-from mincall.common import TOTAL_BASE_PAIRS, decode
+from mincall.common import TOTAL_BASE_PAIRS, decode, timing_handler
 from ._types import *
 import scrappy
 
@@ -127,12 +127,13 @@ class BasecallMe:
         return decode(vals)
 
     def basecall(self, fname: str):
-        chunks, signal_len = self.chunkify_signal(fname)
-        logger.debug(f"Split {fname} into {len(chunks)} overlapping chunks")
-        logits, ratio = self.chunk_logits(chunks)
-        logger.debug(f"Split {fname} ratio is {ratio}")
-        sol = self.basecall_logits(signal_len, logits, ratio)
-        logger.debug(f"Basecalled {fname} finalized")
+        with timing_handler(logger, f"{fname}_signal2chunks"):
+            chunks, signal_len = self.chunkify_signal(fname)
+            logger.debug(f"Split {fname} into {len(chunks)} overlapping chunks")
+        with timing_handler(logger, f"{fname}_signal2logits"):
+            logits, ratio = self.chunk_logits(chunks)
+        with timing_handler(logger, f"{fname}_ctc_decoding"):
+            sol = self.basecall_logits(signal_len, logits, ratio)
         return sol
 
     def basecall_full(self, fname:str):
@@ -143,19 +144,19 @@ class BasecallMe:
             feed_dict={
                 self.signal_batch: raw_signal[np.newaxis, :, np.newaxis]
             },
-            run_metadata=metadata,
-            options=tf.RunOptions(
-                trace_level=tf.RunOptions.FULL_TRACE,
-                timeout_in_ms=200 * 1000,
-            ),
+            # run_metadata=metadata,
+            # options=tf.RunOptions(
+            #     trace_level=tf.RunOptions.FULL_TRACE,
+            #     timeout_in_ms=200 * 1000,
+            # ),
         )
 
-        fetched_timeline = timeline.Timeline(metadata.step_stats)
-        chrome_trace = fetched_timeline.generate_chrome_trace_format(
-            show_memory=True
-        )
-        with open(os.path.join(os.path.dirname(self.cfg.output_fasta), f'timeline_{os.path.basename(fname)}_basecall_full.json'), 'w') as f:
-            f.write(chrome_trace)
+        # fetched_timeline = timeline.Timeline(metadata.step_stats)
+        # chrome_trace = fetched_timeline.generate_chrome_trace_format(
+        #     show_memory=True
+        # )
+        # with open(os.path.join(os.path.dirname(self.cfg.output_fasta), f'timeline_{os.path.basename(fname)}_basecall_full.json'), 'w') as f:
+        #     f.write(chrome_trace)
 
         return decode(vals)
 
@@ -171,7 +172,11 @@ def run(cfg: BasecallCfg):
         elif os.path.isdir(x):
             fnames.extend(glob(f"{x}/*.fast5", recursive=cfg.recursive))
 
-    with tf.Session() as sess, sess.as_default():
+
+    config = tf.ConfigProto()
+    config.intra_op_parallelism_threads = 32
+    config.inter_op_parallelism_threads = 32
+    with tf.Session(config=config) as sess, sess.as_default():
         model: models.Model = models.load_model(
             cfg.model, custom_objects=custom_layers
         )
@@ -190,10 +195,14 @@ def run(cfg: BasecallCfg):
         if cfg.gzip:
             fasta_out_ctor = gzip.open
 
-        with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as executor, fasta_out_ctor(cfg.output_fasta, 'wb') as fasta_out:
+        num_workers = os.cpu_count() or 10
+        logger.info(f"Starting execution with {num_workers} workers")
+        with timing_handler(logger, "Basecalling all"), \
+                ThreadPoolExecutor(max_workers=num_workers) as executor, \
+                fasta_out_ctor(cfg.output_fasta, 'wb') as fasta_out:
             for fname, fasta in zip(
                     fnames,
-                    tqdm(executor.map(basecaller.basecall_full, fnames), total=len(fnames), desc="basecalling files")
+                    tqdm(executor.map(basecaller.basecall, fnames), total=len(fnames), desc="basecalling files")
             ):
                 fasta_out.write(f">{fname}\n".encode("ASCII"))
                 for i in range(0, len(fasta), 80):
