@@ -3,7 +3,7 @@ from mincall.basecall.strategies import BeamSearchSess
 import os
 
 with tf.Session() as sess:
-    bs = BeamSearchSess(sess=sess, surrogate_base_pair=True)
+    bs = BeamSearchSess(sess=sess, surrogate_base_pair=True, beam_width=50)
 
     model_input = tf.saved_model.utils.build_tensor_info(bs.logits_ph)
     model_output = tf.saved_model.utils.build_tensor_info(bs.predict_values)

@@ -8,7 +8,6 @@ import os
 from mincall.common import TOTAL_BASE_PAIRS
 from keras import models
 
-import tensorflow as tf
 from mincall.external.tensorflow_serving.apis import predict_pb2
 from mincall.external.tensorflow_serving.apis import prediction_service_pb2
 from grpc.beta import implementations
@@ -18,7 +17,7 @@ class BeamSearchStrategy:
         raise NotImplemented
 
 class BeamSearchSess(BeamSearchStrategy):
-    def __init__(self, sess: tf.Session, surrogate_base_pair):
+    def __init__(self, sess: tf.Session, surrogate_base_pair, beam_width):
         self.sess = sess
 
         if surrogate_base_pair:
@@ -30,13 +29,22 @@ class BeamSearchSess(BeamSearchStrategy):
         )  # TODO: Write this sanely
 
         with tf.name_scope("logits_to_bases"):
-            self.predict = tf.nn.ctc_beam_search_decoder(
-                inputs=tf.transpose(self.logits_ph, [1, 0, 2]),
-                sequence_length=self.seq_len_ph,
-                merge_repeated=surrogate_base_pair,
-                top_paths=1,
-                beam_width=50
-            )
+            if beam_width > 0:
+                self.predict = tf.nn.ctc_beam_search_decoder(
+                        inputs=tf.transpose(self.logits_ph, [1, 0, 2]),
+                        sequence_length=self.seq_len_ph,
+                        merge_repeated=surrogate_base_pair,
+                        top_paths=1,
+                        beam_width=beam_width,
+                )
+            elif beam_width == 0:
+                self.predict = tf.nn.ctc_greedy_decoder(
+                    inputs=tf.transpose(self.logits_ph, [1, 0, 2]),
+                    sequence_length=self.seq_len_ph,
+                    merge_repeated=surrogate_base_pair,
+                )
+            else:
+                raise ValueError(f"Beam width cannot be <0, got {beam_width}")
             self.predict_values = self.predict[0][0].values
 
     def beam_search(self, logits: np.ndarray, loop=None):

@@ -103,12 +103,13 @@ def run(cfg: BasecallCfg):
         bs = BeamSearchSess(
             sess=sess,
             surrogate_base_pair=surrogate_base_pair,
+            beam_width=cfg.beam_width,
         )
-        bbs = BeamSearchTFServing(port=9001)
+        # bbs = BeamSearchTFServing(port=9001)
         basecaller=BasecallMe(
             cfg=cfg,
             # beam_search_fn=bs.beam_search,
-            beam_search_fn=bbs.beam_search,
+            beam_search_fn=bs.beam_search,
             signal_2_logit_fn=s2l.signal2logit_fn,
             ratio=ratio,
             n_classes=n_classes,
