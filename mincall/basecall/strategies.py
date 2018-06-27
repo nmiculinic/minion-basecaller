@@ -186,7 +186,9 @@ class Signal2LogitsSess:
         return f
 
 
-class Logit2SignalQueue:
+class Signal2LogitQueue:
+    """Never Been tested, use at your own risk!
+    """
     def __init__(self, sess: tf.Session, coord: tf.train.Coordinator, model, max_batch_size: int = 10):
         self.sess = sess
         self.coord = coord
