@@ -103,6 +103,7 @@ def run(cfg: BasecallCfg):
         bs = BeamSearchSess(
             sess=sess,
             surrogate_base_pair=surrogate_base_pair,
+            beam_width=cfg.beam_width,
         )
         basecaller=BasecallMe(
             cfg=cfg,
