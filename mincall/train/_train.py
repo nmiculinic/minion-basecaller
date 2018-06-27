@@ -169,11 +169,14 @@ def run_args(args) -> pd.DataFrame:
 
 def run(cfg: TrainConfig) -> pd.DataFrame:
     try:
+        # https://github.com/baidu-research/warp-ctc/tree/master/tensorflow_binding
         import warpctc_tensorflow
         logger.info("Using warpctc_tensorflow GPU kernel")
-        # https://github.com/baidu-research/warp-ctc/tree/master/tensorflow_binding
+
+        # https://github.com/baidu-research/warp-ctc#known-issues---limitations
+        max_label_size = 630
     except ImportError:
-        pass
+        max_label_size = 1_000_000_000  #  Unrealistically large number
         logger.info("Cannot use warpctc_tensorflow GPU kernel")
     os.makedirs(cfg.logdir, exist_ok=True)
     num_bases = TOTAL_BASE_PAIRS
@@ -197,6 +200,7 @@ def run(cfg: TrainConfig) -> pd.DataFrame:
         ratio=model.ratio,
         surrogate_base_pair=cfg.surrogate_base_pair,
         num_bases=TOTAL_BASE_PAIRS,
+        max_label_size=max_label_size,
     )
 
     global_step = tf.train.get_or_create_global_step()
