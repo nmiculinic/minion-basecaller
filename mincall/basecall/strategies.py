@@ -153,7 +153,7 @@ class BeamSearchTFServing(BeamSearchStrategy):
             tf.make_tensor_proto(logits[np.newaxis, :, :]),
         )
 
-        result = self.stub.Predict(request, 10.0)  # 10 secs timeout
+        result = self.stub.Predict(request, 120.0)  # 120 secs timeout
         f.set_result(np.array(result.outputs['path'].int64_val))
         return f
 
