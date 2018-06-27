@@ -4,37 +4,13 @@ import itertools
 import logging
 from typing import *
 import voluptuous
-from itertools import count
 import os
 import random
 import gzip
 import numpy as np
-from multiprocessing import Queue, Manager, Process
-import queue
 from threading import Thread
 import scrappy
-import sys
-
-
-class InputFeederCfg(NamedTuple):
-    batch_size: int
-    seq_length: int
-    ratio: int
-    surrogate_base_pair: bool
-    num_bases: int
-    min_signal_size: int = 10000
-
-    @classmethod
-    def schema(cls, data):
-        return cls(
-            **voluptuous.Schema({
-                voluptuous.Optional('batch_size', 10): int,
-                'seq_length': int,
-                'surrogate_base_pair': bool,
-                voluptuous.Optional("min_signal_size"): int,
-                voluptuous.Optional("num_bases"): int,
-            })(data)
-        )
+from ._types import *
 
 
 class DataQueue():
@@ -188,7 +164,8 @@ class DataQueue():
         if self.cfg.surrogate_base_pair:
             for i in range(1, len(label)):
                 if label[i - 1] == label[i]:
-                    assert label[i] < self.cfg.num_bases, "invalid base pair data"
+                    assert label[i
+                                ] < self.cfg.num_bases, "invalid base pair data"
                     label[i] += self.cfg.num_bases
 
         sess.run(
@@ -198,42 +175,30 @@ class DataQueue():
                 self._values_len_ph: len(label),
                 self._signal_ph: signal.reshape((-1, 1)),
                 self._signal_len_ph: len(signal),
-            }
+            },
+            options=tf.RunOptions(
+                timeout_in_ms=5 * 60 *
+                1000,  # if nothing gets in the queue for 5min something is probably wrong
+            )
         )
 
     def start_input_processes(
-        self, sess: tf.Session, coord: tf.train.Coordinator, cnt=1
+        self, sess: tf.Session, coord: tf.train.Coordinator
     ):
         class Wrapper():
             def __init__(self):
                 pass
 
             def __enter__(iself):
-                m = Manager()
-                q: Queue = m.Queue(maxsize=256)
-                iself.poison_queue: Queue = m.Queue(maxsize=256)
-
-                iself.processes: List[Process] = []
-                for _ in range(cnt):
-                    p = Process(
-                        target=produce_datapoints,
-                        args=(self.cfg, self.fnames, q, iself.poison_queue)
-                    )
-                    p.start()
-                    iself.processes.append(p)
-
                 def worker_fn():
-                    exs = 0
-                    for i in count(start=1):
-                        try:
-                            iself.poison_queue.get_nowait()
-                            return
-                        except queue.Empty:
-                            pass
-                        if coord.should_stop():
-                            return
-                        try:
-                            it = q.get(timeout=0.5)
+                    try:
+                        exs = 0
+                        for i, it in enumerate(
+                            produce_datapoints(
+                                cfg=self.cfg,
+                                fnames=self.fnames,
+                            )
+                        ):
                             if isinstance(it, Exception):
                                 self.logger.debug(
                                     f"Exception happened during processing data {type(it).__name__}:\n{it}"
@@ -242,52 +207,66 @@ class DataQueue():
                                 continue
                             signal, labels = it
                             try:
+                                self.logger.debug("about to push to tf queue")
                                 self.push_to_queue(sess, signal, labels)
                             except tf.errors.CancelledError:
                                 if coord.should_stop():
+                                    self.logger.warning(
+                                        "enqueue op canceled, and coord is stopping"
+                                    )
                                     return
                                 else:
+                                    self.logger.error(
+                                        "Cancelled error occurred yet coord is not stopping!",
+                                        exc_info=True
+                                    )
                                     raise
-                            if i % 2000 == 0:
+                            except tf.errors.DeadlineExceededError:
+                                self.logger.warning(
+                                    "Queue pushing timeout exceeded"
+                                )
+                            if i > 0 and i % 2000 == 0:
                                 self.logger.info(
                                     f"sucessfully submitted {i - exs}/{i} samples; -- {(i-exs)/i:.2f}"
                                 )
-                        except queue.Empty:
-                            pass
+                    except Exception as e:
+                        self.logger.critical(
+                            f"Error in input feeders! {type(e).__name__}: {e}", exc_info=True
+                        )
+                        coord.request_stop(e)
+                        raise
 
-                iself.th = Thread(target=worker_fn, daemon=True)
+                iself.th = Thread(target=worker_fn, daemon=False)
                 iself.th.start()
                 logging.getLogger(__name__).info("Started all feeders")
 
             def __exit__(iself, exc_type, exc_val, exc_tb):
+                if exc_val:
+                    logging.getLogger(__name__).error(
+                        f"Error happened and closing {exc_val}"
+                    )
+                    coord.request_stop(exc_val)
                 logging.getLogger(__name__
                                  ).info("Starting to close all feeders")
                 for x in self.closing:
                     try:
                         sess.run(x)
                     except Exception as ex:
-                        logging.getLogger(__name__).warning(
+                        logging.getLogger(__name__).error(
                             f"Cannot close queue {type(ex).__name__}: {ex}"
                         )
-                        pass
                 logging.getLogger(__name__).info("Closed all queues")
-                for _ in range(cnt + 1):
-                    iself.poison_queue.put(None)
-                for p in iself.processes:
-                    p.join(timeout=5)
                 iself.th.join(timeout=5)
-                logging.getLogger(__name__).info("Closed all feeders")
+                if iself.th.is_alive():
+                    logging.getLogger(__name__
+                                     ).error("Input thread is still alive")
+                else:
+                    logging.getLogger(__name__).info("Closed all feeders")
 
         return Wrapper()
 
 
-def produce_datapoints(
-    cfg: InputFeederCfg,
-    fnames: List[str],
-    q: Queue,
-    poison: Queue,
-    repeat=True
-):
+def produce_datapoints(cfg: InputFeederCfg, fnames: List[str], repeat=True):
     """
 
     Pushes single instances to the queue of the form:
@@ -309,10 +288,8 @@ def produce_datapoints(
                 signal = scrappy.RawTable(signal).scale().data(as_numpy=True)
                 assert len(signal) == len(dp.signal), "Trimming occured"
                 if len(signal) < cfg.min_signal_size:
-                    q.put(
-                        ValueError(
-                            f"Signal too short {len(dp.signal)} < {cfg.min_signal_size}"
-                        )
+                    yield ValueError(
+                        f"Signal too short {len(dp.signal)} < {cfg.min_signal_size}"
                     )
                     continue
 
@@ -335,36 +312,21 @@ def produce_datapoints(
                                         ].lower <= start + cfg.seq_length
 
                         label_idx += 1
-                    try:
-                        poison.get_nowait()
-                        return
-                    except queue.Empty:
-                        pass
-                    except BrokenPipeError:
-                        logging.warning(
-                            "Got BrokenPipeError error while polling poison queue, quiting"
-                        )
-                        return
 
                     signal_segment = signal[start:start + cfg.seq_length]
                     if len(buff) == 0:
-                        q.put(ValueError("Empty labels"))
+                        yield ValueError("Empty labels")
                     elif len(signal_segment) / cfg.ratio < len(buff):
-                        q.put(
-                            ValueError(
-                                f"max possible labels {signal_segment/cfg.ratio}, have {len(buff)} labels"
-                            )
+                        yield ValueError(
+                            f"max possible labels {len(signal_segment)/cfg.ratio}, have {len(buff)} labels.\n"
+                            f"Signal len: {len(signal_segment)}, ratio: {cfg.ratio}"
                         )
                     else:
-                        try:
-                            q.put([
-                                signal_segment,
-                                np.array(buff, dtype=np.int32),
-                            ])
-                        except EOFError:
-                            logging.warning(
-                                "Got EOF error while pushing new signal into queue, ignoring"
-                            )
-
+                        logging.debug(f"produce_datapoints: yielding datapoint")
+                        yield [
+                            signal_segment,
+                            np.array(buff, dtype=np.int32),
+                        ]
         if not repeat:
+            logging.info("Repeat is false, quiting")
             break

@@ -1,4 +1,6 @@
 import tensorflow as tf
+import uuid
+import os
 import pandas as pd
 from collections import defaultdict
 import numpy as np
@@ -9,6 +11,8 @@ import logging
 from pprint import pformat
 import cytoolz as toolz
 import random
+
+logger = logging.getLogger(__name__)
 
 aligment_stats_ordering = [
     dataset_pb2.MATCH, dataset_pb2.MISMATCH, dataset_pb2.INSERTION,
@@ -33,6 +37,22 @@ def alignment_stats(
     :param debug:
     :return:
     """
+
+    prefix = os.environ.get("MINCALL_LOG_DATA", None)
+    if prefix:
+        fname = os.path.abspath(os.path.join(prefix, f"{uuid.uuid4().hex}.npz"))
+        with open(fname, "wb") as f:
+            np.savez(
+                f, **{
+                    "label_val": label_val,
+                    "lable_ind": lable_ind,
+                    "pred_val": pred_val,
+                    "pred_ind": pred_ind,
+                    "batch_size": batch_size,
+                }
+            )
+        logger.debug(f"Saves alignment stats input data to {fname}")
+
     yt = defaultdict(list)
     for ind, val in zip(lable_ind, label_val):
         yt[ind[0]].append(val)
@@ -44,10 +64,18 @@ def alignment_stats(
     sol = defaultdict(list)
     identities = []
     for x in range(batch_size):
-        query = decode(yp[x])
-        target = decode(yt[x])
+        query = decode(np.array(yp[x], dtype=int))
+        target = decode(np.array(yt[x], dtype=int))
         if len(target) == 0:
             raise ValueError("Empty target sequence")
+        if len(query) == 0:
+            logger.warning(f"Empty query sequence\n" f"Target: {target}")
+            sol[dataset_pb2.MATCH].append(0.0)
+            sol[dataset_pb2.MISMATCH].append(0.0)
+            sol[dataset_pb2.DELETION].append(1.0)
+            sol[dataset_pb2.INSERTION].append(0.0)
+            identities.append(0)
+            continue
         edlib_res = edlib.align(query, target, task='path')
         stats = ext_cigar_stats(edlib_res['cigar'])
 
@@ -60,7 +88,7 @@ def alignment_stats(
 
         for op in aligment_stats_ordering:
             sol[op].append(stats[op] / read_len)
-        if x < 5:
+        if True:
             msg = "edlib results\n"
             s_query, s_target, _ = squggle(query, target)
             exp_cigar = expand_cigar(edlib_res['cigar'])
@@ -85,9 +113,7 @@ def alignment_stats(
                         toolz.frequencies(query),
                         toolz.keymap(
                             "".join,
-                            toolz.frequencies(
-                                toolz.sliding_window(2, query)
-                            )
+                            toolz.frequencies(toolz.sliding_window(2, query))
                         ),
                     ),
                 "target":
@@ -95,17 +121,15 @@ def alignment_stats(
                         toolz.frequencies(target),
                         toolz.keymap(
                             "".join,
-                            toolz.frequencies(
-                                toolz.sliding_window(2, target)
-                            )
+                            toolz.frequencies(toolz.sliding_window(2, target))
                         ),
                     ),
             })
             df["delta"] = 100 * (df['target'] / df['query'] - 1)
-            df=df[['query', 'target', 'delta']]
+            df = df[['query', 'target', 'delta']]
             msg += "Stats\n" + str(df) + "\n"
             msg += "==================\n"
-            logging.info(msg)
+            logger.info(msg)
     sol = [
         np.array(sol[op], dtype=np.float32) for op in aligment_stats_ordering
     ]
@@ -114,8 +138,45 @@ def alignment_stats(
         for k, v in zip(aligment_stats_ordering, sol)
     }
     sol_data["IDENTITY"] = identities
-    logging.info(f"sol: \n{pd.DataFrame(sol_data)}")
+    logger.info(f"sol: \n{pd.DataFrame(sol_data)}")
     return sol + [np.array(identities, dtype=np.float32)]
+
+
+def autoencoder_loss(signal_reconstruction, signal, signal_len):
+    """
+    
+    :param signal_reconstruction: 
+    :param signal: 
+    :param signal_len: 
+    :return: 
+    """
+
+    with tf.control_dependencies([
+        tf.assert_equal(
+            tf.shape(signal_reconstruction),
+            tf.shape(signal),
+            message="signal lengths must be same"
+        ),
+        tf.assert_equal(tf.shape(signal)[2], 1, message="last dim must be 1"),
+        tf.assert_equal(tf.rank(signal), 3, message="signal rank must be 3"),
+    ]):
+        mask = tf.sequence_mask(
+            lengths=signal_len,
+            maxlen=tf.shape(signal)[1],
+        )
+
+    diff = 0.5 * tf.square(
+        tf.squeeze(signal_reconstruction, axis=[2]) -
+        tf.squeeze(signal, axis=[2])
+    )
+
+    return tf.reduce_mean(
+        tf.boolean_mask(
+            diff,
+            mask,
+        ),
+        axis=[0],
+    )
 
 
 if __name__ == "__main__":

@@ -6,9 +6,11 @@ train:
   test_data:
     - name: "r9.4"
       dir: "./mincall/example"
-  model_name: "dummy"
+  model_name: "funny_fermat"
   model_hparams:
-    num_layers: 5
+    num_blocks: 1
+    block_elem: 3
+    autoenc_coeff: !!float 1.0
   surrogate_base_pair: false
   train_steps: 60
   init_learning_rate: !!float 1e-4
@@ -24,7 +26,7 @@ hyperparam:
   test_data:
     - name: "r9.4"
       dir: "./mincall/example"
-  model_name: "dummy"
+  model_name: "funny_fermat"
   model_hparams:
     num_layers:
       min: 2
