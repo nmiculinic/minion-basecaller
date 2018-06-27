@@ -25,6 +25,7 @@ from ._types import *
 import toolz
 from tqdm import tqdm
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -167,6 +168,13 @@ def run_args(args) -> pd.DataFrame:
 
 
 def run(cfg: TrainConfig) -> pd.DataFrame:
+    try:
+        import warpctc_tensorflow
+        logger.info("Using warpctc_tensorflow GPU kernel")
+        # https://github.com/baidu-research/warp-ctc/tree/master/tensorflow_binding
+    except ImportError:
+        pass
+        logger.info("Cannot use warpctc_tensorflow GPU kernel")
     os.makedirs(cfg.logdir, exist_ok=True)
     num_bases = TOTAL_BASE_PAIRS
     if cfg.surrogate_base_pair:
