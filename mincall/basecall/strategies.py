@@ -9,8 +9,8 @@ from mincall.common import TOTAL_BASE_PAIRS
 from keras import models
 
 import tensorflow as tf
-from tensorflow_serving.apis import predict_pb2
-from tensorflow_serving.apis import prediction_service_pb2
+from mincall.external.tensorflow_serving.apis import predict_pb2
+from mincall.external.tensorflow_serving.apis import prediction_service_pb2
 from grpc.beta import implementations
 
 class BeamSearchStrategy:
@@ -134,6 +134,7 @@ class BeamSearchTFServing(BeamSearchStrategy):
                  name="default",
                  signature_name = tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY):
         self.channel = implementations.insecure_channel(host, int(port))
+        print(dir(self.channel))
         self.stub = prediction_service_pb2.beta_create_PredictionService_stub(self.channel)
 
         # Send request

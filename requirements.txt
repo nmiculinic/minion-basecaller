@@ -38,7 +38,6 @@ sigopt==3.2.0
 six==1.11.0
 tensorboard==1.8.0
 tensorflow==1.8.0
-tensorflow-serving-api-python3==1.7.0
 termcolor==1.1.0
 toolz==0.9.0
 tqdm==4.23.3
