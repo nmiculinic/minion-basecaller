@@ -24,6 +24,7 @@ class InputFeederCfg(NamedTuple):
     surrogate_base_pair: bool
     num_bases: int
     min_signal_size: int = 10000
+    max_label_size: int = 1_000_000_000  # Unrealistically large number
 
     @classmethod
     def schema(cls, data):

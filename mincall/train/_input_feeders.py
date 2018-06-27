@@ -321,6 +321,10 @@ def produce_datapoints(cfg: InputFeederCfg, fnames: List[str], repeat=True):
                             f"max possible labels {len(signal_segment)/cfg.ratio}, have {len(buff)} labels.\n"
                             f"Signal len: {len(signal_segment)}, ratio: {cfg.ratio}"
                         )
+                    elif len(buff) > cfg.max_label_size:
+                        yield ValueError(
+                            f"More labels {len(buff)} then allowed limit {cfg.max_label_size}"
+                        )
                     else:
                         logging.debug(f"produce_datapoints: yielding datapoint")
                         yield [

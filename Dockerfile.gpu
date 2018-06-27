@@ -1,30 +1,46 @@
 FROM nvidia/cuda:9.0-base-ubuntu16.04
 
-RUN apt-get update && apt-get install -y software-properties-common && add-apt-repository -y ppa:jonathonf/python-3.6 && \
-    apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && \
+    apt-get install -y software-properties-common apt-utils && \
+    add-apt-repository -y ppa:jonathonf/python-3.6 && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
         build-essential \
         cuda-command-line-tools-9-0 \
-        cuda-cublas-9-0 \
-        cuda-cufft-9-0 \
-        cuda-curand-9-0 \
-        cuda-cusolver-9-0 \
-        cuda-cusparse-9-0 \
+        cuda-cublas-dev-9-0 \
+        cuda-cudart-dev-9-0 \
+        cuda-cufft-dev-9-0 \
+        cuda-curand-dev-9-0 \
+        cuda-cusolver-dev-9-0 \
+        cuda-cusparse-dev-9-0 \
         libcudnn7=7.0.5.15-1+cuda9.0 \
         curl \
         libfreetype6-dev \
         libhdf5-serial-dev \
         libpng-dev \
         libzmq3-dev \
+        zlib1g-dev \
         pkg-config \
-        python3.6 \
-        python3.6-dev \
-        python3-distutils \
         rsync \
         software-properties-common \
         unzip \
+        wget \
+        cmake \
+        python3.6 \
+        python3.6-dev \
         && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+ENV WARP_CTC_PATH=/opt/warp-ctc/build
+ENV CUDA_HOME=/usr/local/cuda
+
+WORKDIR /opt
+RUN wget --quiet http://github.com/tensorflow/tensorflow/archive/v1.8.0.zip -O tf_v1.8.0.zip && \
+    unzip -q tf_v1.8.0.zip -d /opt && \
+    rm tf_v1.8.0.zip
+ENV TENSORFLOW_SRC_PATH=/opt/tensorflow-1.8.0
+RUN ls $TENSORFLOW_SRC_PATH
 
 RUN curl https://bootstrap.pypa.io/get-pip.py | python3.6
 
@@ -38,19 +54,38 @@ RUN python3.6 -m pip --no-cache-dir install \
         pandas \
         scipy \
         sklearn \
-        tensorflow-gpu \
+        tensorflow-gpu==1.8.0 \
         && \
     python3.6 -m ipykernel.kernelspec
-
-# TensorBoard
-EXPOSE 6006
 
 RUN curl -L https://github.com/Yelp/dumb-init/releases/download/v1.2.1/dumb-init_1.2.1_amd64.deb --output dump-init.deb && \
     dpkg -i dump-init.deb && \
     rm -Rf dump-init.deb
 
+WORKDIR /opt
+RUN wget --quiet http://github.com/nmiculinic/warp-ctc/archive/master.zip -O warp_ctc.zip && \
+    unzip -q warp_ctc.zip -d /opt && \
+    mv warp-ctc-master warp-ctc && \
+    rm warp_ctc.zip && \
+    ls
+
+WORKDIR /opt/warp-ctc
+RUN mkdir build
+WORKDIR /opt/warp-ctc/build
+RUN cmake .. && make
+ENV WARP_CTC_PATH=/opt/warp-ctc/build
+
+# TensorBoard
+EXPOSE 6006
+
+
 # For CUDA profiling, TensorFlow requires CUPTI.
 ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
+
+WORKDIR /opt/warp-ctc/tensorflow_binding
+RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
+RUN LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs/:$LD_LIBRARY_PATH python3.6 setup.py install
+RUN rm /usr/local/cuda/lib64/stubs/libcuda.so.1
 
 WORKDIR /
 RUN mkdir /code
