@@ -50,11 +50,13 @@ def run_args(args):
         logger.error(humanize_error(config, e))
         raise
 
+
 def add_args(parser: argparse.ArgumentParser):
     parser.add_argument("eval.sam_path", nargs="+")
     parser.add_argument("-r", "--reference", dest="eval.reference", type=voluptuous.IsFile(), required=True)
     parser.add_argument("-w", "--work-dir", dest="eval.work_dir", type=voluptuous.IsDir())
     parser.set_defaults(func=run_args)
+
 
 def run(cfg: EvalCfg):
     error_rates_dfs = {}
@@ -87,10 +89,13 @@ def run(cfg: EvalCfg):
         fig.savefig(os.path.join(cfg.work_dir, f"{basename}_position_report.png"))
 
         report = get_consensus_report(basename, filtered_sam, cfg.reference, cfg.is_circular, cfg.coverage_threshold)
+        report.drop(columns=["alignments_file", "mpileup_file"], inplace=True)
         export_dataframe(report.transpose(), cfg.work_dir, f"{basename}_consensus_report")
         consensus_reports.append(report)
 
     for name, fig in plot_read_error_stats(error_rates_dfs).items():
+        name:str = name
+        name = name.replace(" ", "").replace("%", "")
         fig.savefig(os.path.join(cfg.work_dir, f"read_{name}.png"))
 
     consensus = pd.concat(consensus_reports)
