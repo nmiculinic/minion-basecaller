@@ -54,7 +54,7 @@ def run_args(args):
 def add_args(parser: argparse.ArgumentParser):
     parser.add_argument("eval.sam_path", nargs="+")
     parser.add_argument("-r", "--reference", dest="eval.reference", type=voluptuous.IsFile(), required=True)
-    parser.add_argument("-w", "--work-dir", dest="eval.work_dir", type=voluptuous.IsDir())
+    parser.add_argument("-w", "--work-dir", dest="eval.work_dir", type=voluptuous.IsDir(), default=".")
     parser.set_defaults(func=run_args)
 
 
