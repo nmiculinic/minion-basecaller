@@ -79,7 +79,8 @@ def run(cfg: EvalCfg):
 
         ### Analize error rates
         error_rates_df = error_rates_for_sam(filtered_sam)
-        export_dataframe(error_rates_df.describe(percentiles=[]).transpose(), cfg.work_dir, "error rates")
+        export_dataframe(error_rates_df.describe(percentiles=[]).transpose(), cfg.work_dir, f"error_rates_{basename}")
+        error_rates_df['basecaller'] = basename
         error_rates_dfs[basename] = error_rates_df
 
         position_report = error_positions_report(filtered_sam)
@@ -94,12 +95,23 @@ def run(cfg: EvalCfg):
         consensus_reports.append(report)
 
     for name, fig in plot_read_error_stats(error_rates_dfs).items():
-        name:str = name
+        name: str = name
         name = name.replace(" ", "").replace("%", "")
         fig.savefig(os.path.join(cfg.work_dir, f"read_{name}.png"))
 
     consensus = pd.concat(consensus_reports)
     export_dataframe(consensus.transpose(), cfg.work_dir, f"all_consensus_report")
+
+    combined_error_df: pd.DataFrame = pd.concat(error_rates_dfs.values())
+    for metric in [
+        'Error %', 'Match %', 'Mismatch %', 'Insertion %',
+        'Deletion %', 'Identity %', 'Read length',
+    ]:
+        fig, ax = plt.subplots()
+        sns.violinplot(x='basecaller', y=metric, ax=ax, data=combined_error_df, inner="box")
+        fig.savefig(os.path.join(cfg.work_dir, f"read_violin_{metric.replace('%', '').replace(' ', '')}.png"))
+    export_dataframe(combined_error_df.groupby("basecaller").mean().drop(columns=["Is reversed"]), cfg.work_dir, f"error_rates")
+
 
 def plot_error_distributions(position_report) -> plt.Figure:
     n_cols = 2
