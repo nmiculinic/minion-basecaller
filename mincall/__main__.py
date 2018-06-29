@@ -5,11 +5,13 @@ from mincall import train, basecall, embedding, eval
 from mincall.hyperparam import _hyperparam
 import graypy
 import os
+import sys
 
 
 class TqdmWriteWrapper():
     def write(self, s):
         tqdm.write(s, end="")
+        sys.stderr.flush()
 
 
 if __name__ == "__main__":
