@@ -351,7 +351,11 @@ def error_positions_report(sam_path):
             data.append([relative_pos, c])
 
     with pysam.AlignmentFile(sam_path, "r") as samfile:
-        for x in samfile.fetch():
+        for x in tqdm(
+            samfile.fetch(),
+            unit="read",
+            desc=f"error_position_report for {os.path.basename(sam_path)}"
+        ):
             cigar_pairs = x.cigartuples
             if not cigar_pairs:
                 logging.error("%s No cigar string found", x.query_name)
