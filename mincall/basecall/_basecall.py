@@ -1,4 +1,6 @@
 import gzip
+import time
+
 from concurrent.futures import ThreadPoolExecutor, Future
 from typing import *
 import logging
@@ -118,16 +120,19 @@ def run(cfg: BasecallCfg):
             fasta_out_ctor = gzip.open
 
         logger.info(f"Starting execution with {cfg.threads} workers")
-        with timing_handler(logger, "Basecalling all"), \
+        total_bp = 0
+        with timing_handler(logger, "Basecalling all") as start_time, \
                 ThreadPoolExecutor(max_workers=cfg.threads) as executor, \
                 fasta_out_ctor(cfg.output_fasta, 'wb') as fasta_out:
             for fname, fasta in zip(
                     fnames,
                     tqdm(executor.map(basecaller.basecall, fnames), total=len(fnames), desc="basecalling files")
             ):
+                total_bp += len(fasta)
                 fasta_out.write(f">{fname}\n".encode("ASCII"))
                 for i in range(0, len(fasta), 80):
                     fasta_out.write(f"{fasta[i: i+80]}\n".encode("ASCII"))
+        logger.info(f"Basecalling speed: {total_bp/(time.time() - start_time)} bp/s")
 
 
 def get_fast5_files(cfg):

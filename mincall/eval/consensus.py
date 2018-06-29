@@ -7,7 +7,7 @@ import pandas as pd
 import operator
 import pysam
 from mincall import bioinf_utils as butil
-from mincall.align_utils import split_aligments_in_sam
+from .align_utils import split_aligments_in_sam
 import shutil
 from tqdm import tqdm
 """
