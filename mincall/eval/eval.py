@@ -6,6 +6,9 @@ from collections import defaultdict
 from typing import *
 from voluptuous.humanize import humanize_error
 
+import matplotlib
+matplotlib.use('agg')
+
 import pysam
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -17,9 +20,7 @@ from mincall.bioinf_utils import error_rates_for_sam
 from mincall.bioinf_utils import error_positions_report
 from .consensus import get_consensus_report
 from mincall.common import named_tuple_helper
-
 logger = logging.getLogger(__name__)
-
 
 class EvalCfg(NamedTuple):
     sam_path: List[str]
@@ -64,7 +65,7 @@ def run(cfg: EvalCfg):
     for sam_path in cfg.sam_path:
         basename, ext = os.path.splitext(os.path.basename(sam_path))
         filtered_sam = os.path.join(cfg.work_dir, f"{basename}_filtered.sam")
-
+        logger.info(f"Starting filtering {sam_path} to {filtered_sam}")
         ### Filtering
         # define list of filters (functions that take pysam.AlignedSegment and return boolean)
         filters: List[Callable[[pysam.AlignedSegment]], bool] = [
