@@ -7,6 +7,7 @@ import numpy as np
 from collections import Counter, defaultdict
 import pandas as pd
 from tqdm import tqdm
+import os
 
 CIGAR_TO_BYTE = {
     'M': 0,
@@ -281,7 +282,11 @@ def error_rates_for_sam(sam_path):
     all_errors = []
     unmapped = 0
     with pysam.AlignmentFile(sam_path, "r") as samfile:
-        for x in tqdm(samfile.fetch(), unit='read'):
+        for x in tqdm(
+                samfile.fetch(),
+                unit='read',
+                desc=f"calculating error rates for sam file {os.path.basename(sam_path)}"
+        ):
             if x.is_unmapped:
                 logging.debug("%s is unmapped", x.query_name)
                 unmapped += 1

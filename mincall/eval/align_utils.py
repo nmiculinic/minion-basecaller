@@ -187,8 +187,10 @@ def filter_aligments_in_sam(sam_path, out_path, filters=[]):
 
     with pysam.AlignmentFile(sam_path, "r") as in_sam:
         with pysam.AlignmentFile(out_path, "w", template=in_sam) as out_sam:
-
-            for x in in_sam.fetch():
+            for x in tqdm(in_sam.fetch(),
+                desc="filtering sam file",
+                unit="read",
+            ):
                 n_reads += 1
 
                 if all([f(x) for f in filters]):
