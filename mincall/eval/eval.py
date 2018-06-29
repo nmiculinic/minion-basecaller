@@ -105,15 +105,15 @@ def run(cfg: EvalCfg):
         error_rates_df['basecaller'] = basename
         error_rates_dfs[basename] = error_rates_df
 
-        position_report = error_positions_report(filtered_sam)
-        logger.info(
-            f"{basename} Error position report\n{position_report.head(20)}"
-        )
-
-        fig = plot_error_distributions(position_report)
-        fig.savefig(
-            os.path.join(cfg.work_dir, f"{basename}_position_report.png")
-        )
+        # TODO: This is slow and crashes everything
+        # position_report = error_positions_report(filtered_sam)
+        # logger.info(
+        #     f"{basename} Error position report\n{position_report.head(20)}"
+        # )
+        # fig = plot_error_distributions(position_report)
+        # fig.savefig(
+        #     os.path.join(cfg.work_dir, f"{basename}_position_report.png")
+        # )
 
         report = get_consensus_report(
             basename, filtered_sam, cfg.reference, cfg.is_circular,
