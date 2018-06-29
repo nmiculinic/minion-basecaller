@@ -23,7 +23,13 @@ class AbstractModel:
     autoencoder_model: Optional[models.Model] = None
     autoenc_coeff: float = 1.0
 
-    def __init__(self, forward_model, ratio, autoencoder_model=None, autoenc_coeff: float =1.0):
+    def __init__(
+        self,
+        forward_model,
+        ratio,
+        autoencoder_model=None,
+        autoenc_coeff: float = 1.0
+    ):
         self.ratio = ratio
         self.forward_model = forward_model
         self.autoencoder_model = autoencoder_model
@@ -46,8 +52,11 @@ class AbstractModel:
 
         config = tf.ConfigProto(allow_soft_placement=True)
         config.gpu_options.allow_growth = True
-        with tf.Graph().as_default(), tf.Session(config=config) as sess, sess.as_default():
-            model = models.load_model(p, custom_objects=custom_layers, compile=False)
+        with tf.Graph().as_default(), tf.Session(config=config
+                                                ) as sess, sess.as_default():
+            model = models.load_model(
+                p, custom_objects=custom_layers, compile=False
+            )
             with tf.name_scope("export"):
                 x = tf.placeholder(tf.float32, shape=(None, None, 1))
                 y = model(x)
@@ -59,7 +68,8 @@ class AbstractModel:
             signature_definition = tf.saved_model.signature_def_utils.build_signature_def(
                 inputs={"x": model_input},
                 outputs={"y": model_output},
-                method_name=tf.saved_model.signature_constants.PREDICT_METHOD_NAME
+                method_name=tf.saved_model.signature_constants.
+                PREDICT_METHOD_NAME
             )
 
             export_path = os.path.join(folder, "saver", "1")
@@ -68,11 +78,11 @@ class AbstractModel:
                 sess,
                 [tf.saved_model.tag_constants.SERVING],
                 signature_def_map={
-                    "mincall":
-                        signature_definition,
+                    "mincall": signature_definition,
                 },
             )
             builder.save()
+
 
 class BindedModel:
     """Class representing model binded to the dataset with all required properties.
@@ -297,7 +307,6 @@ class BindedModel:
         return self.dq.start_input_processes(sess, coord)
 
 
-
 class DummyCfg(NamedTuple):
     num_layers: int
 
@@ -316,7 +325,6 @@ class DummyModel(AbstractModel):
             ratio=1,
             autoencoder_model=self._backwards(n_classes, cfg),
         )
-
 
     @staticmethod
     def _foraward_model(n_classes, cfg: DummyCfg) -> models.Model:
@@ -414,6 +422,7 @@ class FunnyFermatCfg(NamedTuple):
     @classmethod
     def scheme(cls, data) -> 'FunnyFermatCfg':
         return named_tuple_helper(cls, {}, data)
+
 
 class FunnyFermat(AbstractModel):
     cfg_class = FunnyFermatCfg

@@ -335,6 +335,7 @@ def error_positions_report_bucketed(sam_path, n_buckets=1000):
     df.reset_index(inplace=True, drop=True)
     return df
 
+
 def error_positions_report(sam_path):
     data = []
 
@@ -353,9 +354,7 @@ def error_positions_report(sam_path):
             full_cigar = decompress_cigar_pairs(cigar_pairs, mode='ints')
             _update_positions(full_cigar)
 
-    df = pd.DataFrame(
-        data, columns=['relative_position', 'operation']
-    )
+    df = pd.DataFrame(data, columns=['relative_position', 'operation'])
     df.sort_values(by='relative_position', inplace=True)
     df.reset_index(inplace=True, drop=True)
     return df

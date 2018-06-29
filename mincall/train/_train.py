@@ -25,7 +25,6 @@ from ._types import *
 import toolz
 from tqdm import tqdm
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -352,7 +351,9 @@ def run(cfg: TrainConfig) -> pd.DataFrame:
             try:
                 coord.join()
             except:
-                logger.critical(f"Join unsuccessful, some threads are still alive!")
+                logger.critical(
+                    f"Join unsuccessful, some threads are still alive!"
+                )
 
 
 def grad_and_vars_summary(grads_and_vars):
@@ -363,9 +364,7 @@ def grad_and_vars_summary(grads_and_vars):
     for grad, var in grads_and_vars:
         if grad is not None:
             name = var.name.split(":")[0]
-            var_summaries.extend(
-                tensor_default_summaries(name + "/grad", grad)
-            )
+            var_summaries.extend(tensor_default_summaries(name + "/grad", grad))
     return var_summaries
 
 

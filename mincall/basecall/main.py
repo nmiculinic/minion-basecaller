@@ -74,8 +74,8 @@ def run_args(args):
             'basecall': BasecallCfg.schema,
             'version': str,
         },
-            extra=voluptuous.REMOVE_EXTRA,
-            required=True)(config)
+                                extra=voluptuous.REMOVE_EXTRA,
+                                required=True)(config)
         logger.info(f"Parsed config\n{pformat(cfg)}")
         run(cfg['basecall'])
     except voluptuous.error.Error as e:

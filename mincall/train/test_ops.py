@@ -22,9 +22,7 @@ class TestAlignmentStats(unittest.TestCase):
             "identity": identity,
             **{
                 dataset_pb2.Cigar.Name(op): stat
-                for op, stat in zip(
-                ops.aligment_stats_ordering, astats
-            )
+                for op, stat in zip(ops.aligment_stats_ordering, astats)
             },
         })
         if update_golden:

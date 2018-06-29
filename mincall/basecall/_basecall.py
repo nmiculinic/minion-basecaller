@@ -26,20 +26,22 @@ def read_fast5_signal(fname: str) -> np.ndarray:
         raw_attr = input_data['Raw/Reads/']
         read_name = list(raw_attr.keys())[0]
         raw_signal = np.array(raw_attr[read_name + "/Signal"].value)
-        raw_signal = scrappy.RawTable(raw_signal).trim().scale(
-        ).data(as_numpy=True)
+        raw_signal = scrappy.RawTable(raw_signal).trim().scale().data(
+            as_numpy=True
+        )
         logger.debug(f"Read {fname} size: {len(raw_signal)}")
         return raw_signal
 
 
 class BasecallMe:
-    def __init__(self,
-                 cfg: BasecallCfg,
-                 signal_2_logit_fn: Callable[[np.ndarray], Future],
-                 beam_search_fn: Callable[[np.ndarray], Future],
-                 ratio: int,
-                 n_classes: int,
-                 ):
+    def __init__(
+        self,
+        cfg: BasecallCfg,
+        signal_2_logit_fn: Callable[[np.ndarray], Future],
+        beam_search_fn: Callable[[np.ndarray], Future],
+        ratio: int,
+        n_classes: int,
+    ):
         self.cfg = cfg
         self.beam_search = beam_search_fn
         self.signal_2_logit_fn = signal_2_logit_fn
@@ -57,13 +59,21 @@ class BasecallMe:
         logits = [self.signal_2_logit_fn(ch) for ch in chunks]
         return [l.result() for l in logits]
 
-    def basecall_logits(self, raw_signal_len: int, logits_arr: List[np.ndarray]):
+    def basecall_logits(
+        self, raw_signal_len: int, logits_arr: List[np.ndarray]
+    ):
         logits = np.zeros(
-            shape=((raw_signal_len + self.ratio - 1) // self.ratio, self.n_classes), dtype=np.float32
+            shape=((raw_signal_len + self.ratio - 1) // self.ratio,
+                   self.n_classes),
+            dtype=np.float32
         )
 
         for i, l in zip(
-            reversed(range(0, raw_signal_len // self.ratio, self.cfg.jump // self.ratio)),
+            reversed(
+                range(
+                    0, raw_signal_len // self.ratio, self.cfg.jump // self.ratio
+                )
+            ),
             reversed(logits_arr),
         ):
             logits[i:i + l.shape[0], :] = l
@@ -84,6 +94,7 @@ class BasecallMe:
         except:
             logger.critical(f"Cannot basecall {fname}", exc_info=True)
             raise
+
 
 def run(cfg: BasecallCfg):
     fnames = get_fast5_files(cfg)
@@ -107,7 +118,7 @@ def run(cfg: BasecallCfg):
             surrogate_base_pair=surrogate_base_pair,
             beam_width=cfg.beam_width,
         )
-        basecaller=BasecallMe(
+        basecaller = BasecallMe(
             cfg=cfg,
             beam_search_fn=bs.beam_search,
             signal_2_logit_fn=s2l.signal2logit_fn,
@@ -123,16 +134,25 @@ def run(cfg: BasecallCfg):
         total_bp = 0
         with timing_handler(logger, "Basecalling all") as start_time, \
                 ThreadPoolExecutor(max_workers=cfg.threads) as executor, \
-                fasta_out_ctor(cfg.output_fasta, 'wb') as fasta_out:
+                fasta_out_ctor(cfg.output_fasta, 'wb') as fasta_out, \
+                tqdm(total=len(fnames), desc="basecalling files") as pbar:
             for fname, fasta in zip(
-                    fnames,
-                    tqdm(executor.map(basecaller.basecall, fnames), total=len(fnames), desc="basecalling files")
+                fnames,
+                executor.map(basecaller.basecall, fnames),
             ):
+
                 total_bp += len(fasta)
                 fasta_out.write(f">{fname}\n".encode("ASCII"))
                 for i in range(0, len(fasta), 80):
                     fasta_out.write(f"{fasta[i: i+80]}\n".encode("ASCII"))
-        logger.info(f"Basecalling speed: {total_bp/(time.time() - start_time)} bp/s")
+                pbar.update()
+                pbar.set_postfix(
+                    speed=f"{total_bp/(time.time() - start_time):.0f}",
+                    refresh=False
+                )
+        logger.info(
+            f"Basecalling speed: {total_bp/(time.time() - start_time)} bp/s"
+        )
 
 
 def get_fast5_files(cfg):
@@ -154,7 +174,7 @@ def model_props(model):
     :param model:
     :return:  n_classes, ratio, surrogate_base_pair
     """
-    test_size = 2 ** 5 * 3 ** 5 * 5 ** 2
+    test_size = 2**5 * 3**5 * 5**2
     out_shapes = model.compute_output_shape([
         [1, test_size, 1],
     ])
@@ -170,4 +190,3 @@ def model_props(model):
     assert rem == 0, "Reminder should be 0!"
     logger.info(f"Ratio is {ratio}")
     return n_classes, ratio, surrogate_base_pair
-

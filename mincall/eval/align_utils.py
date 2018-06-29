@@ -34,14 +34,20 @@ def get_target_sequences(sam_path):
                 ref_len = butil.get_ref_len_from_cigar(full_cigar)
 
                 if r_len != x.query_length or ref_len != x.reference_length:
-                    logging.error("%s cigar operations do not match alignment info in md", name)
+                    logging.error(
+                        "%s cigar operations do not match alignment info in md",
+                        name
+                    )
                     cnt['invalid_md_cigar'] += 1
                     continue
 
                 target = x.get_reference_sequence()
             except (ValueError, AssertionError) as e:
                 cnt['missign_ref'] += 1
-                logging.error("%s Mapped but reference len equals 0, md tag: %s", name, x.has_tag('MD'))
+                logging.error(
+                    "%s Mapped but reference len equals 0, md tag: %s", name,
+                    x.has_tag('MD')
+                )
                 continue
 
             ref_name = x.reference_name
@@ -56,9 +62,13 @@ def get_target_sequences(sam_path):
             cigar_str = butil.decompress_cigar_pairs(cigar_pairs, mode='ints')
 
             if name in result_dict:
-                prev_target, _, prev_start_pos, _, prev_cigar_str = result_dict[name]
-                merged = _merge_circular_aligment(prev_target, prev_start_pos, prev_cigar_str,
-                                                  target, start_pos, cigar_str, x.is_reverse, x.query_name)
+                prev_target, _, prev_start_pos, _, prev_cigar_str = result_dict[
+                    name
+                ]
+                merged = _merge_circular_aligment(
+                    prev_target, prev_start_pos, prev_cigar_str, target,
+                    start_pos, cigar_str, x.is_reverse, x.query_name
+                )
                 if not merged:
                     continue
 
@@ -70,8 +80,10 @@ def get_target_sequences(sam_path):
     return result_dict
 
 
-def _merge_circular_aligment(target_1, start_pos_1, cigar_str_1,
-                             target_2, start_pos_2, cigar_str_2, is_reversed, qname):
+def _merge_circular_aligment(
+    target_1, start_pos_1, cigar_str_1, target_2, start_pos_2, cigar_str_2,
+    is_reversed, qname
+):
 
     if is_reversed:
         # reverse back both
@@ -103,9 +115,14 @@ def _merge_circular_aligment(target_1, start_pos_1, cigar_str_1,
     return [target, start, cigar]
 
 
-def align_with_graphmap(reads_path, ref_path, is_circular, out_sam, n_threads=None):
+def align_with_graphmap(
+    reads_path, ref_path, is_circular, out_sam, n_threads=None
+):
     os.makedirs(os.path.dirname(out_sam), exist_ok=True)
-    args = ["graphmap", "align", "-r", ref_path, "-d", reads_path, "-o", out_sam, "-v", "0", "--extcigar"]
+    args = [
+        "graphmap", "align", "-r", ref_path, "-d", reads_path, "-o", out_sam,
+        "-v", "0", "--extcigar"
+    ]
     if is_circular:
         args.append("-C")
 
@@ -119,7 +136,9 @@ def align_with_graphmap(reads_path, ref_path, is_circular, out_sam, n_threads=No
         logging.warning("Graphmap exit status %d" % exit_status)
 
 
-def align_with_bwa_mem(reads_path, ref_path, is_circular, out_sam, n_threads=None):
+def align_with_bwa_mem(
+    reads_path, ref_path, is_circular, out_sam, n_threads=None
+):
     os.makedirs(os.path.dirname(out_sam), exist_ok=True)
     if os.path.exists(out_sam):
         logging.info("Removing %s", out_sam)
@@ -128,8 +147,10 @@ def align_with_bwa_mem(reads_path, ref_path, is_circular, out_sam, n_threads=Non
     if n_threads is None:
         n_threads = multiprocessing.cpu_count()
 
-    args = ["bwa", "mem", "-x", "ont2d", "-t", str(n_threads),
-            ref_path, reads_path]
+    args = [
+        "bwa", "mem", "-x", "ont2d", "-t",
+        str(n_threads), ref_path, reads_path
+    ]
     args_index = ["bwa", "index", ref_path]
 
     def _align():
@@ -186,18 +207,21 @@ def read_len_filter(min_len=-1, max_len=math.inf):
 def secondary_aligments_filter():
     def _filter(aligment):
         return not aligment.is_secondary
+
     return _filter
 
 
 def supplementary_aligments_filter():
     def _filter(aligment):
         return not aligment.is_supplementary
+
     return _filter
 
 
 def only_mapped_filter():
     def _filter(x):
         return not x.is_unmapped
+
     return _filter
 
 
@@ -208,7 +232,9 @@ def merge_sam_files(sam_dir_path, out_sam_path):
 
 
 def merge_reads(reads_fastx_root, out_fastx_path):
-    dir_content = [os.path.join(reads_fastx_root, f) for f in os.listdir(reads_fastx_root)]
+    dir_content = [
+        os.path.join(reads_fastx_root, f) for f in os.listdir(reads_fastx_root)
+    ]
     files = filter(os.path.isfile, dir_content)
 
     def _copy_to(outfp, input_file_path):
@@ -220,6 +246,7 @@ def merge_reads(reads_fastx_root, out_fastx_path):
     with open(out_fastx_path, 'w') as fout:
         for in_path in files:
             _copy_to(fout, in_path)
+
 
 # sanity check method
 # def merge_reads_test(reads_root_dir, single_reads_file):
@@ -284,11 +311,15 @@ def extend_cigars_in_sam(sam_in, ref_path, fastx_path, sam_out=None):
 
         for x in tqdm(in_sam.fetch(), unit='reads'):
             if x.query_name not in reads:
-                logging.warning("read %s in sam not found in .fastx", x.query_name)
+                logging.warning(
+                    "read %s in sam not found in .fastx", x.query_name
+                )
                 continue
 
             if x.is_unmapped:
-                logging.warning("read %s is unmapped, copy to out sam as is", x.query_name)
+                logging.warning(
+                    "read %s is unmapped, copy to out sam as is", x.query_name
+                )
                 out_sam.write(x)
                 continue
 
@@ -329,7 +360,8 @@ def split_aligment(x, split_length=CIGAR_OPS_LIMIT):
         prefix.cigar = butil.compress_cigar(prefix_cigar, 'ints')
 
         prefix.set_tag('MD', butil.generate_md_tag(ref[ref_len:], prefix.cigar))
-        prefix.query_sequence = x.query_sequence[prev_query_end:prev_query_end + prefix_len]
+        prefix.query_sequence = x.query_sequence[prev_query_end:
+                                                 prev_query_end + prefix_len]
 
         prev_query_end += prefix_len
         ref_len += butil.get_ref_len_from_cigar(prefix_cigar)
@@ -360,8 +392,11 @@ def split_aligments_in_sam(in_sam_path, out_sam_path=None):
                 continue
             try:
                 target = x.get_reference_sequence()
-            except (ValueError , AssertionError, Exception):
-                logging.error("%s Mapped but reference len equals 0, md tag: %s", name, x.has_tag('MD'))
+            except (ValueError, AssertionError, Exception):
+                logging.error(
+                    "%s Mapped but reference len equals 0, md tag: %s", name,
+                    x.has_tag('MD')
+                )
                 out_sam.write(x)
                 continue
 
