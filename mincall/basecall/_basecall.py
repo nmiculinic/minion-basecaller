@@ -175,9 +175,18 @@ def model_props(model):
     :return:  n_classes, ratio, surrogate_base_pair
     """
     test_size = 2**5 * 3**5 * 5**2
-    out_shapes = model.compute_output_shape([
-        [1, test_size, 1],
-    ])
+    print(model.input, model.input_shape, model.output, model.output_shape, model.inputs, model.outputs)
+    # Not sure why sometimes works with [[[ 1, test_size, 1 ]]] and sometimes with [[ 1, test_size, 1 ]]
+    # Keras....
+    try:
+        out_shapes = model.compute_output_shape([
+            [1, test_size, 1],
+        ])
+    except TypeError:
+        logger.warning(f"Error happend, trying with another indirection level", exc_info=True)
+        out_shapes = model.compute_output_shape([
+            [[1, test_size, 1]],
+        ])
     _, out_test_size, n_classes = out_shapes
     if n_classes == TOTAL_BASE_PAIRS + 1:
         surrogate_base_pair = False
@@ -189,4 +198,5 @@ def model_props(model):
     ratio, rem = divmod(test_size, out_test_size)
     assert rem == 0, "Reminder should be 0!"
     logger.info(f"Ratio is {ratio}")
+    logger.info(f"n_classes is {n_classes}")
     return n_classes, ratio, surrogate_base_pair
