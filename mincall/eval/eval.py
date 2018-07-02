@@ -159,7 +159,7 @@ def run(cfg: EvalCfg):
     export_dataframe(
         combined_error_df.groupby("basecaller").mean().drop(
             columns=["Is reversed"]
-        ),
+        ).transpose(),
         cfg.work_dir,
         f"error_rates"
     )
