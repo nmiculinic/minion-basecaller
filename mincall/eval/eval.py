@@ -130,11 +130,6 @@ def run(cfg: EvalCfg):
         name = name.replace(" ", "").replace("%", "")
         fig.savefig(os.path.join(cfg.work_dir, f"read_{name}.png"))
 
-    consensus = pd.concat(consensus_reports)
-    export_dataframe(
-        consensus.transpose(), cfg.work_dir, f"all_consensus_report"
-    )
-
     combined_error_df: pd.DataFrame = pd.concat(error_rates_dfs.values())
     for metric in [
         'Error %',
@@ -165,6 +160,11 @@ def run(cfg: EvalCfg):
         ),
         cfg.work_dir,
         f"error_rates"
+    )
+
+    consensus = pd.concat(consensus_reports)
+    export_dataframe(
+        consensus.transpose(), cfg.work_dir, f"all_consensus_report"
     )
 
 
