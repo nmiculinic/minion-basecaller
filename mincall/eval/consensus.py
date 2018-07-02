@@ -7,7 +7,7 @@ import pandas as pd
 import operator
 import pysam
 from mincall import bioinf_utils as butil
-from .align_utils import split_aligments_in_sam
+from .align_utils import split_alignments_in_sam
 import shutil
 from tqdm import tqdm
 """
@@ -31,11 +31,6 @@ def process_mpileup(
         # snp_count,
         # insertion_count,
         # deletion_count,
-        #
-        # num_undercovered_bases,
-        # num_called_bases,
-        # num_correct_bases,
-        # coverage_sum
         counts = np.zeros((7,))
 
         fp_variant = None
@@ -45,7 +40,12 @@ def process_mpileup(
             os.makedirs(output_prefix, exist_ok=True)
 
             variant_file = os.path.join(
-                output_prefix, 'cov_%d.variant.csv' % coverage_threshold
+                output_prefix, 'cov_%d.variant.csv'
+                #
+                # num_undercovered_bases,
+                # num_called_bases,
+                # num_correct_bases,
+                # coverage_sum% coverage_threshold
             )
             fp_variant = open(variant_file, 'w')
 
@@ -89,7 +89,7 @@ def process_mpileup(
         j = 0
         num_bases_to_skip = 0
 
-        for line in tqdm(fp, total=n_lines):
+        for line in tqdm(fp, total=n_lines, desc="processing_mpileup"):
             if num_bases_to_skip > 0:
                 num_bases_to_skip -= 1
                 continue
@@ -417,7 +417,7 @@ def get_consensus_report(
     mpileup_path = bam_path + '.bam.mpilup'
 
     logging.info("Split long aligments")
-    split_aligments_in_sam(sam_path, tmp_sam_path)
+    split_alignments_in_sam(sam_path, tmp_sam_path)
 
     logging.info("Converting sam to bam")
     pysam.view('-S', tmp_sam_path, '-b', '-o', tmp_bam_path, catch_stdout=False)

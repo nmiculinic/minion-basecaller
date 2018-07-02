@@ -175,7 +175,10 @@ def model_props(model):
     :return:  n_classes, ratio, surrogate_base_pair
     """
     test_size = 2**5 * 3**5 * 5**2
-    print(model.input, model.input_shape, model.output, model.output_shape, model.inputs, model.outputs)
+    print(
+        model.input, model.input_shape, model.output, model.output_shape,
+        model.inputs, model.outputs
+    )
     # Not sure why sometimes works with [[[ 1, test_size, 1 ]]] and sometimes with [[ 1, test_size, 1 ]]
     # Keras....
     try:
@@ -183,7 +186,10 @@ def model_props(model):
             [1, test_size, 1],
         ])
     except TypeError:
-        logger.warning(f"Error happend, trying with another indirection level", exc_info=True)
+        logger.warning(
+            f"Error happend, trying with another indirection level",
+            exc_info=True
+        )
         out_shapes = model.compute_output_shape([
             [[1, test_size, 1]],
         ])

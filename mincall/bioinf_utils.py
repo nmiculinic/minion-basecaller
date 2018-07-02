@@ -7,6 +7,7 @@ import numpy as np
 from collections import Counter, defaultdict
 import pandas as pd
 from tqdm import tqdm
+import cytoolz as toolz
 import os
 
 CIGAR_TO_BYTE = {
@@ -234,13 +235,11 @@ def reverse_complement(seq):
     return ''.join(bases)
 
 
-def error_rates_from_cigar(cigar_full_str):
-    cntr = Counter(cigar_full_str)
-
+def error_rates_from_cigar(cntr=None):
     def get_cnt(keys):
-        return sum([cntr[c] for c in keys])
+        return sum([cntr.get(c, 0) for c in keys])
 
-    cigar_len = len(cigar_full_str)
+    cigar_len = sum(cntr.values())
     n_deletions = get_cnt(CIGAR_DELETION)
     n_all_insertions = get_cnt(CIGAR_INSERTION)
     n_insertions = n_all_insertions - get_cnt(CIGAR_SOFTCLIP
@@ -283,9 +282,10 @@ def error_rates_for_sam(sam_path):
     unmapped = 0
     with pysam.AlignmentFile(sam_path, "r") as samfile:
         for x in tqdm(
-                samfile.fetch(),
-                unit='read',
-                desc=f"calculating error rates for sam file {os.path.basename(sam_path)}"
+            samfile.fetch(),
+            unit='read',
+            desc=
+            f"calculating error rates for sam file {os.path.basename(sam_path)}"
         ):
             if x.is_unmapped:
                 logging.debug("%s is unmapped", x.query_name)
@@ -295,8 +295,10 @@ def error_rates_for_sam(sam_path):
             qname = x.query_name
             cigar_pairs = x.cigartuples
 
-            full_cigar = decompress_cigar_pairs(cigar_pairs, mode='ints')
-            rates = error_rates_from_cigar(full_cigar)
+            cigar_cnt = defaultdict(int)
+            for b, cnt in cigar_pairs:
+                cigar_cnt[cigar_int_to_c(b)] += cnt
+            rates = error_rates_from_cigar(cntr=cigar_cnt)
             if rates:
                 all_errors.append([qname] + list(rates) + [x.is_reverse])
             else:

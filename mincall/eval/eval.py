@@ -105,19 +105,21 @@ def run(cfg: EvalCfg):
         error_rates_df['basecaller'] = basename
         error_rates_dfs[basename] = error_rates_df
 
-        position_report = error_positions_report(filtered_sam)
-        logger.info(
-            f"{basename} Error position report\n{position_report.head(20)}"
-        )
+        # TODO: This is slow and crashes everything
+        # position_report = error_positions_report(filtered_sam)
+        # logger.info(
+        #     f"{basename} Error position report\n{position_report.head(20)}"
+        # )
+        # fig = plot_error_distributions(position_report)
+        # fig.savefig(
+        #     os.path.join(cfg.work_dir, f"{basename}_position_report.png")
+        # )
 
-        fig = plot_error_distributions(position_report)
-        fig.savefig(
-            os.path.join(cfg.work_dir, f"{basename}_position_report.png")
-        )
-
+        consensus_wdir = os.path.join(cfg.work_dir, basename)
+        os.makedirs(consensus_wdir, exist_ok=True)
         report = get_consensus_report(
             basename, filtered_sam, cfg.reference, cfg.is_circular,
-            cfg.coverage_threshold
+            cfg.coverage_threshold, tmp_files_dir=consensus_wdir,
         )
         report.drop(columns=["alignments_file", "mpileup_file"], inplace=True)
         export_dataframe(
@@ -129,11 +131,6 @@ def run(cfg: EvalCfg):
         name: str = name
         name = name.replace(" ", "").replace("%", "")
         fig.savefig(os.path.join(cfg.work_dir, f"read_{name}.png"))
-
-    consensus = pd.concat(consensus_reports)
-    export_dataframe(
-        consensus.transpose(), cfg.work_dir, f"all_consensus_report"
-    )
 
     combined_error_df: pd.DataFrame = pd.concat(error_rates_dfs.values())
     for metric in [
@@ -165,6 +162,11 @@ def run(cfg: EvalCfg):
         ),
         cfg.work_dir,
         f"error_rates"
+    )
+
+    consensus = pd.concat(consensus_reports)
+    export_dataframe(
+        consensus.transpose(), cfg.work_dir, f"all_consensus_report"
     )
 
 

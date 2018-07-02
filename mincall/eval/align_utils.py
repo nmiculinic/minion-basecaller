@@ -187,7 +187,8 @@ def filter_aligments_in_sam(sam_path, out_path, filters=[]):
 
     with pysam.AlignmentFile(sam_path, "r") as in_sam:
         with pysam.AlignmentFile(out_path, "w", template=in_sam) as out_sam:
-            for x in tqdm(in_sam.fetch(),
+            for x in tqdm(
+                in_sam.fetch(),
                 desc="filtering sam file",
                 unit="read",
             ):
@@ -373,7 +374,7 @@ def split_aligment(x, split_length=CIGAR_OPS_LIMIT):
     return ret
 
 
-def split_aligments_in_sam(in_sam_path, out_sam_path=None):
+def split_alignments_in_sam(in_sam_path, out_sam_path=None):
     tmp_dir = None
     tmp_sam_out = out_sam_path
     inplace = out_sam_path is None
@@ -385,7 +386,9 @@ def split_aligments_in_sam(in_sam_path, out_sam_path=None):
     with pysam.AlignmentFile(in_sam_path, "r") as samfile, \
             pysam.AlignmentFile(tmp_sam_out, "w", template=samfile) as out_sam:
 
-        for idx, x in enumerate(samfile.fetch()):
+        for idx, x in enumerate(
+            tqdm(samfile.fetch(), desc="split_alignments_in_sam")
+        ):
             name = x.query_name
 
             if x.is_unmapped:
