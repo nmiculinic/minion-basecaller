@@ -282,9 +282,10 @@ def error_rates_for_sam(sam_path):
     unmapped = 0
     with pysam.AlignmentFile(sam_path, "r") as samfile:
         for x in tqdm(
-                samfile.fetch(),
-                unit='read',
-                desc=f"calculating error rates for sam file {os.path.basename(sam_path)}"
+            samfile.fetch(),
+            unit='read',
+            desc=
+            f"calculating error rates for sam file {os.path.basename(sam_path)}"
         ):
             if x.is_unmapped:
                 logging.debug("%s is unmapped", x.query_name)
