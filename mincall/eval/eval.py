@@ -115,9 +115,11 @@ def run(cfg: EvalCfg):
         #     os.path.join(cfg.work_dir, f"{basename}_position_report.png")
         # )
 
+        consensus_wdir = os.path.join(cfg.work_dir, basename)
+        os.makedirs(consensus_wdir, exist_ok=True)
         report = get_consensus_report(
             basename, filtered_sam, cfg.reference, cfg.is_circular,
-            cfg.coverage_threshold
+            cfg.coverage_threshold, tmp_files_dir=consensus_wdir,
         )
         report.drop(columns=["alignments_file", "mpileup_file"], inplace=True)
         export_dataframe(
