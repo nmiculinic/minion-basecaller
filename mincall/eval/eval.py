@@ -73,6 +73,12 @@ def add_args(parser: argparse.ArgumentParser):
 
 
 def run(cfg: EvalCfg):
+    for x in cfg.sam_path:
+        try:
+            os.stat(x)
+        except Exception as ex:
+            logger.critical(f"Cannot stat {x}: {type(ex).__name__}! Does file exist?")
+            raise
     error_rates_dfs = {}
     consensus_reports = []
     for sam_path in cfg.sam_path:
