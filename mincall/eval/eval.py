@@ -27,6 +27,7 @@ class EvalCfg(NamedTuple):
     sam_path: List[str]
     work_dir: str
     reference: str
+    calc_consensus: bool = False
     is_circular: bool = False
     coverage_threshold: int = 0
 
@@ -68,6 +69,12 @@ def add_args(parser: argparse.ArgumentParser):
         dest="eval.work_dir",
         type=voluptuous.IsDir(),
         default="."
+    )
+    parser.add_argument(
+        "--calc_consensus",
+        dest="eval.calc_consensus",
+        action="store_true",
+        default=None,
     )
     parser.set_defaults(func=run_args)
 
@@ -121,17 +128,19 @@ def run(cfg: EvalCfg):
         #     os.path.join(cfg.work_dir, f"{basename}_position_report.png")
         # )
 
-        consensus_wdir = os.path.join(cfg.work_dir, basename)
-        os.makedirs(consensus_wdir, exist_ok=True)
-        report = get_consensus_report(
-            basename, filtered_sam, cfg.reference, cfg.is_circular,
-            cfg.coverage_threshold, tmp_files_dir=consensus_wdir,
-        )
-        report.drop(columns=["alignments_file", "mpileup_file"], inplace=True)
-        export_dataframe(
-            report.transpose(), cfg.work_dir, f"{basename}_consensus_report"
-        )
-        consensus_reports.append(report)
+
+        if cfg.calc_consensus:
+            consensus_wdir = os.path.join(cfg.work_dir, basename)
+            os.makedirs(consensus_wdir, exist_ok=True)
+            report = get_consensus_report(
+                basename, filtered_sam, cfg.reference, cfg.is_circular,
+                cfg.coverage_threshold, tmp_files_dir=consensus_wdir,
+            )
+            report.drop(columns=["alignments_file", "mpileup_file"], inplace=True)
+            export_dataframe(
+                report.transpose(), cfg.work_dir, f"{basename}_consensus_report"
+            )
+            consensus_reports.append(report)
 
     for name, fig in plot_read_error_stats(error_rates_dfs).items():
         name: str = name
@@ -170,10 +179,11 @@ def run(cfg: EvalCfg):
         f"error_rates"
     )
 
-    consensus = pd.concat(consensus_reports)
-    export_dataframe(
-        consensus.transpose(), cfg.work_dir, f"all_consensus_report"
-    )
+    if cfg.calc_consensus:
+        consensus = pd.concat(consensus_reports)
+        export_dataframe(
+            consensus.transpose(), cfg.work_dir, f"all_consensus_report"
+        )
 
 
 def plot_error_distributions(position_report) -> plt.Figure:
