@@ -2,7 +2,7 @@
 
 This is MinION DNA basecaller developed from 2016-2018, and served as mine master thesis. The whole master thesis is [attached](https://github.com/nmiculinic/minion-basecaller/blob/master/nmiculinic_ma.pdf) to this repo with the detailed introduction, problem description, related work, methodology, results and final commentary.
 
-For a quick summary of master thesis: 
+For a quick summary of master thesis & this repo: 
 
 * It's a deep learning approach using a sequence to sequence models with CTC loss with CNN's. 
 * No LSTM were used which leads to high speeds. 
@@ -10,8 +10,10 @@ For a quick summary of master thesis:
 * If the Greedy search is used per-read results are slightly worse, but the read consensus is overall better.
 * Whole code uses modern tensorflow and keras, with a custom pre-processing pipeline. 
 * It uses simple YAML config file, validated using the voluptuous library 
+* Hyperparameter search is implemented using pluggable architecture. Currently, SigOpt and RandomSearch strategies are supported.
 * This is primarily scientific code, thus I've aimed to the best quality and software engineering practices possible within given timeline, though priority were the results. This code has been through one rewrite from scratch which improved its quality and ease of use.
 * Many progress bars are implemented using tqdm library and it's possible to add graylog logging backend. I've used graylog for log management during training, much better than searching through log files.
+* Design goal was easy reproducibility. Thus config files were preferred over command line arguments. Hyperparameter search creates valid training config files and starts the training code. That code is no smarter whether it's part of hyperparam search or single run experiment. 
 * For further questions feel free to contact me on my email or open the issue. University one is disabled (( I've graduated )) but a private one is available on my GitHub profile.
 
 
