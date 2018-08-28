@@ -18,11 +18,17 @@ For a quick summary of master thesis:
 ## Setup 
 
 * Install via `python setup.py install` or use docker images (( via makefile ))
-* python3 -m mincall basecall --in <fast5 folder> --out out.fasta --model model.save
+* `python3 -m mincall basecall --in <fast5 folder> --out out.fasta --model model.save`
 * Or via docker it's similar:
     * `docker run --rm -it nmiculinic/mincall:latest-py3 basecall ...`
     * `docker run --runtime=nvidia --rm -it nmiculinic/mincall:latest-py3-gpu basecall ...`
     GPU version required nvidia-docker installed
+
+## Training
+
+`python -m mincall train  --config mincall/example/config.yml`
+
+If you're doing training I recommend checking the source code. [mincall/train/_train.py](https://github.com/nmiculinic/minion-basecaller/blob/master/mincall/train/_train.py) is the entrypoint and should be started through there. You can also see how the config file is parsed and used. Data is formated via gzipped protobuf format defined in [minion-data](https://github.com/nmiculinic/minion-data) repository. 
 
 For all other information look at the attached master thesis (nmiculinic_ma.pdf), and the source code.
 
