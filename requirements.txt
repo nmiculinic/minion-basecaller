@@ -41,6 +41,6 @@ tensorflow==1.8.0
 termcolor==1.1.0
 toolz==0.9.0
 tqdm==4.23.3
-urllib3==1.23
+urllib3==1.24.2
 voluptuous==0.11.1
 Werkzeug==0.15.3
